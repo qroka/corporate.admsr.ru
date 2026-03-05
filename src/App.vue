@@ -93,7 +93,7 @@
           </RouterLink>
           <!-- Основная навигация по разделам портала (скрыта ниже xl, в бургер-меню) -->
           <nav
-            class="header-nav hidden lg:flex bg-zinc-100 dark:bg-zinc-800 rounded-full w-fit items-center gap-2 p-3 relative z-0">
+            class="header-nav hidden lg:flex bg-zinc-100 dark:bg-zinc-800 rounded-full w-fit items-center  p-3 relative z-0">
             <RouterLink :to="{ name: 'events' }"
               class="relative z-0 flex items-center gap-[10px] rounded-full w-12 h-12 min-w-12 max-w-12 px-0 justify-center 3xl:w-auto 3xl:h-auto 3xl:min-w-0 3xl:max-w-none 3xl:px-3 3xl:justify-start 3xl:shrink-0 cursor-pointer transition-all duration-300 ease-out group"
               :class="activeNav === 'events'
@@ -214,7 +214,7 @@
               </div>
 
               <!-- Навигация по разделам -->
-              <div class="flex flex-col gap-1">
+              <div class="flex flex-col gap-">
                 <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400 px-3 mb-1">Разделы</p>
                 <RouterLink :to="{ name: 'events' }"
                   class="flex items-center gap-3 rounded-full px-4 py-3 transition-colors"

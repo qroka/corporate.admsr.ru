@@ -262,16 +262,11 @@ const paginatedPosts = computed(() => {
             Здесь будет лента ближайших корпоративных мероприятий.
           </p>
         </div>
-        <UButton
-          v-if="currentRole === 'admin'"
-          color="primary"
-          size="xl"
-          class="w-full sm:w-auto justify-center"
-          @click="
+        <UButton v-if="currentRole === 'admin'" color="neutral" variant="outline" size="xl"
+          class="w-full sm:w-auto justify-center" @click="
             resetCreateForm();
-            createOpen = true;
-          "
-        >
+          createOpen = true;
+          ">
           Добавить мероприятие
         </UButton>
       </div>
@@ -279,13 +274,7 @@ const paginatedPosts = computed(() => {
     <UMain class="flex flex-1 min-h-0 flex-col w-full h-full gap-6">
 
       <!-- Ошибка загрузки -->
-      <UAlert
-        v-if="fetchError"
-        color="red"
-        variant="subtle"
-        icon="i-lucide-alert-circle"
-        :title="fetchError"
-      >
+      <UAlert v-if="fetchError" color="red" variant="subtle" icon="i-lucide-alert-circle" :title="fetchError">
         <template #footer>
           <UButton size="sm" color="red" variant="ghost" @click="fetchEvents">
             Повторить
@@ -317,12 +306,7 @@ const paginatedPosts = computed(() => {
 
       <!-- Список мероприятий -->
       <div v-else class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 flex-1 min-h-0">
-        <UBlogPost
-          v-for="post in paginatedPosts"
-          :key="post.id ?? post.title"
-          v-bind="post"
-          class="h-full"
-        />
+        <UBlogPost v-for="post in paginatedPosts" :key="post.id ?? post.title" v-bind="post" class="h-full" />
       </div>
 
       <div v-if="!loading" class="flex justify-center">
@@ -330,7 +314,7 @@ const paginatedPosts = computed(() => {
       </div>
 
       <!-- Slideover с фильтрами -->
-      <USlideover v-model:open="filtersOpen" side="right" title="Фильтры" description="Фильтрация мероприятий по категории и датам">
+      <USlideover v-model:open="filtersOpen" side="right" title="Фильтры" description="">
         <template #body>
           <div class="flex flex-col gap-3 py-4">
             <h3 class="text-sm font-medium text-zinc-700 dark:text-zinc-200">
@@ -367,96 +351,52 @@ const paginatedPosts = computed(() => {
       </USlideover>
 
       <!-- Slideover создания мероприятия (только для администратора) -->
-      <USlideover v-model:open="createOpen" side="right" title="Новое мероприятие" description="Заполните форму для добавления мероприятия">
+      <USlideover v-model:open="createOpen" side="right" title="Новое мероприятие" description="">
         <template #body>
-          <div class="flex flex-col gap-4 py-2">
-            <UForm :state="createState" class="space-y-4" @submit.prevent="handleCreateSubmit">
-              <UFormField label="Название" name="title" required>
-                <UInput v-model="createState.title" size="lg" placeholder="Например, Семинар по цифровым сервисам" />
-              </UFormField>
+          <UForm :state="createState" class="space-y-4" @submit.prevent="handleCreateSubmit">
+            <UFormField label="Название мероприятияе" name="title" required>
+              <UInput v-model="createState.title" size="xl" class="w-full"
+                placeholder="Введите название мероприятия" />
+            </UFormField>
 
-              <UFormField label="Категория (бейдж)" name="badge">
-                <USelect
-                  v-model="createState.badge"
-                  :items="badgeOptions"
-                  placeholder="Выберите категорию"
-                  size="lg"
-                  class="w-full"
-                />
-              </UFormField>
+            <UFormField label="Категория (бейдж)" name="badge">
+              <USelect v-model="createState.badge" :items="badgeOptions" placeholder="Выберите категорию" size="xl"
+                class="w-full" />
+            </UFormField>
 
-              <UFormField label="Описание" name="description">
-                <UTextarea
-                  v-model="createState.description"
-                  size="lg"
-                  :rows="3"
-                  placeholder="Кратко опишите цель и формат мероприятия..."
-                />
-              </UFormField>
+            <UFormField label="Описание" name="description">
+              <UTextarea v-model="createState.description" size="xl" class="w-full" :rows="3"
+                placeholder="Кратко опишите цель и формат мероприятия..." />
+            </UFormField>
 
-              <UFormField label="Дата проведения" name="date" required>
-                <UInputDate
-                  v-model="createDateValue"
-                  size="lg"
-                  class="w-full"
-                >
-                  <template #trailing>
-                    <UPopover>
-                      <UButton
-                        color="neutral"
-                        variant="link"
-                        size="sm"
-                        icon="i-lucide-calendar"
-                        aria-label="Выбрать дату"
-                        class="px-0"
-                      />
-                      <template #content>
-                        <UCalendar v-model="createDateValue" class="p-2" />
-                      </template>
-                    </UPopover>
-                  </template>
-                </UInputDate>
-              </UFormField>
-
-              <UFormField label="Ссылка на подробности" name="link">
-                <UInput
-                  v-model="createState.link"
-                  size="lg"
-                  placeholder="https://..."
-                />
-              </UFormField>
-
-              <UFormField label="Изображение (URL)" name="image">
-                <UInput v-model="createState.image" size="lg" placeholder="/src/img/event-cover.svg" />
-              </UFormField>
-
-              <UAlert
-                v-if="createError"
-                color="red"
-                variant="subtle"
-                icon="i-lucide-alert-circle"
-                :description="createError"
-              />
-            </UForm>
-          </div>
+            <UFormField label="Дата проведения" name="date" required>
+              <UInputDate v-model="createDateValue" size="xl" class="w-full">
+                <template #trailing>
+                  <UPopover>
+                    <UButton color="neutral" variant="link" size="sm" icon="i-lucide-calendar" aria-label="Выбрать дату"
+                      class="px-0" />
+                    <template #content>
+                      <UCalendar v-model="createDateValue" class="p-2" />
+                    </template>
+                  </UPopover>
+                </template>
+              </UInputDate>
+            </UFormField>
+            <UFormField label="Изображение (URL)" name="image">
+              <UFileUpload color="neutral" highlight label="Drop your image here"
+                description="SVG, PNG, JPG or GIF (max. 2MB)" class="w-full min-h-48" />
+            </UFormField>
+            <UAlert v-if="createError" color="red" variant="subtle" icon="i-lucide-alert-circle"
+              :description="createError" />
+          </UForm>
         </template>
         <template #footer>
           <div class="flex justify-between gap-3 items-center w-full">
-            <UButton
-              color="neutral"
-              variant="outline"
-              size="xl"
-              class="w-full justify-center"
-              @click="createOpen = false"
-            >
+            <UButton color="neutral" variant="outline" size="xl" class="w-full justify-center"
+              @click="createOpen = false">
               Отмена
             </UButton>
-            <UButton
-              size="xl"
-              class="w-full justify-center"
-              :loading="createSubmitting"
-              @click="handleCreateSubmit"
-            >
+            <UButton size="xl" class="w-full justify-center" :loading="createSubmitting" @click="handleCreateSubmit">
               Создать
             </UButton>
           </div>
