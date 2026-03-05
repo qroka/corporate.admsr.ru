@@ -1,0 +1,131 @@
+[
+  {
+    "title": "Опрос по работе отдела кадров",
+    "image": "/src/img/tailwindcss-v4.svg",
+    "date": "2026-03-10",
+    "to": "#",
+    "target": "_blank",
+    "badge": "Опрос"
+  },
+  {
+    "title": "День района: праздничный концерт",
+    "image": "/src/img/tailwindcss-v4.svg",
+    "date": "2026-03-24",
+    "to": "#",
+    "target": "_blank",
+    "badge": "Праздник"
+  },
+  {
+    "title": "Встреча с руководством района",
+    "image": "/src/img/tailwindcss-v4.svg",
+    "date": "2026-03-18",
+    "to": "#",
+    "target": "_blank",
+    "badge": "Встреча"
+  },
+  {
+    "title": "Семинар по цифровым сервисам",
+    "image": "/src/img/tailwindcss-v4.svg",
+    "date": "2026-03-20",
+    "to": "#",
+    "target": "_blank",
+    "badge": "Обучение"
+  },
+  {
+    "title": "Спортивный турнир среди подразделений",
+    "image": "/src/img/tailwindcss-v4.svg",
+    "date": "2026-04-02",
+    "to": "#",
+    "target": "_blank",
+    "badge": "Спорт"
+  },
+  {
+    "title": "День открытых дверей для новичков",
+    "image": "/src/img/tailwindcss-v4.svg",
+    "date": "2026-03-28",
+    "to": "#",
+    "target": "_blank",
+    "badge": "Новичкам"
+  },
+  {
+    "title": "Лекторий по корпоративной культуре",
+    "image": "/src/img/tailwindcss-v4.svg",
+    "date": "2026-03-22",
+    "to": "#",
+    "target": "_blank",
+    "badge": "Культура"
+  },
+  {
+    "title": "Мастер‑класс по коммуникациям",
+    "image": "/src/img/tailwindcss-v4.svg",
+    "date": "2026-04-05",
+    "to": "#",
+    "target": "_blank",
+    "badge": "Развитие"
+  },
+  {
+    "title": "Экологическая акция по благоустройству",
+    "image": "/src/img/tailwindcss-v4.svg",
+    "date": "2026-04-18",
+    "to": "#",
+    "target": "_blank",
+    "badge": "Экология"
+  },
+  {
+    "title": "Фото‑конкурс «Моё рабочее место»",
+    "image": "/src/img/tailwindcss-v4.svg",
+    "date": "2026-03-30",
+    "to": "#",
+    "target": "_blank",
+    "badge": "Конкурс"
+  },
+  {
+    "title": "Вебинар по охране труда",
+    "image": "/src/img/tailwindcss-v4.svg",
+    "date": "2026-04-08",
+    "to": "#",
+    "target": "_blank",
+    "badge": "Важно"
+  },
+  {
+    "title": "Обновление корпоративного портала",
+    "image": "/src/img/tailwindcss-v4.svg",
+    "date": "2026-03-26",
+    "to": "#",
+    "target": "_blank",
+    "badge": "Обновление"
+  },
+  {
+    "title": "Тренинг по сервисной культуре",
+    "image": "/src/img/tailwindcss-v4.svg",
+    "date": "2026-04-12",
+    "to": "#",
+    "target": "_blank",
+    "badge": "Сервис"
+  },
+  {
+    "title": "День здоровья сотрудников",
+    "image": "/src/img/tailwindcss-v4.svg",
+    "date": "2026-04-20",
+    "to": "#",
+    "target": "_blank",
+    "badge": "Здоровье"
+  },
+  {
+    "title": "HR‑клуб: лучшие практики подбора",
+    "image": "/src/img/tailwindcss-v4.svg",
+    "date": "2026-04-16",
+    "to": "#",
+    "target": "_blank",
+    "badge": "HR"
+  },
+  {
+    "title": "Волонтёрская помощь учреждениям района",
+    "image": "/src/img/tailwindcss-v4.svg",
+    "date": "2026-04-25",
+    "to": "#",
+    "target": "_blank",
+    "badge": "Добро"
+  }
+]
+
