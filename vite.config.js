@@ -17,14 +17,5 @@ export default defineConfig({
   server: {
     port: 5173,
   },
-  optimizeDeps: {
-    include: [
-      '@nuxt/ui > prosemirror-state',
-      '@nuxt/ui > prosemirror-transform',
-      '@nuxt/ui > prosemirror-model',
-      '@nuxt/ui > prosemirror-view',
-      '@nuxt/ui > prosemirror-gapcursor',
-    ],
-  },
 });
 

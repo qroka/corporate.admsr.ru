@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, watch, reactive } from 'vue';
-import type { BlogPostProps, EditorToolbarItem } from '@nuxt/ui';
+import type { BlogPostProps } from '@nuxt/ui';
 import { currentRole } from '../../stores/role';
 import rawEvents from '../../data/events.json';
 
@@ -51,51 +51,6 @@ type SingleDateValue = { value?: any } | any | null;
 const createDateValue = ref<SingleDateValue>(null);
 const createSubmitting = ref(false);
 const createError = ref<string | null>(null);
-
-// Панель инструментов редактора новости (описание мероприятия)
-const editorToolbarItems: EditorToolbarItem[][] = [
-  [
-    {
-      icon: 'i-lucide-heading',
-      tooltip: { text: 'Заголовки' },
-      content: { align: 'start' },
-      items: [
-        { kind: 'heading', level: 1, icon: 'i-lucide-heading-1', label: 'Заголовок 1' },
-        { kind: 'heading', level: 2, icon: 'i-lucide-heading-2', label: 'Заголовок 2' },
-        { kind: 'heading', level: 3, icon: 'i-lucide-heading-3', label: 'Заголовок 3' },
-        { kind: 'heading', level: 4, icon: 'i-lucide-heading-4', label: 'Заголовок 4' },
-      ],
-    },
-  ],
-  [
-    { kind: 'mark', mark: 'bold', icon: 'i-lucide-bold', tooltip: { text: 'Жирный' } },
-    { kind: 'mark', mark: 'italic', icon: 'i-lucide-italic', tooltip: { text: 'Курсив' } },
-    { kind: 'mark', mark: 'underline', icon: 'i-lucide-underline', tooltip: { text: 'Подчёркнутый' } },
-    { kind: 'mark', mark: 'strike', icon: 'i-lucide-strikethrough', tooltip: { text: 'Зачёркнутый' } },
-    { kind: 'mark', mark: 'code', icon: 'i-lucide-code', tooltip: { text: 'Код' } },
-  ],
-  [
-    { kind: 'bulletList', icon: 'i-lucide-list', tooltip: { text: 'Маркированный список' } },
-    { kind: 'orderedList', icon: 'i-lucide-list-ordered', tooltip: { text: 'Нумерованный список' } },
-  ],
-  [
-    {
-      icon: 'i-lucide-align-justify',
-      tooltip: { text: 'Выравнивание' },
-      content: { align: 'end' },
-      items: [
-        { kind: 'textAlign', align: 'left', icon: 'i-lucide-align-left', label: 'По левому краю' },
-        { kind: 'textAlign', align: 'center', icon: 'i-lucide-align-center', label: 'По центру' },
-        { kind: 'textAlign', align: 'right', icon: 'i-lucide-align-right', label: 'По правому краю' },
-        { kind: 'textAlign', align: 'justify', icon: 'i-lucide-align-justify', label: 'По ширине' },
-      ],
-    },
-  ],
-  [
-    { kind: 'link', icon: 'i-lucide-link', tooltip: { text: 'Ссылка' } },
-    { kind: 'image', icon: 'i-lucide-image', tooltip: { text: 'Изображение по URL' } },
-  ],
-];
 
 const uniqueBadges = computed(() => {
   const set = new Set<string>();
@@ -372,22 +327,12 @@ const paginatedPosts = computed(() => {
               </UFormGroup>
 
               <UFormGroup label="Описание" name="description">
-                <div class="rounded-md border border-zinc-200 dark:border-zinc-700 overflow-auto h-full">
-                  <UEditor
-                    v-slot="{ editor }"
-                    v-model="createState.description"
-                    content-type="markdown"
-                    placeholder="Опишите цель и формат мероприятия. Поддерживаются заголовки, списки, ссылки и изображения по URL."
-                    :ui="{ base: 'p-3 min-h-40' }"
-                    class="w-full h-full "
-                  >
-                    <UEditorToolbar
-                      :editor="editor"
-                      :items="editorToolbarItems"
-                      class="border-b border-zinc-200 dark:border-zinc-700 py-2 px-3 overflow-x-auto bg-zinc-50 dark:bg-zinc-800/50"
-                    />
-                  </UEditor>
-                </div>
+                <UTextarea
+                  v-model="createState.description"
+                  size="lg"
+                  :rows="3"
+                  placeholder="Кратко опишите цель и формат мероприятия..."
+                />
               </UFormGroup>
 
               <UFormGroup label="Дата проведения" name="date" required>
