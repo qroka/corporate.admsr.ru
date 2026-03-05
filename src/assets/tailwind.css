@@ -18,3 +18,43 @@ body {
 .dark body {
   background-color: #020617;
 }
+
+/* Единый кастомный скроллбар во всём проекте (включая телетранспорт: Slideover и т.д.) */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(161, 161, 170, 0);
+  border-radius: 0px;
+  transition: background 0.2s ease;
+}
+
+*::-webkit-scrollbar-thumb:hover,
+*::-webkit-scrollbar-thumb:active {
+  background: rgb(161 161 170);
+}
+
+.dark *::-webkit-scrollbar-thumb {
+  background: rgba(82, 82, 91, 0);
+}
+
+.dark *::-webkit-scrollbar-thumb:hover,
+.dark *::-webkit-scrollbar-thumb:active {
+  background: rgb(82 82 91);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 220, 130, 1) transparent;
+}
+
+.dark * {
+  scrollbar-color: rgba(0, 220, 130, 1) transparent;
+}
