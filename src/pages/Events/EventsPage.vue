@@ -2,31 +2,52 @@
 import { computed, ref, onMounted, onUnmounted, watch, reactive } from 'vue';
 import type { BlogPostProps } from '@nuxt/ui';
 import { currentRole } from '../../stores/role';
-import rawEvents from '../../data/events.json';
+
+const API_URL = '/api/events.php';
 
 type EventPost = BlogPostProps & {
+  id?: number;
   badge?: string;
 };
 
-const posts = ref<EventPost[]>(
-  (rawEvents as EventPost[]).map((event, index) => ({
-    ...event,
-    to: `/events/${index}`,
-    target: undefined,
-  })),
-);
+// ─── Данные ──────────────────────────────────────────────────────────────────
+const posts = ref<EventPost[]>([]);
+const loading = ref(true);
+const fetchError = ref<string | null>(null);
 
+async function fetchEvents() {
+  loading.value = true;
+  fetchError.value = null;
+  try {
+    const res = await fetch(API_URL);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+    posts.value = (json.data as any[]).map((event) => ({
+      ...event,
+      to: `/events/${event.id}`,
+      target: undefined,
+    }));
+  } catch (e: any) {
+    fetchError.value = e?.message ?? 'Не удалось загрузить мероприятия';
+  } finally {
+    loading.value = false;
+  }
+}
+
+onMounted(fetchEvents);
+
+// ─── Фильтры и поиск ─────────────────────────────────────────────────────────
 const searchQuery = ref('');
 const selectedBadges = ref<string[]>([]);
 const dateFrom = ref('');
 const dateTo = ref('');
 const filtersOpen = ref(false);
 const inputDate = ref();
-// Используем any для значения UInputDate range, чтобы не конфликтовать с внутренним типом CalendarDate
 type DateRangeValue = { start?: any; end?: any } | null;
 const modelValue = ref<DateRangeValue>(null);
 
-// Slideover для создания мероприятия (локальный режим, без сохранения)
+// ─── Форма создания мероприятия ───────────────────────────────────────────────
 const createOpen = ref(false);
 
 type CreateFormState = {
@@ -107,14 +128,11 @@ function resetCreateForm() {
   createError.value = null;
 }
 
-function createSyncDate(val: SingleDateValue) {
+// watch надёжнее @update:model-value — срабатывает и при ручном вводе, и при выборе из календаря
+watch(createDateValue, (val) => {
   const d = val?.value ?? val;
-  if (d && typeof d.toString === 'function') {
-    createState.date = d.toString();
-  } else {
-    createState.date = '';
-  }
-}
+  createState.date = (d && typeof d.toString === 'function') ? d.toString() : '';
+});
 
 function validateCreate(): boolean {
   if (!createState.title.trim()) {
@@ -132,17 +150,30 @@ function validateCreate(): boolean {
 async function handleCreateSubmit() {
   if (!validateCreate()) return;
   createSubmitting.value = true;
+  createError.value = null;
   try {
-    // Локальный режим: добавляем мероприятие только в текущий список (без сохранения в файл).
-    posts.value.push({
-      title: createState.title,
-      description: createState.description,
-      badge: createState.badge ?? undefined,
-      date: createState.date,
-      image: createState.image,
-      to: undefined,
-    } as EventPost);
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: createState.title,
+        description: createState.description,
+        badge: createState.badge,
+        date: createState.date,
+        image: createState.image,
+        link: createState.link,
+      }),
+    });
+    const json = await res.json();
+    if (!json.success) {
+      createError.value = json.message;
+      return;
+    }
     createOpen.value = false;
+    resetCreateForm();
+    await fetchEvents();
+  } catch (e: any) {
+    createError.value = e?.message ?? 'Ошибка при создании мероприятия';
   } finally {
     createSubmitting.value = false;
   }
@@ -155,6 +186,7 @@ const activeFilterCount = computed(() => {
   return count;
 });
 
+// ─── Пагинация ────────────────────────────────────────────────────────────────
 const page = ref(1);
 
 const sm = ref(false);
@@ -165,7 +197,7 @@ const itemsPerPage = computed(() => {
   if (lg.value) return 8;
   if (md.value) return 6;
   if (sm.value) return 4;
-  return 4; // grid-cols-1 — 4 элемента на странице
+  return 4;
 });
 
 watch(
@@ -200,7 +232,7 @@ onMounted(() => {
   });
 });
 
-watch([itemsPerPage, filteredPosts], ([newSize, _], [oldSize]) => {
+watch([itemsPerPage, filteredPosts], ([_, __], [oldSize]) => {
   if (oldSize === undefined) return;
   const total = filteredPosts.value.length;
   const maxPage = Math.max(1, Math.ceil(total / itemsPerPage.value));
@@ -221,7 +253,7 @@ const paginatedPosts = computed(() => {
 </script>
 
 <template>
-  <content class="flex flex-col gap-6 w-full h-full min-h-0">
+  <div class="flex flex-col gap-6 w-full h-full min-h-0">
     <Headline class="text-zinc-700 dark:text-zinc-50">
       <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between w-full">
         <div>
@@ -245,7 +277,23 @@ const paginatedPosts = computed(() => {
       </div>
     </Headline>
     <UMain class="flex flex-1 min-h-0 flex-col w-full h-full gap-6">
-      <!-- Обычный поиск + кнопка фильтров -->
+
+      <!-- Ошибка загрузки -->
+      <UAlert
+        v-if="fetchError"
+        color="red"
+        variant="subtle"
+        icon="i-lucide-alert-circle"
+        :title="fetchError"
+      >
+        <template #footer>
+          <UButton size="sm" color="red" variant="ghost" @click="fetchEvents">
+            Повторить
+          </UButton>
+        </template>
+      </UAlert>
+
+      <!-- Поиск + кнопка фильтров -->
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
         <UInput v-model="searchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline"
           placeholder="Поиск по названию..." class="w-full" />
@@ -257,22 +305,32 @@ const paginatedPosts = computed(() => {
           </span>
         </UButton>
       </div>
-      <p v-if="filteredPosts.length !== posts.length" class="text-sm text-zinc-500 mb-2">
+
+      <p v-if="!loading && filteredPosts.length !== posts.length" class="text-sm text-zinc-500 mb-2">
         Найдено: {{ filteredPosts.length }} из {{ posts.length }}
       </p>
-      <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 flex-1 min-h-0">
+
+      <!-- Скелетон при загрузке -->
+      <div v-if="loading" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 flex-1 min-h-0">
+        <USkeleton v-for="n in 8" :key="n" class="h-64 rounded-xl" />
+      </div>
+
+      <!-- Список мероприятий -->
+      <div v-else class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 flex-1 min-h-0">
         <UBlogPost
           v-for="post in paginatedPosts"
-          :key="post.title"
+          :key="post.id ?? post.title"
           v-bind="post"
           class="h-full"
         />
       </div>
-      <div class="flex justify-center">
+
+      <div v-if="!loading" class="flex justify-center">
         <UPagination size="xl" v-model:page="page" :total="filteredPosts.length" :items-per-page="itemsPerPage" />
       </div>
-      <!-- Slideover с фильтрами по бейджам и датам -->
-      <USlideover v-model:open="filtersOpen" side="right" title="Фильтры">
+
+      <!-- Slideover с фильтрами -->
+      <USlideover v-model:open="filtersOpen" side="right" title="Фильтры" description="Фильтрация мероприятий по категории и датам">
         <template #body>
           <div class="flex flex-col gap-3 py-4">
             <h3 class="text-sm font-medium text-zinc-700 dark:text-zinc-200">
@@ -307,16 +365,17 @@ const paginatedPosts = computed(() => {
           </div>
         </template>
       </USlideover>
+
       <!-- Slideover создания мероприятия (только для администратора) -->
-      <USlideover v-model:open="createOpen" side="right" title="Новое мероприятие">
+      <USlideover v-model:open="createOpen" side="right" title="Новое мероприятие" description="Заполните форму для добавления мероприятия">
         <template #body>
           <div class="flex flex-col gap-4 py-2">
             <UForm :state="createState" class="space-y-4" @submit.prevent="handleCreateSubmit">
-              <UFormGroup label="Название" name="title" required>
+              <UFormField label="Название" name="title" required>
                 <UInput v-model="createState.title" size="lg" placeholder="Например, Семинар по цифровым сервисам" />
-              </UFormGroup>
+              </UFormField>
 
-              <UFormGroup label="Категория (бейдж)" name="badge">
+              <UFormField label="Категория (бейдж)" name="badge">
                 <USelect
                   v-model="createState.badge"
                   :items="badgeOptions"
@@ -324,23 +383,22 @@ const paginatedPosts = computed(() => {
                   size="lg"
                   class="w-full"
                 />
-              </UFormGroup>
+              </UFormField>
 
-              <UFormGroup label="Описание" name="description">
+              <UFormField label="Описание" name="description">
                 <UTextarea
                   v-model="createState.description"
                   size="lg"
                   :rows="3"
                   placeholder="Кратко опишите цель и формат мероприятия..."
                 />
-              </UFormGroup>
+              </UFormField>
 
-              <UFormGroup label="Дата проведения" name="date" required>
+              <UFormField label="Дата проведения" name="date" required>
                 <UInputDate
                   v-model="createDateValue"
                   size="lg"
                   class="w-full"
-                  @update:model-value="createSyncDate"
                 >
                   <template #trailing>
                     <UPopover>
@@ -358,28 +416,27 @@ const paginatedPosts = computed(() => {
                     </UPopover>
                   </template>
                 </UInputDate>
-              </UFormGroup>
+              </UFormField>
 
-              <UFormGroup label="Ссылка на подробности" name="link">
+              <UFormField label="Ссылка на подробности" name="link">
                 <UInput
                   v-model="createState.link"
                   size="lg"
                   placeholder="https://..."
                 />
-              </UFormGroup>
+              </UFormField>
 
-              <UFormGroup label="Изображение (URL)" name="image">
+              <UFormField label="Изображение (URL)" name="image">
                 <UInput v-model="createState.image" size="lg" placeholder="/src/img/event-cover.svg" />
-              </UFormGroup>
+              </UFormField>
 
               <UAlert
                 v-if="createError"
                 color="red"
                 variant="subtle"
                 icon="i-lucide-alert-circle"
-              >
-                {{ createError }}
-              </UAlert>
+                :description="createError"
+              />
             </UForm>
           </div>
         </template>
@@ -406,6 +463,5 @@ const paginatedPosts = computed(() => {
         </template>
       </USlideover>
     </UMain>
-  </content>
+  </div>
 </template>
-

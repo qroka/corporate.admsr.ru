@@ -2,30 +2,70 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { BlogPostProps } from '@nuxt/ui';
-import rawEvents from '../../data/events.json';
 import { currentRole } from '../../stores/role';
 
+const API_URL = '/api/events.php';
+
 type EventPost = BlogPostProps & {
+  id?: number;
   badge?: string;
+  link?: string;
 };
 
 const route = useRoute();
 const router = useRouter();
 
-const index = computed(() => {
-  const id = Number(route.params.id);
-  return Number.isFinite(id) ? id : -1;
-});
+// ─── Данные ──────────────────────────────────────────────────────────────────
+const event = ref<EventPost | null>(null);
+const loading = ref(true);
+const fetchError = ref<string | null>(null);
 
-const event = computed<EventPost | null>(() => {
-  const all = rawEvents as EventPost[];
-  if (index.value < 0 || index.value >= all.length) return null;
-  return all[index.value];
-});
+const badgeOptions = ref<{ value: string; label: string }[]>([]);
+
+async function fetchEvent(id: string | string[]) {
+  loading.value = true;
+  fetchError.value = null;
+  try {
+    // Загружаем мероприятие и все события (для списка бейджей) параллельно
+    const [resEvent, resAll] = await Promise.all([
+      fetch(`${API_URL}?id=${id}`),
+      fetch(API_URL),
+    ]);
+
+    if (!resEvent.ok) throw new Error(`HTTP ${resEvent.status}`);
+    const jsonEvent = await resEvent.json();
+    if (!jsonEvent.success) throw new Error(jsonEvent.message);
+    event.value = jsonEvent.data;
+
+    if (resAll.ok) {
+      const jsonAll = await resAll.json();
+      if (jsonAll.success) {
+        const badges = [
+          ...new Set<string>(
+            (jsonAll.data as any[]).map((e) => e.badge).filter(Boolean),
+          ),
+        ].sort();
+        badgeOptions.value = badges.map((b) => ({ value: b, label: b }));
+      }
+    }
+  } catch (e: any) {
+    fetchError.value = e?.message ?? 'Не удалось загрузить мероприятие';
+    event.value = null;
+  } finally {
+    loading.value = false;
+  }
+}
+
+// Загружаем при первом открытии и при смене id в маршруте
+watch(
+  () => route.params.id,
+  (id) => { if (id) fetchEvent(id); },
+  { immediate: true },
+);
 
 const isAdmin = computed(() => currentRole.value === 'admin');
 
-// Локальное редактируемое состояние мероприятия для Slideover
+// ─── Форма редактирования ─────────────────────────────────────────────────────
 type EditFormState = {
   title: string;
   description: string;
@@ -50,10 +90,6 @@ const editDateValue = ref<SingleDateValue>(null);
 const editSubmitting = ref(false);
 const editError = ref<string | null>(null);
 
-const badgeOptions = Array.from(
-  new Set((rawEvents as any[]).map((e) => e.badge).filter(Boolean)),
-).map((b) => ({ value: b as string, label: b as string }));
-
 function fillEditStateFromEvent() {
   if (!event.value) return;
   editState.title = event.value.title ?? '';
@@ -61,32 +97,23 @@ function fillEditStateFromEvent() {
   editState.badge = (event.value as any).badge ?? null;
   editState.date = (event.value as any).date ?? '';
   editState.image = (event.value as any).image ?? '';
-  editState.link = typeof event.value.to === 'string' ? (event.value.to as string) : '#';
+  editState.link = (event.value as any).link ?? '#';
 }
 
-watch(
-  event,
-  (val) => {
-    if (val) {
-      fillEditStateFromEvent();
-    }
-  },
-  { immediate: true },
-);
+// Заполняем форму как только загрузится мероприятие
+watch(event, (val) => {
+  if (val) fillEditStateFromEvent();
+});
 
 function openEdit() {
   fillEditStateFromEvent();
   editOpen.value = true;
 }
 
-function editSyncDate(val: SingleDateValue) {
+watch(editDateValue, (val) => {
   const d = val?.value ?? val;
-  if (d && typeof d.toString === 'function') {
-    editState.date = d.toString();
-  } else {
-    editState.date = '';
-  }
-}
+  editState.date = (d && typeof d.toString === 'function') ? d.toString() : '';
+});
 
 function validateEdit(): boolean {
   if (!editState.title.trim()) {
@@ -104,39 +131,83 @@ function validateEdit(): boolean {
 async function handleEditSubmit() {
   if (!validateEdit() || !event.value) return;
   editSubmitting.value = true;
+  editError.value = null;
   try {
-    // Локальный режим: обновляем только локальное отображение (без сохранения в файл).
-    (event.value as any).title = editState.title;
-    (event.value as any).description = editState.description;
-    (event.value as any).badge = editState.badge ?? undefined;
-    (event.value as any).date = editState.date;
-    (event.value as any).image = editState.image;
-    (event.value as any).to = editState.link || '#';
+    const res = await fetch(`${API_URL}?id=${(event.value as any).id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: editState.title,
+        description: editState.description,
+        badge: editState.badge,
+        date: editState.date,
+        image: editState.image,
+        link: editState.link,
+      }),
+    });
+    const json = await res.json();
+    if (!json.success) {
+      editError.value = json.message;
+      return;
+    }
+    // Обновляем локальные данные ответом сервера
+    event.value = json.data;
     editOpen.value = false;
+  } catch (e: any) {
+    editError.value = e?.message ?? 'Ошибка при сохранении';
   } finally {
     editSubmitting.value = false;
   }
 }
 
-function handleDelete() {
-  console.log('Удаление мероприятия (локальный режим):', event.value);
+// ─── Удаление ─────────────────────────────────────────────────────────────────
+const deleteConfirmOpen = ref(false);
+const deleteSubmitting = ref(false);
+const deleteError = ref<string | null>(null);
+
+async function handleDelete() {
+  if (!event.value) return;
+  deleteSubmitting.value = true;
+  deleteError.value = null;
+  try {
+    const res = await fetch(`${API_URL}?id=${(event.value as any).id}`, {
+      method: 'DELETE',
+    });
+    const json = await res.json();
+    if (!json.success) {
+      deleteError.value = json.message;
+      return;
+    }
+    deleteConfirmOpen.value = false;
+    router.push({ name: 'events' });
+  } catch (e: any) {
+    deleteError.value = e?.message ?? 'Ошибка при удалении';
+  } finally {
+    deleteSubmitting.value = false;
+  }
 }
 </script>
 
 <template>
-  <content class="flex flex-col gap-6 w-full h-full min-h-0">
+  <div class="flex flex-col gap-6 w-full h-full min-h-0">
     <Headline class="text-zinc-700 dark:text-zinc-50">
       <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between w-full">
         <div>
-          <h1 class="text-4xl leading-12 font-display">
-            {{ event?.title ?? 'Мероприятие не найдено' }}
-          </h1>
-          <p class="text-xl leading-6 text-zinc-500" v-if="event">
-            {{ event.description }}
-          </p>
-          <p class="text-xl leading-6 text-zinc-500" v-else>
-            Проверьте корректность ссылки или вернитесь к списку мероприятий.
-          </p>
+          <template v-if="loading">
+            <USkeleton class="h-12 w-64 rounded-xl" />
+            <USkeleton class="h-6 w-48 rounded-xl mt-2" />
+          </template>
+          <template v-else>
+            <h1 class="text-4xl leading-12 font-display">
+              {{ event?.title ?? 'Мероприятие не найдено' }}
+            </h1>
+            <p class="text-xl leading-6 text-zinc-500" v-if="event">
+              {{ event.description }}
+            </p>
+            <p class="text-xl leading-6 text-zinc-500" v-else>
+              Проверьте корректность ссылки или вернитесь к списку мероприятий.
+            </p>
+          </template>
         </div>
         <div class="flex flex-col gap-2 w-full sm:w-auto">
           <UButton
@@ -148,10 +219,7 @@ function handleDelete() {
           >
             К списку мероприятий
           </UButton>
-          <div
-            v-if="isAdmin && event"
-            class="flex gap-2 justify-end"
-          >
+          <div v-if="isAdmin && event && !loading" class="flex gap-2 justify-end">
             <UButton
               color="neutral"
               variant="outline"
@@ -166,7 +234,7 @@ function handleDelete() {
               variant="soft"
               size="lg"
               class="w-full sm:w-auto justify-center"
-              @click="handleDelete"
+              @click="deleteConfirmOpen = true"
             >
               Удалить
             </UButton>
@@ -175,7 +243,31 @@ function handleDelete() {
       </div>
     </Headline>
 
-    <UMain v-if="event" class="flex flex-1 min-h-0 flex-col w-full h-full gap-6">
+    <!-- Ошибка загрузки -->
+    <UAlert
+      v-if="fetchError"
+      color="red"
+      variant="subtle"
+      icon="i-lucide-alert-circle"
+      :title="fetchError"
+    >
+      <template #footer>
+        <UButton size="sm" color="red" variant="ghost" @click="fetchEvent(route.params.id)">
+          Повторить
+        </UButton>
+      </template>
+    </UAlert>
+
+    <!-- Скелетон -->
+    <UMain v-if="loading" class="flex flex-1 min-h-0 flex-col w-full gap-6">
+      <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-6 items-start">
+        <USkeleton class="h-64 rounded-xl" />
+        <USkeleton class="h-48 rounded-xl" />
+      </div>
+    </UMain>
+
+    <!-- Контент мероприятия -->
+    <UMain v-else-if="event" class="flex flex-1 min-h-0 flex-col w-full h-full gap-6">
       <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-6 items-start">
         <UCard class="w-full">
           <template #header>
@@ -200,10 +292,10 @@ function handleDelete() {
               Описание мероприятия пока не добавлено.
             </p>
 
-            <div v-if="event.to && event.to !== '#'" class="pt-2">
+            <div v-if="event.link && event.link !== '#'" class="pt-2">
               <UButton
                 as="a"
-                :href="typeof event.to === 'string' ? event.to : '#'"
+                :href="event.link"
                 target="_blank"
                 rel="noopener noreferrer"
                 size="lg"
@@ -226,27 +318,27 @@ function handleDelete() {
       </div>
     </UMain>
 
+    <!-- Мероприятие не найдено -->
     <UMain v-else class="flex flex-1 items-center justify-center">
       <UAlert
         color="red"
         variant="subtle"
         icon="i-lucide-alert-circle"
         title="Мероприятие не найдено"
-      >
-        Возможно, оно было удалено или вы перешли по неверной ссылке.
-      </UAlert>
+        description="Возможно, оно было удалено или вы перешли по неверной ссылке."
+      />
     </UMain>
 
-    <!-- Slideover редактирования мероприятия (только для администратора) -->
-    <USlideover v-model:open="editOpen" side="right" title="Редактирование мероприятия">
+    <!-- Slideover редактирования -->
+    <USlideover v-model:open="editOpen" side="right" title="Редактирование мероприятия" description="Измените данные мероприятия">
       <template #body>
         <div class="flex flex-col gap-4 py-2">
           <UForm :state="editState" class="space-y-4" @submit.prevent="handleEditSubmit">
-            <UFormGroup label="Название" name="title" required>
+            <UFormField label="Название" name="title" required>
               <UInput v-model="editState.title" size="lg" placeholder="Название мероприятия" />
-            </UFormGroup>
+            </UFormField>
 
-            <UFormGroup label="Категория (бейдж)" name="badge">
+            <UFormField label="Категория (бейдж)" name="badge">
               <USelect
                 v-model="editState.badge"
                 :items="badgeOptions"
@@ -254,23 +346,23 @@ function handleDelete() {
                 size="lg"
                 class="w-full"
               />
-            </UFormGroup>
+            </UFormField>
 
-            <UFormGroup label="Описание" name="description">
+            <UFormField label="Описание" name="description">
               <UTextarea
                 v-model="editState.description"
                 size="lg"
                 :rows="3"
                 placeholder="Описание мероприятия"
               />
-            </UFormGroup>
+            </UFormField>
 
-            <UFormGroup label="Дата проведения" name="date" required>
+            <UFormField label="Дата проведения" name="date" required>
               <UInputDate
                 v-model="editDateValue"
                 size="lg"
                 class="w-full"
-                @update:model-value="editSyncDate"
+
               >
                 <template #trailing>
                   <UPopover>
@@ -288,28 +380,27 @@ function handleDelete() {
                   </UPopover>
                 </template>
               </UInputDate>
-            </UFormGroup>
+            </UFormField>
 
-            <UFormGroup label="Ссылка на подробности" name="link">
+            <UFormField label="Ссылка на подробности" name="link">
               <UInput
                 v-model="editState.link"
                 size="lg"
                 placeholder="https://..."
               />
-            </UFormGroup>
+            </UFormField>
 
-            <UFormGroup label="Изображение (URL)" name="image">
+            <UFormField label="Изображение (URL)" name="image">
               <UInput v-model="editState.image" size="lg" placeholder="/src/img/event-cover.svg" />
-            </UFormGroup>
+            </UFormField>
 
             <UAlert
               v-if="editError"
               color="red"
               variant="subtle"
               icon="i-lucide-alert-circle"
-            >
-              {{ editError }}
-            </UAlert>
+              :description="editError"
+            />
           </UForm>
         </div>
       </template>
@@ -335,6 +426,44 @@ function handleDelete() {
         </div>
       </template>
     </USlideover>
-  </content>
-</template>
 
+    <!-- Модал подтверждения удаления -->
+    <UModal v-model:open="deleteConfirmOpen" title="Удалить мероприятие?" description="Подтвердите удаление мероприятия">
+      <template #body>
+        <p class="text-zinc-700 dark:text-zinc-200">
+          Вы уверены, что хотите удалить
+          <strong>«{{ event?.title }}»</strong>?
+          Это действие нельзя отменить.
+        </p>
+        <UAlert
+          v-if="deleteError"
+          color="red"
+          variant="subtle"
+          icon="i-lucide-alert-circle"
+          :description="deleteError"
+          class="mt-3"
+        />
+      </template>
+      <template #footer>
+        <div class="flex gap-3 justify-end w-full">
+          <UButton
+            color="neutral"
+            variant="outline"
+            size="lg"
+            @click="deleteConfirmOpen = false"
+          >
+            Отмена
+          </UButton>
+          <UButton
+            color="red"
+            size="lg"
+            :loading="deleteSubmitting"
+            @click="handleDelete"
+          >
+            Удалить
+          </UButton>
+        </div>
+      </template>
+    </UModal>
+  </div>
+</template>

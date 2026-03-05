@@ -16,6 +16,15 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
+    proxy: {
+      // Проксируем /api/* → XAMPP (http://localhost/...)
+      // Если проект лежит в подпапке htdocs, поменяй rewrite:
+      //   '/corporate/api' → убери rewrite и измени путь в fetch-вызовах
+      '/api': {
+        target: 'http://localhost',
+        changeOrigin: true,
+      },
+    },
   },
 });
 
