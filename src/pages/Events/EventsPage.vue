@@ -354,12 +354,12 @@ const paginatedPosts = computed(() => {
       <USlideover v-model:open="createOpen" side="right" title="Новое мероприятие" description="">
         <template #body>
           <UForm :state="createState" class="space-y-4" @submit.prevent="handleCreateSubmit">
-            <UFormField label="Название мероприятияе" name="title" required>
+            <UFormField label="Название мероприятия" name="title" required>
               <UInput v-model="createState.title" size="xl" class="w-full"
                 placeholder="Введите название мероприятия" />
             </UFormField>
 
-            <UFormField label="Категория (бейдж)" name="badge">
+            <UFormField label="Категория" name="badge">
               <USelect v-model="createState.badge" :items="badgeOptions" placeholder="Выберите категорию" size="xl"
                 class="w-full" />
             </UFormField>
@@ -383,7 +383,7 @@ const paginatedPosts = computed(() => {
               </UInputDate>
             </UFormField>
             <UFormField label="Изображение (URL)" name="image">
-              <UFileUpload color="neutral" highlight label="Drop your image here"
+              <UFileUpload label="Drop your image here"
                 description="SVG, PNG, JPG or GIF (max. 2MB)" class="w-full min-h-48" />
             </UFormField>
             <UAlert v-if="createError" color="red" variant="subtle" icon="i-lucide-alert-circle"

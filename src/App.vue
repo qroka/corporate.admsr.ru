@@ -6,7 +6,7 @@
         :class="containerClass">
         <!-- Шапка портала: логотип, основная навигация и блок профиля пользователя -->
         <header class="flex flex-row h-fit justify-between w-full">
-          <RouterLink :to="{ name: 'home' }"
+          <RouterLink :to="{ name: 'home' }"  
             class="group w-[72px] sm:w-auto bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center sm:justify-start gap-1.5 p-3 sm:pr-5 rounded-full cursor-pointer transition-all duration-300 ease-out">
             <!-- Блок логотипа и названия портала -->
             <div class="header-logo flex items-center gap-1.5">
