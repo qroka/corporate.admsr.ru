@@ -2,12 +2,12 @@
   <div class="app-root h-screen overflow-hidden">
     <UApp :locale="ru">
       <!-- Основной лейаут приложения: вертикальный флекс-контейнер на высоту экрана -->
-      <div class="h-screen overflow-hidden flex flex-col justify-start p-6 gap-6 transition-colors"
+      <div class="h-screen w-full max-w-[1600px] mx-auto overflow-hidden flex flex-col justify-start p-6 gap-6 transition-colors"
         :class="containerClass">
         <!-- Шапка портала: логотип, основная навигация и блок профиля пользователя -->
-        <header class="flex flex-row h-fit justify-between w-full">
+        <header class="flex flex-row items-center h-fit justify-between w-full gap-3 min-w-0">
           <RouterLink :to="{ name: 'home' }"  
-            class="group w-[72px] sm:w-auto bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center sm:justify-start gap-1.5 p-3 sm:pr-5 rounded-full cursor-pointer transition-all duration-300 ease-out">
+            class="group shrink-0 w-[72px] sm:w-auto bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center sm:justify-start gap-1.5 p-3 sm:pr-5 rounded-full cursor-pointer transition-all duration-300 ease-out">
             <!-- Блок логотипа и названия портала -->
             <div class="header-logo flex items-center gap-1.5">
               <div class="relative w-12 h-12">
@@ -93,7 +93,7 @@
           </RouterLink>
           <!-- Основная навигация по разделам портала (скрыта ниже xl, в бургер-меню) -->
           <nav
-            class="header-nav hidden lg:flex bg-zinc-100 dark:bg-zinc-800 rounded-full w-fit items-center  p-3 relative z-0">
+            class="header-nav hidden lg:flex bg-zinc-100 dark:bg-zinc-800 rounded-full w-fit items-center gap-2 p-3 relative z-0">
             <RouterLink :to="{ name: 'events' }"
               class="relative z-0 flex items-center gap-[10px] rounded-full w-12 h-12 min-w-12 max-w-12 px-0 justify-center 3xl:w-auto 3xl:h-auto 3xl:min-w-0 3xl:max-w-none 3xl:px-3 3xl:justify-start 3xl:shrink-0 cursor-pointer transition-all duration-300 ease-out group"
               :class="activeNav === 'events'
@@ -214,7 +214,7 @@
               </div>
 
               <!-- Навигация по разделам -->
-              <div class="flex flex-col gap-">
+              <div class="flex flex-col gap-1">
                 <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400 px-3 mb-1">Разделы</p>
                 <RouterLink :to="{ name: 'events' }"
                   class="flex items-center gap-3 rounded-full px-4 py-3 transition-colors"
@@ -503,7 +503,7 @@
           </aside>
 
           <!-- Область для контента страниц, подключённых через Vue Router -->
-          <section class="flex-1 min-w-0 min-h-0">
+          <section class="flex-1 min-w-0 min-h-0 overflow-y-auto max-h-full" >
             <RouterView />
           </section>
         </main>

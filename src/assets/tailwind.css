@@ -16,7 +16,22 @@ body {
 }
 
 .dark body {
-  background-color: #020617;
+  background-color: var(--color-zinc-950);
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    /* Firefox */
+    scrollbar-width: none !important;
+    /* IE/Edge */
+    -ms-overflow-style: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    width: 0 !important;
+    background: transparent;
+    display: none;
+  }
 }
 
 /* Единый кастомный скроллбар во всём проекте (включая телетранспорт: Slideover и т.д.) */
