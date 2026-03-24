@@ -299,9 +299,7 @@ const startThemeTransition = (event) => {
 };
 
 // Класс фона/текста для корневого контейнера (визуальное переключение темы)
-const containerClass = computed(() =>
-  isDark.value ? 'bg-zinc-950 text-zinc-50' : 'bg-white text-zinc-900',
-);
+const containerClass = computed(() => 'bg-(--ui-bg) text-(--ui-text-highlighted)');
 </script>
 
 <style>

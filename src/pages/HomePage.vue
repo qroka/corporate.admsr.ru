@@ -275,7 +275,7 @@ const birthdayGroups = <BirthdayGroup[]>[
                     ]"
                     @click.stop.prevent="toggleNewsLike(item.id)"
                   />
-                  <span class="shrink-0 text-sm text-zinc-500 dark:text-zinc-400">
+                  <span class="shrink-0 text-sm text-muted">
                     {{ formatViews(item.views) }} просмотров
                   </span>
                 </UContainer>
@@ -300,12 +300,12 @@ const birthdayGroups = <BirthdayGroup[]>[
 
             <UContainer class="flex flex-col gap-4 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-fit">
               <UContainer class="flex items-center gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0">
-                <h1 class="text-2xl font-medium leading-none text-zinc-100">
+                <h1 class="text-2xl font-medium leading-none text-highlighted">
                   {{ group.dateLabel }}
                 </h1>
                 <UBadge
                   :color="group.dayColor"
-                  variant="subtle"
+                  :variant="group.dayLabel === 'Сегодня' ? 'solid' : 'subtle'"
                   size="md"
                   :label="group.dayLabel"
                 />
