@@ -3,7 +3,8 @@ import { currentRole } from '../stores/role';
 import HomePage from '../pages/HomePage.vue';
 import EventsPage from '../pages/Events/EventsPage.vue';
 import EventDetailsPage from '../pages/Events/EventDetailsPage.vue';
-import GalleryPage from '../pages/GalleryPage.vue';
+import GalleryPage from '../pages/Gallery/GalleryPage.vue';
+import GalleryAlbumPage from '../pages/Gallery/GalleryAlbumPage.vue';
 import NewcomersPage from '../pages/NewcomersPage.vue';
 import CulturePage from '../pages/CulturePage.vue';
 import ProfilePage from '../pages/ProfilePage.vue';
@@ -26,6 +27,7 @@ const routes = [
     meta: { title: 'Мероприятие' },
   },
   { path: '/gallery', name: 'gallery', component: GalleryPage, meta: { title: 'Фотогалерея' } },
+  { path: '/gallery/:albumId', name: 'gallery-album', component: GalleryAlbumPage, meta: { title: 'Альбом' } },
   { path: '/newcomers', name: 'newcomers', component: NewcomersPage, meta: { title: 'Новичкам' } },
   { path: '/culture', name: 'culture', component: CulturePage, meta: { title: 'Корпоративная культура' } },
   { path: '/profile', name: 'profile', component: ProfilePage, meta: { title: 'Профиль' } },
