@@ -157,7 +157,7 @@ const filteredAlbums = computed(() => {
     <UContainer class="flex flex-col max-w-full w-full gap-6 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
       <UPageHeader title="" class="border-none p-0 w-full">
         <template #title>
-          <h1 class="text-2xl font-medium">Фотогалерея</h1>
+          <h1 class="text-4xl font-normal font-unbounded">Фотогалерея</h1>
         </template>
       </UPageHeader>
 

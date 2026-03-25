@@ -61,7 +61,7 @@ watch(
               fill="var(--ui-primary)" />
           </svg>
         </UContainer>
-        <span class="text-xl font-display font-normal leading-10 text-highlighted">
+        <span class="text-xl font-unbounded font-normal leading-10 text-highlighted">
           Корпоративный портал
         </span>
       </UContainer>

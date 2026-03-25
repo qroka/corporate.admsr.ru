@@ -76,25 +76,15 @@ function openPhoto(p: Photo) {
 </script>
 
 <template>
-  <UMain class="flex flex-col w-full h-full min-h-0">
+  <UMain class="flex flex-col w-full h-full min-h-0 gap-6">
     <UContainer class="flex flex-col gap-4 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0 shrink-0">
-      <UPageHeader title="" class="border-none p-0 w-full">
+      <UPageHeader class="border-none p-0 w-full">
         <template #title>
           <div class="flex items-center gap-3 min-w-0">
-            <UButton
-              type="button"
-              color="neutral"
-              variant="soft"
-              icon="i-lucide-arrow-left"
-              @click="router.push({ name: 'gallery' })"
-            />
             <div class="min-w-0">
-              <h1 class="text-2xl font-medium truncate">
+              <h1 class="text-4xl font-normal font-unbounded">
                 {{ albumTitle }}
               </h1>
-              <p class="text-sm text-muted truncate">
-                {{ albumDescription }}
-              </p>
             </div>
           </div>
         </template>
@@ -111,7 +101,7 @@ function openPhoto(p: Photo) {
         estimateSize,
         overscan: 6
       }"
-      class="flex-1 min-h-0 w-full"
+      class="flex-1 min-h-0 w-full p-px scrollbar-hide"
     >
       <div class="rounded-xl overflow-hidden bg-elevated ring ring-transparent hover:ring-accented transition w-full">
         <button
