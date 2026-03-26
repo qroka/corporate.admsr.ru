@@ -1,13 +1,13 @@
 <template>
   <UMain class="flex flex-1 min-h-0 h-full">
-    <UContainer class="flex flex-col gap-4 w-full min-h-0 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
+    <UContainer class="flex flex-col gap-4 w-full max-w-none min-h-0 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
       <UPageHeader title="" class="border-none p-0 w-full">
         <template #title>
           <h1 class="text-4xl font-normal font-unbounded">Корпоративная культура</h1>
         </template>
       </UPageHeader>
 
-      <UContainer class="flex-1 min-h-0 grid place-items-center p-0">
+      <UContainer class="flex-1 min-h-0 grid place-items-center p-0 w-full max-w-none">
         <UCard class="rounded-3xl w-full max-w-3xl">
           <UContainer class="flex flex-col items-center text-center gap-4 p-0 py-8 sm:py-10">
             <div class="shrink-0">
