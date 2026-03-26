@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useGalleryData } from '../../composables/useGalleryData';
 
 type Photo = {
   id: string;
@@ -15,8 +16,12 @@ const router = useRouter();
 
 const albumId = computed(() => String(route.params.albumId ?? ''));
 
-const albumTitle = computed(() => `Альбом ${albumId.value}`);
-const albumDescription = computed(() => 'Фотографии с мероприятия. Нажмите на фото, чтобы открыть в большом размере.');
+const { loading: galleryLoading, error: galleryError, getAlbum, buildPhotoMeta, ensureLoaded } = useGalleryData();
+ensureLoaded();
+
+const album = computed(() => getAlbum(albumId.value));
+const albumTitle = computed(() => album.value.title);
+const albumDescription = computed(() => album.value.description);
 
 const thumbModules = import.meta.glob('../../img/EventsWebp/*.webp', {
   eager: true,
@@ -44,17 +49,12 @@ const items = computed<Photo[]>(() => {
       const filename = path.split('/').pop() ?? `photo-${index + 1}`;
       const fullSrc = (fullByName.get(filename) as string | undefined) ?? src;
       const n = index + 1;
-      const withMeta = n % 5 === 0; // пример: не у всех фото есть метаданные
+      const meta = buildPhotoMeta(albumId.value, n);
       return {
         id: filename,
         thumbSrc: src,
         fullSrc,
-        ...(withMeta
-          ? {
-              title: `Фото ${n}`,
-              description: `Кадр ${n} из альбома ${albumId.value}.`,
-            }
-          : {}),
+        ...(meta as any),
       };
     });
 });
@@ -101,6 +101,14 @@ function openPhoto(p: Photo) {
           </div>
         </template>
       </UPageHeader>
+    </UContainer>
+    <UContainer v-if="galleryError" class="max-w-full w-full mx-0">
+      <UAlert
+        color="error"
+        variant="subtle"
+        icon="i-lucide-alert-circle"
+        :title="galleryError"
+      />
     </UContainer>
 
     <UScrollArea

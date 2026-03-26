@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import type { BlogPostProps } from '@nuxt/ui';
+import { useGalleryData } from '../../composables/useGalleryData';
 
-type Album = BlogPostProps & {
-  id: string;
-  date: string; // YYYY-MM-DD для сортировки
-};
+type Album = BlogPostProps & { id: string; date: string };
 
 const coverModules = import.meta.glob('../../img/EventsWebp/*.webp', {
   eager: true,
@@ -18,116 +16,20 @@ function coverAt(index: number): string {
   return coverSrcs.length ? coverSrcs[index % coverSrcs.length] : '/src/img/Logo.svg';
 }
 
-const albums = ref<Album[]>([
-  {
-    id: 'album-01',
-    title: 'Зимний корпоратив 2026',
-    description: 'Лучшие моменты с зимнего корпоратива: награждения, выступления и afterparty.',
-    date: '2026-01-25',
-    to: '/gallery/album-01',
-    image: { src: coverAt(0), alt: 'Обложка альбома' },
-    badge: 'Корпоратив',
-  },
-  {
-    id: 'album-02',
-    title: 'Новый год в отделах',
-    description: 'Как мы встречали Новый год по подразделениям: уютно и по‑домашнему.',
-    date: '2026-01-05',
-    to: '/gallery/album-02',
-    image: { src: coverAt(1), alt: 'Обложка альбома' },
-    badge: 'Праздники',
-  },
-  {
-    id: 'album-03',
-    title: 'Спартакиада сотрудников',
-    description: 'Командный дух, спортивные эмоции и победы.',
-    date: '2025-09-10',
-    to: '/gallery/album-03',
-    image: { src: coverAt(2), alt: 'Обложка альбома' },
-    badge: 'Спорт',
-  },
-  {
-    id: 'album-04',
-    title: 'День города',
-    description: 'Участие команды в городских активностях и волонтёрских инициативах.',
-    date: '2025-09-01',
-    to: '/gallery/album-04',
-    image: { src: coverAt(3), alt: 'Обложка альбома' },
-    badge: 'Город',
-  },
-  {
-    id: 'album-05',
-    title: 'Летний тимбилдинг',
-    description: 'Квесты, игры и много общения вне офиса.',
-    date: '2025-07-18',
-    to: '/gallery/album-05',
-    image: { src: coverAt(4), alt: 'Обложка альбома' },
-    badge: 'Тимбилдинг',
-  },
-  {
-    id: 'album-06',
-    title: 'Экскурсия для новичков',
-    description: 'Знакомство с командой, офисом и внутренними сервисами.',
-    date: '2025-06-06',
-    to: '/gallery/album-06',
-    image: { src: coverAt(5), alt: 'Обложка альбома' },
-    badge: 'Новичкам',
-  },
-  {
-    id: 'album-07',
-    title: 'День донора',
-    description: 'Добрые дела вместе: корпоративная донорская акция.',
-    date: '2025-05-22',
-    to: '/gallery/album-07',
-    image: { src: coverAt(6), alt: 'Обложка альбома' },
-    badge: 'Волонтёрство',
-  },
-  {
-    id: 'album-08',
-    title: 'Субботник',
-    description: 'Навели порядок и зарядились весенним настроением.',
-    date: '2025-04-26',
-    to: '/gallery/album-08',
-    image: { src: coverAt(7), alt: 'Обложка альбома' },
-    badge: 'Команда',
-  },
-  {
-    id: 'album-09',
-    title: 'Культурная программа',
-    description: 'Посещение музея и небольшая прогулка по городу.',
-    date: '2025-03-15',
-    to: '/gallery/album-09',
-    image: { src: coverAt(8), alt: 'Обложка альбома' },
-    badge: 'Культура',
-  },
-  {
-    id: 'album-10',
-    title: 'Обучение и развитие',
-    description: 'Интенсивы, воркшопы и внутренние лекции.',
-    date: '2025-02-20',
-    to: '/gallery/album-10',
-    image: { src: coverAt(9), alt: 'Обложка альбома' },
-    badge: 'Обучение',
-  },
-  {
-    id: 'album-11',
-    title: 'Пятничные встречи',
-    description: 'Кофе‑брейки, обсуждения и мини‑презентации проектов.',
-    date: '2025-02-07',
-    to: '/gallery/album-11',
-    image: { src: coverAt(10), alt: 'Обложка альбома' },
-    badge: 'Офис',
-  },
-  {
-    id: 'album-12',
-    title: 'День рождения компании',
-    description: 'Праздничная атмосфера, поздравления и торт.',
-    date: '2025-01-30',
-    to: '/gallery/album-12',
-    image: { src: coverAt(11), alt: 'Обложка альбома' },
-    badge: 'Праздники',
-  },
-]);
+const { loading, error, albums: albumRecords, ensureLoaded } = useGalleryData();
+ensureLoaded();
+
+const albums = computed<Album[]>(() =>
+  albumRecords.value.map((a, idx) => ({
+    id: a.id,
+    title: a.title,
+    description: a.description,
+    date: a.date,
+    to: `/gallery/${a.id}`,
+    image: { src: coverAt(a.coverIndex ?? idx), alt: 'Обложка альбома' },
+    badge: a.badge,
+  })),
+);
 
 const searchQuery = ref('');
 const sortKey = ref<'newest' | 'oldest' | 'title-asc' | 'title-desc'>('newest');
@@ -189,6 +91,15 @@ const filteredAlbums = computed(() => {
           color="neutral"
         />
       </UContainer>
+    </UContainer>
+
+    <UContainer v-if="error" class="max-w-full w-full mx-0">
+      <UAlert
+        color="error"
+        variant="subtle"
+        icon="i-lucide-alert-circle"
+        :title="error"
+      />
     </UContainer>
 
     <UContainer class="flex-1 min-h-0 overflow-y-auto sm:p-px max-w-full w-full md:p-px lg:p-px xl:p-px scrollbar-hide mx-0">

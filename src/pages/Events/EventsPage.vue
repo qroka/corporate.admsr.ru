@@ -2,6 +2,7 @@
 import { computed, ref, watch, reactive } from 'vue';
 import type { BlogPostProps } from '@nuxt/ui';
 import { currentRole } from '../../stores/role';
+import { useEventsData } from '../../composables/useEventsData';
 
 type EventPost = BlogPostProps & {
   id?: number;
@@ -19,64 +20,20 @@ function coverAt(index: number): string {
   return coverSrcs.length ? coverSrcs[index % coverSrcs.length] : '/src/img/Logo.svg';
 }
 
-// ─── Данные ──────────────────────────────────────────────────────────────────
-const posts = ref<EventPost[]>([
-  {
-    id: 110,
-    title: 'Зимний корпоратив',
-    description: 'Встречаемся всей командой: награждения, конкурсы и фото-зона.',
-    date: '2026-01-25',
-    badge: 'Корпоратив',
-    to: `/events/110`,
-    image: { src: coverAt(0), alt: 'Зимний корпоратив' },
-  },
-  {
-    id: 111,
-    title: 'День донора',
-    description: 'Корпоративная донорская акция. Участие добровольное.',
-    date: '2026-02-12',
-    badge: 'Волонтёрство',
-    to: `/events/111`,
-    image: { src: coverAt(1), alt: 'День донора' },
-  },
-  {
-    id: 112,
-    title: 'Спартакиада сотрудников',
-    description: 'Командные соревнования и спортивный праздник.',
-    date: '2026-03-10',
-    badge: 'Спорт',
-    to: `/events/112`,
-    image: { src: coverAt(2), alt: 'Спартакиада' },
-  },
-  {
-    id: 113,
-    title: 'Лекция: новые инструменты',
-    description: 'Внутренняя лекция и демо полезных практик.',
-    date: '2026-03-22',
-    badge: 'Обучение',
-    to: `/events/113`,
-    image: { src: coverAt(3), alt: 'Лекция' },
-  },
-  {
-    id: 114,
-    title: 'Субботник',
-    description: 'Наводим порядок и завершаем чаепитием.',
-    date: '2026-04-06',
-    badge: 'Команда',
-    to: `/events/114`,
-    image: { src: coverAt(4), alt: 'Субботник' },
-  },
-  {
-    id: 115,
-    title: 'Экскурсия для новичков',
-    description: 'Знакомство с офисом, сервисами и командой.',
-    date: '2026-04-18',
-    badge: 'Новичкам',
-    to: `/events/115`,
-    image: { src: coverAt(5), alt: 'Экскурсия' },
-  },
-]);
-const loading = ref(false);
+const { loading, error, events, badges, ensureLoaded } = useEventsData();
+ensureLoaded();
+
+const posts = computed<EventPost[]>(() =>
+  events.value.map((e, idx) => ({
+    id: e.id,
+    title: e.title,
+    description: e.description,
+    date: e.date,
+    badge: e.badge,
+    to: `/events/${e.id}`,
+    image: { src: coverAt(e.coverIndex ?? idx), alt: e.title },
+  })),
+);
 
 // ─── Фильтры и поиск ─────────────────────────────────────────────────────────
 const searchQuery = ref('');
@@ -116,12 +73,7 @@ const createDateValue = ref<SingleDateValue>(null);
 const createSubmitting = ref(false);
 const createError = ref<string | null>(null);
 
-const uniqueBadges = computed(() => {
-  const set = new Set<string>();
-  posts.value.forEach((p) => p.badge && set.add(p.badge));
-  return Array.from(set).sort();
-});
-const badgeOptions = computed(() => uniqueBadges.value.map((b) => ({ value: b, label: b })));
+const badgeOptions = computed(() => badges.value.map((b) => ({ value: b, label: b })));
 
 const filteredPosts = computed(() => {
   let list = posts.value;
@@ -155,7 +107,7 @@ function openCreate() {
 }
 
 const headerLinks = computed(() => {
-  if (currentRole !== 'admin') return [];
+  if (currentRole.value !== 'admin') return [];
   return [
     {
       label: 'Добавить мероприятие',
@@ -191,18 +143,17 @@ async function handleCreateSubmit() {
   createSubmitting.value = true;
   createError.value = null;
   try {
-    const nextId = Math.max(0, ...posts.value.map((p) => p.id ?? 0)) + 1;
-    posts.value = [
+    const nextId = Math.max(0, ...events.value.map((p) => p.id ?? 0)) + 1;
+    events.value = [
       {
         id: nextId,
         title: createState.title,
         description: createState.description,
         badge: createState.badge ?? undefined,
         date: createState.date,
-        to: `/events/${nextId}`,
-        image: { src: coverAt(nextId), alt: createState.title },
+        coverIndex: nextId,
       },
-      ...posts.value,
+      ...events.value,
     ];
     createOpen.value = false;
     resetCreateForm();
@@ -217,10 +168,14 @@ const sortedPosts = computed(() => {
   const list = [...filteredPosts.value];
 
   list.sort((a, b) => {
-    if (sortKey.value === 'newest') return (b.date ?? '').localeCompare(a.date ?? '');
-    if (sortKey.value === 'oldest') return (a.date ?? '').localeCompare(b.date ?? '');
-    if (sortKey.value === 'title-asc') return (a.title ?? '').localeCompare(b.title ?? '', 'ru');
-    if (sortKey.value === 'title-desc') return (b.title ?? '').localeCompare(a.title ?? '', 'ru');
+    const aDate = String((a as any).date ?? '');
+    const bDate = String((b as any).date ?? '');
+    const aTitle = String((a as any).title ?? '');
+    const bTitle = String((b as any).title ?? '');
+    if (sortKey.value === 'newest') return bDate.localeCompare(aDate);
+    if (sortKey.value === 'oldest') return aDate.localeCompare(bDate);
+    if (sortKey.value === 'title-asc') return aTitle.localeCompare(bTitle, 'ru');
+    if (sortKey.value === 'title-desc') return bTitle.localeCompare(aTitle, 'ru');
     return 0;
   });
 
@@ -237,6 +192,14 @@ const sortedPosts = computed(() => {
           <h1 class="text-4xl font-normal font-unbounded">Мероприятия</h1>
         </template>
       </UPageHeader>
+
+      <UAlert
+        v-if="error"
+        color="error"
+        variant="subtle"
+        icon="i-lucide-alert-circle"
+        :title="error"
+      />
 
       <!-- Поиск + сортировка -->
       <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">

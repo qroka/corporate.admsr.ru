@@ -3,6 +3,7 @@ import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { BlogPostProps } from '@nuxt/ui';
 import { currentRole } from '../../stores/role';
+import { useEventsData } from '../../composables/useEventsData';
 
 type EventPost = BlogPostProps & {
   id?: number;
@@ -24,72 +25,25 @@ function coverAt(index: number): string {
   return coverSrcs.length ? coverSrcs[index % coverSrcs.length] : '/src/img/Logo.svg';
 }
 
-// ─── Данные ──────────────────────────────────────────────────────────────────
-const events = ref<EventPost[]>([
-  {
-    id: 110,
-    title: 'Зимний корпоратив',
-    description: 'Встречаемся всей командой: награждения, конкурсы и фото-зона.',
-    date: '2026-01-25',
-    badge: 'Корпоратив',
-    to: `/events/110`,
-    image: { src: coverAt(0), alt: 'Зимний корпоратив' },
-  },
-  {
-    id: 111,
-    title: 'День донора',
-    description: 'Корпоративная донорская акция. Участие добровольное.',
-    date: '2026-02-12',
-    badge: 'Волонтёрство',
-    to: `/events/111`,
-    image: { src: coverAt(1), alt: 'День донора' },
-  },
-  {
-    id: 112,
-    title: 'Спартакиада сотрудников',
-    description: 'Командные соревнования и спортивный праздник.',
-    date: '2026-03-10',
-    badge: 'Спорт',
-    to: `/events/112`,
-    image: { src: coverAt(2), alt: 'Спартакиада' },
-  },
-  {
-    id: 113,
-    title: 'Лекция: новые инструменты',
-    description: 'Внутренняя лекция и демо полезных практик.',
-    date: '2026-03-22',
-    badge: 'Обучение',
-    to: `/events/113`,
-    image: { src: coverAt(3), alt: 'Лекция' },
-  },
-  {
-    id: 114,
-    title: 'Субботник',
-    description: 'Наводим порядок и завершаем чаепитием.',
-    date: '2026-04-06',
-    badge: 'Команда',
-    to: `/events/114`,
-    image: { src: coverAt(4), alt: 'Субботник' },
-  },
-  {
-    id: 115,
-    title: 'Экскурсия для новичков',
-    description: 'Знакомство с офисом, сервисами и командой.',
-    date: '2026-04-18',
-    badge: 'Новичкам',
-    to: `/events/115`,
-    image: { src: coverAt(5), alt: 'Экскурсия' },
-  },
-]);
-
-const loading = ref(false);
+const { loading, error, events, badges, ensureLoaded } = useEventsData();
+ensureLoaded();
 const eventId = computed(() => Number(route.params.id));
-const event = computed<EventPost | null>(() => events.value.find((e) => e.id === eventId.value) ?? null);
-
-const badgeOptions = computed(() => {
-  const badges = Array.from(new Set(events.value.map((e) => e.badge).filter(Boolean) as string[])).sort();
-  return badges.map((b) => ({ value: b, label: b }));
+const event = computed<EventPost | null>(() => {
+  const idx = events.value.findIndex((e) => e.id === eventId.value);
+  const e = idx >= 0 ? events.value[idx] : null;
+  if (!e) return null;
+  return {
+    id: e.id,
+    title: e.title,
+    description: e.description,
+    date: e.date,
+    badge: e.badge,
+    to: `/events/${e.id}`,
+    image: { src: coverAt(e.coverIndex ?? idx), alt: e.title },
+  };
 });
+
+const badgeOptions = computed(() => badges.value.map((b) => ({ value: b, label: b })));
 
 const isAdmin = computed(() => currentRole.value === 'admin');
 
@@ -167,18 +121,13 @@ async function handleEditSubmit() {
       return;
     }
 
-    const updated: EventPost = {
+    const updated = {
       ...events.value[idx],
       title: editState.title,
       description: editState.description,
       badge: editState.badge ?? undefined,
       date: editState.date,
-      to: `/events/${events.value[idx].id}`,
-      image: editState.image
-        ? { src: editState.image, alt: editState.title }
-        : events.value[idx].image,
     };
-
     events.value = events.value.map((e) => (e.id === updated.id ? updated : e));
     editOpen.value = false;
   } catch (e: any) {
@@ -211,6 +160,13 @@ async function handleDelete() {
 
 <template>
   <div class="flex flex-col gap-6 w-full h-full min-h-0">
+    <UAlert
+      v-if="error"
+      color="error"
+      variant="subtle"
+      icon="i-lucide-alert-circle"
+      :title="error"
+    />
     <Headline class="text-zinc-700 dark:text-zinc-50">
       <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between w-full">
         <div>
@@ -264,20 +220,14 @@ async function handleDelete() {
       </div>
     </Headline>
 
-    <!-- Ошибка загрузки -->
+    <!-- Ошибка загрузки (events.json) -->
     <UAlert
-      v-if="fetchError"
+      v-if="error"
       color="red"
       variant="subtle"
       icon="i-lucide-alert-circle"
-      :title="fetchError"
-    >
-      <template #footer>
-        <UButton size="sm" color="red" variant="ghost" @click="fetchEvent(route.params.id)">
-          Повторить
-        </UButton>
-      </template>
-    </UAlert>
+      :title="error"
+    />
 
     <!-- Скелетон -->
     <UMain v-if="loading" class="flex flex-1 min-h-0 flex-col w-full gap-6">
@@ -330,8 +280,8 @@ async function handleDelete() {
         <div class="space-y-4">
           <UCard v-if="event.image" class="overflow-hidden">
             <img
-              :src="event.image"
-              :alt="event.title"
+              :src="(event.image as any).src"
+              :alt="(event.image as any).alt ?? event.title"
               class="w-full h-48 object-cover"
             />
           </UCard>

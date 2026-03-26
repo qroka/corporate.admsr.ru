@@ -28,9 +28,19 @@ export function useAppToast() {
     });
   }
 
+  /** После сохранения ОФО в админке (демо). */
+  function adminOfoSaved(title: string) {
+    toast.add({
+      title: 'ОФО сохранено',
+      description: `«${title}» — изменения записаны локально (демо).`,
+      ...successDefaults,
+    });
+  }
+
   return {
     toast,
     profileSaved,
     adminUserSaved,
+    adminOfoSaved,
   };
 }
