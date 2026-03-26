@@ -21,13 +21,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { onMounted, onUnmounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import KioskHeader from './components/KioskHeader.vue';
 import KioskAside from './components/KioskAside.vue';
 
 type KioskTile = { title: string; icon: string; routeName?: string; to?: string; disabled?: boolean };
 
+const route = useRoute();
 const router = useRouter();
 const allServicesOpen = ref(false);
 
@@ -39,4 +40,38 @@ function go(tile: KioskTile) {
   if (tile.routeName) router.push({ name: tile.routeName });
   else if (tile.to) router.push(tile.to);
 }
+
+// ─── Idle timeout: return to /kiosk ───────────────────────────────────────────
+const IDLE_MS = 60_000;
+let idleTimer: number | null = null;
+
+function resetIdleTimer() {
+  if (idleTimer) window.clearTimeout(idleTimer);
+  idleTimer = window.setTimeout(() => {
+    // only act if we are still inside kiosk routes
+    if (!route.matched?.some((r) => r.meta?.kiosk)) return;
+    if (route.name !== 'kiosk') void router.push({ name: 'kiosk' });
+    else window.dispatchEvent(new Event('kiosk-idle'));
+  }, IDLE_MS);
+}
+
+const idleEvents: Array<keyof WindowEventMap> = [
+  'pointerdown',
+  'pointermove',
+  'keydown',
+  'wheel',
+  'touchstart',
+  'scroll',
+];
+
+onMounted(() => {
+  resetIdleTimer();
+  for (const ev of idleEvents) window.addEventListener(ev, resetIdleTimer, { passive: true, capture: true });
+});
+
+onUnmounted(() => {
+  if (idleTimer) window.clearTimeout(idleTimer);
+  idleTimer = null;
+  for (const ev of idleEvents) window.removeEventListener(ev, resetIdleTimer, { capture: true } as any);
+});
 </script>

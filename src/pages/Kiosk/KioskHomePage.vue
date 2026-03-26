@@ -53,6 +53,8 @@ const sliderRef = ref<HTMLElement | null>(null);
 const sliderIndex = ref(0);
 let sliderTimer: number | null = null;
 
+const scrollAreaRef = ref<any>(null);
+
 function setSliderIndex(next: number) {
   const len = sliderItems.value.length;
   if (!len) {
@@ -77,8 +79,32 @@ function stopSliderAuto() {
   sliderTimer = null;
 }
 
-onMounted(() => startSliderAuto());
-onUnmounted(() => stopSliderAuto());
+function getScrollViewportEl(): HTMLElement | null {
+  const root = (scrollAreaRef.value?.$el ?? scrollAreaRef.value) as HTMLElement | undefined;
+  if (!root) return null;
+  return (
+    root.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]') ??
+    root.querySelector<HTMLElement>('[data-scroll-area-viewport]') ??
+    root.querySelector<HTMLElement>('.scroll-area-viewport') ??
+    root
+  );
+}
+
+function handleKioskIdle() {
+  const viewport = getScrollViewportEl();
+  if (!viewport) return;
+  if (viewport.scrollTop <= 0) return;
+  viewport.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+onMounted(() => {
+  startSliderAuto();
+  window.addEventListener('kiosk-idle', handleKioskIdle);
+});
+onUnmounted(() => {
+  stopSliderAuto();
+  window.removeEventListener('kiosk-idle', handleKioskIdle);
+});
 
 const newsLiked = ref<Record<string, boolean>>({});
 const newsLikeCounts = ref<Record<string, number>>({});
@@ -125,7 +151,7 @@ const items = [
 <template>
   <UMain class="flex flex-col w-full h-full min-h-0 gap-6">
     <UContainer class="flex flex-col gap-6 w-full min-h-0 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
-      <UScrollArea class="flex-1 min-h-0 scrollbar-hide">
+      <UScrollArea ref="scrollAreaRef" class="flex-1 min-h-0 scrollbar-hide">
         <UContainer class="flex flex-col gap-6 sm:p-px md:p-px lg:p-px xl:p-px mx-0 w-full">
           <USkeleton v-if="loading" class="h-32 w-full" />
           <UBlogPost v-for="post in posts" v-else :key="post.id" v-bind="post" class="w-full rounded-3xl">
