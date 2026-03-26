@@ -5,6 +5,8 @@ import EventsPage from '../pages/Events/EventsPage.vue';
 import EventDetailsPage from '../pages/Events/EventDetailsPage.vue';
 import GalleryPage from '../pages/Gallery/GalleryPage.vue';
 import GalleryAlbumPage from '../pages/Gallery/GalleryAlbumPage.vue';
+import NewsPage from '../pages/News/NewsPage.vue';
+import NewsDetailsPage from '../pages/News/NewsDetailsPage.vue';
 import NewcomersPage from '../pages/NewcomersPage.vue';
 import CulturePage from '../pages/CulturePage.vue';
 import ProfilePage from '../pages/ProfilePage.vue';
@@ -20,6 +22,8 @@ import AdminDashboardPage from '../pages/Admin/AdminDashboardPage.vue';
 
 const routes = [
   { path: '/', name: 'home', component: HomePage, meta: { title: 'Главная' } },
+  { path: '/news', name: 'news', component: NewsPage, meta: { title: 'Новости' } },
+  { path: '/news/:id', name: 'news-details', component: NewsDetailsPage, meta: { title: 'Новость' } },
   { path: '/events', name: 'events', component: EventsPage, meta: { title: 'Мероприятия' } },
   {
     path: '/events/:id',

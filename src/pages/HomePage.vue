@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { ButtonProps } from '@nuxt/ui'
 import type { BlogPostProps } from '@nuxt/ui'
+import { useNewsData, formatUnixDate, resolveNewsImageSrc, stripHtmlToText } from '../composables/useNewsData';
 
 const links = <ButtonProps[]>([
   {
@@ -65,62 +66,48 @@ type NewsItem = {
   post: BlogPostProps;
 };
 
-const newsItems = <NewsItem[]>([
-  {
-    id: 'news-1',
-    likes: 128,
-    views: 1240,
-    post: {
-      title: 'Nuxt Icon v1',
-      description: 'Discover Nuxt Icon v1!',
-      image: 'https://nuxt.com/assets/blog/nuxt-icon/cover.png',
-      to: '/',
-      target: '_blank',
-      date: '2024-08-22',
-      badge: 'Новости',
-    },
-  },
-  {
-    id: 'news-2',
-    likes: 256,
-    views: 856,
-    post: {
-      title: 'Nuxt 3.14',
-      description: 'Nuxt 3.14 is out!',
-      image: 'https://nuxt.com/assets/blog/v3.14.png',
-      to: '/',
-      target: '_blank',
-      date: '2024-11-04',
-      badge: 'Новости',
-    },
-  },
-  {
-    id: 'news-3',
-    likes: 512,
-    views: 2103,
-    post: {
-      title: 'Nuxt 3.13',
-      description: 'Nuxt 3.13 is out!',
-      image: 'https://nuxt.com/assets/blog/v3.13.png',
-      to: '/',
-      target: '_blank',
-      date: '2024-11-25',
-      badge: 'Новости',
-    },
-  },
-]);
+const { sortedNews, ensureLoaded: ensureNewsLoaded } = useNewsData();
+ensureNewsLoaded();
 
-const newsLiked = ref<Record<string, boolean>>({
-  'news-1': false,
-  'news-2': true,
-  'news-3': false,
-});
+const newsItems = computed<NewsItem[]>(() =>
+  sortedNews.value.slice(0, 12).map((n) => {
+    const imageSrc = resolveNewsImageSrc(n.announceImagePath);
+    const date = formatUnixDate(n.timestamp);
+    const description = stripHtmlToText(n.shortHtml || n.html).slice(0, 220);
+    return {
+      id: `news-${n.id}`,
+      likes: 0,
+      views: 0,
+      post: {
+        title: n.title || `Новость #${n.id}`,
+        description,
+        image: imageSrc ?? '/src/img/Logo.svg',
+        to: `/news/${n.id}`,
+        date,
+        badge: 'Новости',
+      },
+    };
+  }),
+);
 
-const newsLikeCounts = ref<Record<string, number>>({
-  'news-1': 128,
-  'news-2': 256,
-  'news-3': 512,
-});
+const newsLiked = ref<Record<string, boolean>>({});
+
+const newsLikeCounts = ref<Record<string, number>>({});
+
+watch(
+  newsItems,
+  (items) => {
+    const liked = { ...newsLiked.value };
+    const counts = { ...newsLikeCounts.value };
+    for (const item of items) {
+      if (!(item.id in liked)) liked[item.id] = false;
+      if (!(item.id in counts)) counts[item.id] = item.likes ?? 0;
+    }
+    newsLiked.value = liked;
+    newsLikeCounts.value = counts;
+  },
+  { immediate: true },
+);
 
 function toggleNewsLike(newsId: string) {
   const wasLiked = !!newsLiked.value[newsId];
