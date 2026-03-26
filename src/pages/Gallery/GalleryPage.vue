@@ -103,7 +103,7 @@ const filteredAlbums = computed(() => {
     </UContainer>
 
     <UContainer class="flex-1 min-h-0 overflow-y-auto sm:p-px max-w-full w-full md:p-px lg:p-px xl:p-px scrollbar-hide mx-0">
-      <UContainer class="grid grid-cols-3 md:grid-cols-3 xl:grid-cols-3 gap-3 sm:p-0 max-w-full w-full md:p-0 lg:p-0 xl:p-0 mx-0">
+      <UContainer class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:p-0 max-w-full w-full md:p-0 lg:p-0 xl:p-0 mx-0">
         <UBlogPost
           v-for="album in filteredAlbums"
           :key="album.id"

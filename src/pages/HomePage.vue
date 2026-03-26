@@ -257,8 +257,8 @@ const birthdayGroups = <BirthdayGroup[]>[
                     :class="[
                       'relative z-10 cursor-pointer shrink-0 [&_svg]:stroke-[1.75]',
                       newsLiked[item.id]
-                        ? '[&_svg]:fill-primary [&_svg]:stroke-primary'
-                        : '[&_svg]:fill-none [&_svg]:stroke-current',
+                        ? '[&_svg]:stroke-primary [&_svg_path]:fill-primary [&_svg_path]:stroke-primary'
+                        : '[&_svg]:stroke-current [&_svg_path]:fill-none [&_svg_path]:stroke-current',
                     ]"
                     @click.stop.prevent="toggleNewsLike(item.id)"
                   />

@@ -1,26 +1,27 @@
 <template>
   <div class="app-root h-screen overflow-hidden">
     <UApp :locale="ru">
-      <!-- Основной лейаут приложения: вертикальный флекс-контейнер на высоту экрана -->
-      <div class="h-screen w-full max-w-[1600px] mx-auto overflow-hidden flex flex-col justify-start p-6 gap-6 transition-colors"
-        :class="containerClass">
+      <RouterView v-if="isKiosk" />
+
+      <!-- Основной лейаут приложения -->
+      <div
+        v-else
+        class="h-screen w-full max-w-[1600px] mx-auto overflow-hidden flex flex-col justify-start p-6 gap-6 transition-colors"
+        :class="containerClass"
+      >
         <AppHeader
           :is-dark="isDark"
           :active-nav="activeNav"
           @toggle-theme="startThemeTransition"
-
         />
 
-        <!-- Основной контент: слева вертикальное меню (только xl+), справа область под страницы -->
         <main class="flex flex-1 w-full h-full gap-6 min-h-0">
-          <!-- Левая колонка с быстрыми действиями (скрыта ниже xl, дублируется в бургер-меню) -->
           <AppAside
             :is-dark="isDark"
             @toggle-theme="startThemeTransition"
           />
 
-          <!-- Область для контента страниц, подключённых через Vue Router -->
-          <section class="flex-1 min-w-0 min-h-0 overflow-y-auto max-h-full" >
+          <section class="flex-1 min-w-0 min-h-0 overflow-y-auto max-h-full">
             <RouterView />
           </section>
         </main>
@@ -41,6 +42,8 @@ const route = useRoute();
 
 // Имя активного пункта верхнего меню (events / gallery / newcomers / culture)
 const activeNav = computed(() => (route.name ?? 'events'));
+
+const isKiosk = computed(() => route.matched.some((r) => r.meta?.kiosk));
 
 
 // --- Поддержка светлой / тёмной темы для Nuxt UI ---
