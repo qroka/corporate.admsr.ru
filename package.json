@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "images:webp": "node scripts/generate-events-webp.mjs",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -24,6 +25,7 @@
     "@vitejs/plugin-vue": "^6.0.4",
     "autoprefixer": "^10.4.27",
     "postcss": "^8.5.6",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4.2.1",
     "vite": "^7.3.1"
   }

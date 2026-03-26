@@ -1,5 +1,6 @@
 <script setup>
 import { useRoute, useRouter } from 'vue-router';
+import { currentRole } from '../stores/role';
 
 defineProps({
   isDark: {
@@ -164,14 +165,15 @@ function navigate(name) {
       </UTooltip>
 
       <!-- Справка -->
-      <UTooltip arrow :content="{side: 'right'}" text="Справка">
+      <UTooltip v-if="currentRole === 'admin'" arrow :content="{side: 'right'}" text="Дэшборд администратора">
         <UButton
           type="button"
           color="neutral"
           square
           size="xl"
           class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
-          icon="i-lucide-circle-help"
+          icon="i-lucide-layout-dashboard"
+          @click="navigate('admin')"
         />
       </UTooltip>
 

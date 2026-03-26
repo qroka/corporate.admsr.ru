@@ -7,6 +7,17 @@ type Album = BlogPostProps & {
   date: string; // YYYY-MM-DD для сортировки
 };
 
+const coverModules = import.meta.glob('../../img/EventsWebp/*.webp', {
+  eager: true,
+  import: 'default',
+});
+const coverSrcs = Object.entries(coverModules)
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([, src]) => src as string);
+function coverAt(index: number): string {
+  return coverSrcs.length ? coverSrcs[index % coverSrcs.length] : '/src/img/Logo.svg';
+}
+
 const albums = ref<Album[]>([
   {
     id: 'album-01',
@@ -14,7 +25,7 @@ const albums = ref<Album[]>([
     description: 'Лучшие моменты с зимнего корпоратива: награждения, выступления и afterparty.',
     date: '2026-01-25',
     to: '/gallery/album-01',
-    image: { src: '/src/img/Logo.svg', alt: 'Обложка альбома' },
+    image: { src: coverAt(0), alt: 'Обложка альбома' },
     badge: 'Корпоратив',
   },
   {
@@ -23,7 +34,7 @@ const albums = ref<Album[]>([
     description: 'Как мы встречали Новый год по подразделениям: уютно и по‑домашнему.',
     date: '2026-01-05',
     to: '/gallery/album-02',
-    image: { src: '/src/img/LogoHover.svg', alt: 'Обложка альбома' },
+    image: { src: coverAt(1), alt: 'Обложка альбома' },
     badge: 'Праздники',
   },
   {
@@ -32,7 +43,7 @@ const albums = ref<Album[]>([
     description: 'Командный дух, спортивные эмоции и победы.',
     date: '2025-09-10',
     to: '/gallery/album-03',
-    image: { src: '/src/img/Logo.svg', alt: 'Обложка альбома' },
+    image: { src: coverAt(2), alt: 'Обложка альбома' },
     badge: 'Спорт',
   },
   {
@@ -41,7 +52,7 @@ const albums = ref<Album[]>([
     description: 'Участие команды в городских активностях и волонтёрских инициативах.',
     date: '2025-09-01',
     to: '/gallery/album-04',
-    image: { src: '/src/img/LogoHover.svg', alt: 'Обложка альбома' },
+    image: { src: coverAt(3), alt: 'Обложка альбома' },
     badge: 'Город',
   },
   {
@@ -50,7 +61,7 @@ const albums = ref<Album[]>([
     description: 'Квесты, игры и много общения вне офиса.',
     date: '2025-07-18',
     to: '/gallery/album-05',
-    image: { src: '/src/img/Logo.svg', alt: 'Обложка альбома' },
+    image: { src: coverAt(4), alt: 'Обложка альбома' },
     badge: 'Тимбилдинг',
   },
   {
@@ -59,7 +70,7 @@ const albums = ref<Album[]>([
     description: 'Знакомство с командой, офисом и внутренними сервисами.',
     date: '2025-06-06',
     to: '/gallery/album-06',
-    image: { src: '/src/img/LogoHover.svg', alt: 'Обложка альбома' },
+    image: { src: coverAt(5), alt: 'Обложка альбома' },
     badge: 'Новичкам',
   },
   {
@@ -68,7 +79,7 @@ const albums = ref<Album[]>([
     description: 'Добрые дела вместе: корпоративная донорская акция.',
     date: '2025-05-22',
     to: '/gallery/album-07',
-    image: { src: '/src/img/Logo.svg', alt: 'Обложка альбома' },
+    image: { src: coverAt(6), alt: 'Обложка альбома' },
     badge: 'Волонтёрство',
   },
   {
@@ -77,7 +88,7 @@ const albums = ref<Album[]>([
     description: 'Навели порядок и зарядились весенним настроением.',
     date: '2025-04-26',
     to: '/gallery/album-08',
-    image: { src: '/src/img/LogoHover.svg', alt: 'Обложка альбома' },
+    image: { src: coverAt(7), alt: 'Обложка альбома' },
     badge: 'Команда',
   },
   {
@@ -86,7 +97,7 @@ const albums = ref<Album[]>([
     description: 'Посещение музея и небольшая прогулка по городу.',
     date: '2025-03-15',
     to: '/gallery/album-09',
-    image: { src: '/src/img/Logo.svg', alt: 'Обложка альбома' },
+    image: { src: coverAt(8), alt: 'Обложка альбома' },
     badge: 'Культура',
   },
   {
@@ -95,7 +106,7 @@ const albums = ref<Album[]>([
     description: 'Интенсивы, воркшопы и внутренние лекции.',
     date: '2025-02-20',
     to: '/gallery/album-10',
-    image: { src: '/src/img/LogoHover.svg', alt: 'Обложка альбома' },
+    image: { src: coverAt(9), alt: 'Обложка альбома' },
     badge: 'Обучение',
   },
   {
@@ -104,7 +115,7 @@ const albums = ref<Album[]>([
     description: 'Кофе‑брейки, обсуждения и мини‑презентации проектов.',
     date: '2025-02-07',
     to: '/gallery/album-11',
-    image: { src: '/src/img/Logo.svg', alt: 'Обложка альбома' },
+    image: { src: coverAt(10), alt: 'Обложка альбома' },
     badge: 'Офис',
   },
   {
@@ -113,7 +124,7 @@ const albums = ref<Album[]>([
     description: 'Праздничная атмосфера, поздравления и торт.',
     date: '2025-01-30',
     to: '/gallery/album-12',
-    image: { src: '/src/img/LogoHover.svg', alt: 'Обложка альбома' },
+    image: { src: coverAt(11), alt: 'Обложка альбома' },
     badge: 'Праздники',
   },
 ]);

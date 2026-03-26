@@ -4,8 +4,6 @@ import { useRoute, useRouter } from 'vue-router';
 import type { BlogPostProps } from '@nuxt/ui';
 import { currentRole } from '../../stores/role';
 
-const API_URL = '/api/events.php';
-
 type EventPost = BlogPostProps & {
   id?: number;
   badge?: string;
@@ -15,53 +13,83 @@ type EventPost = BlogPostProps & {
 const route = useRoute();
 const router = useRouter();
 
-// ─── Данные ──────────────────────────────────────────────────────────────────
-const event = ref<EventPost | null>(null);
-const loading = ref(true);
-const fetchError = ref<string | null>(null);
-
-const badgeOptions = ref<{ value: string; label: string }[]>([]);
-
-async function fetchEvent(id: string | string[]) {
-  loading.value = true;
-  fetchError.value = null;
-  try {
-    // Загружаем мероприятие и все события (для списка бейджей) параллельно
-    const [resEvent, resAll] = await Promise.all([
-      fetch(`${API_URL}?id=${id}`),
-      fetch(API_URL),
-    ]);
-
-    if (!resEvent.ok) throw new Error(`HTTP ${resEvent.status}`);
-    const jsonEvent = await resEvent.json();
-    if (!jsonEvent.success) throw new Error(jsonEvent.message);
-    event.value = jsonEvent.data;
-
-    if (resAll.ok) {
-      const jsonAll = await resAll.json();
-      if (jsonAll.success) {
-        const badges = [
-          ...new Set<string>(
-            (jsonAll.data as any[]).map((e) => e.badge).filter(Boolean),
-          ),
-        ].sort();
-        badgeOptions.value = badges.map((b) => ({ value: b, label: b }));
-      }
-    }
-  } catch (e: any) {
-    fetchError.value = e?.message ?? 'Не удалось загрузить мероприятие';
-    event.value = null;
-  } finally {
-    loading.value = false;
-  }
+const coverModules = import.meta.glob('../../img/EventsWebp/*.webp', {
+  eager: true,
+  import: 'default',
+});
+const coverSrcs = Object.entries(coverModules)
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([, src]) => src as string);
+function coverAt(index: number): string {
+  return coverSrcs.length ? coverSrcs[index % coverSrcs.length] : '/src/img/Logo.svg';
 }
 
-// Загружаем при первом открытии и при смене id в маршруте
-watch(
-  () => route.params.id,
-  (id) => { if (id) fetchEvent(id); },
-  { immediate: true },
-);
+// ─── Данные ──────────────────────────────────────────────────────────────────
+const events = ref<EventPost[]>([
+  {
+    id: 110,
+    title: 'Зимний корпоратив',
+    description: 'Встречаемся всей командой: награждения, конкурсы и фото-зона.',
+    date: '2026-01-25',
+    badge: 'Корпоратив',
+    to: `/events/110`,
+    image: { src: coverAt(0), alt: 'Зимний корпоратив' },
+  },
+  {
+    id: 111,
+    title: 'День донора',
+    description: 'Корпоративная донорская акция. Участие добровольное.',
+    date: '2026-02-12',
+    badge: 'Волонтёрство',
+    to: `/events/111`,
+    image: { src: coverAt(1), alt: 'День донора' },
+  },
+  {
+    id: 112,
+    title: 'Спартакиада сотрудников',
+    description: 'Командные соревнования и спортивный праздник.',
+    date: '2026-03-10',
+    badge: 'Спорт',
+    to: `/events/112`,
+    image: { src: coverAt(2), alt: 'Спартакиада' },
+  },
+  {
+    id: 113,
+    title: 'Лекция: новые инструменты',
+    description: 'Внутренняя лекция и демо полезных практик.',
+    date: '2026-03-22',
+    badge: 'Обучение',
+    to: `/events/113`,
+    image: { src: coverAt(3), alt: 'Лекция' },
+  },
+  {
+    id: 114,
+    title: 'Субботник',
+    description: 'Наводим порядок и завершаем чаепитием.',
+    date: '2026-04-06',
+    badge: 'Команда',
+    to: `/events/114`,
+    image: { src: coverAt(4), alt: 'Субботник' },
+  },
+  {
+    id: 115,
+    title: 'Экскурсия для новичков',
+    description: 'Знакомство с офисом, сервисами и командой.',
+    date: '2026-04-18',
+    badge: 'Новичкам',
+    to: `/events/115`,
+    image: { src: coverAt(5), alt: 'Экскурсия' },
+  },
+]);
+
+const loading = ref(false);
+const eventId = computed(() => Number(route.params.id));
+const event = computed<EventPost | null>(() => events.value.find((e) => e.id === eventId.value) ?? null);
+
+const badgeOptions = computed(() => {
+  const badges = Array.from(new Set(events.value.map((e) => e.badge).filter(Boolean) as string[])).sort();
+  return badges.map((b) => ({ value: b, label: b }));
+});
 
 const isAdmin = computed(() => currentRole.value === 'admin');
 
@@ -133,25 +161,25 @@ async function handleEditSubmit() {
   editSubmitting.value = true;
   editError.value = null;
   try {
-    const res = await fetch(`${API_URL}?id=${(event.value as any).id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: editState.title,
-        description: editState.description,
-        badge: editState.badge,
-        date: editState.date,
-        image: editState.image,
-        link: editState.link,
-      }),
-    });
-    const json = await res.json();
-    if (!json.success) {
-      editError.value = json.message;
+    const idx = events.value.findIndex((e) => e.id === (event.value?.id ?? -1));
+    if (idx === -1) {
+      editError.value = 'Мероприятие не найдено.';
       return;
     }
-    // Обновляем локальные данные ответом сервера
-    event.value = json.data;
+
+    const updated: EventPost = {
+      ...events.value[idx],
+      title: editState.title,
+      description: editState.description,
+      badge: editState.badge ?? undefined,
+      date: editState.date,
+      to: `/events/${events.value[idx].id}`,
+      image: editState.image
+        ? { src: editState.image, alt: editState.title }
+        : events.value[idx].image,
+    };
+
+    events.value = events.value.map((e) => (e.id === updated.id ? updated : e));
     editOpen.value = false;
   } catch (e: any) {
     editError.value = e?.message ?? 'Ошибка при сохранении';
@@ -170,14 +198,7 @@ async function handleDelete() {
   deleteSubmitting.value = true;
   deleteError.value = null;
   try {
-    const res = await fetch(`${API_URL}?id=${(event.value as any).id}`, {
-      method: 'DELETE',
-    });
-    const json = await res.json();
-    if (!json.success) {
-      deleteError.value = json.message;
-      return;
-    }
+    events.value = events.value.filter((e) => e.id !== event.value?.id);
     deleteConfirmOpen.value = false;
     router.push({ name: 'events' });
   } catch (e: any) {

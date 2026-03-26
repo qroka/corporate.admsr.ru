@@ -4,7 +4,8 @@ import { useRoute, useRouter } from 'vue-router';
 
 type Photo = {
   id: string;
-  src: string;
+  thumbSrc: string;
+  fullSrc: string;
   title?: string;
   description?: string;
 };
@@ -17,26 +18,37 @@ const albumId = computed(() => String(route.params.albumId ?? ''));
 const albumTitle = computed(() => `Альбом ${albumId.value}`);
 const albumDescription = computed(() => 'Фотографии с мероприятия. Нажмите на фото, чтобы открыть в большом размере.');
 
-const modules = import.meta.glob('../../img/Events/*.{jpg,jpeg,png,webp}', { eager: true, import: 'default' }) as Record<
-  string,
-  string
->;
+const thumbModules = import.meta.glob('../../img/EventsWebp/*.webp', {
+  eager: true,
+  import: 'default',
+}) as Record<string, string>;
+
+const fullModules = import.meta.glob('../../img/EventsWebpFull/*.webp', {
+  eager: true,
+  import: 'default',
+}) as Record<string, string>;
+
+const fullByName = new Map(
+  Object.entries(fullModules).map(([p, src]) => [p.split('/').pop() ?? p, src]),
+);
 
 function numericKey(path: string) {
-  const m = path.match(/(\d+)\.(jpg|jpeg|png|webp)$/i);
+  const m = path.match(/(\d+)\.(webp)$/i);
   return m ? Number(m[1]) : Number.POSITIVE_INFINITY;
 }
 
 const items = computed<Photo[]>(() => {
-  return Object.entries(modules)
+  return Object.entries(thumbModules)
     .sort(([a], [b]) => numericKey(a) - numericKey(b))
     .map(([path, src], index) => {
       const filename = path.split('/').pop() ?? `photo-${index + 1}`;
+      const fullSrc = (fullByName.get(filename) as string | undefined) ?? src;
       const n = index + 1;
       const withMeta = n % 5 === 0; // пример: не у всех фото есть метаданные
       return {
         id: filename,
-        src,
+        thumbSrc: src,
+        fullSrc,
         ...(withMeta
           ? {
               title: `Фото ${n}`,
@@ -110,7 +122,7 @@ function openPhoto(p: Photo) {
           @click="openPhoto(item)"
         >
           <img
-            :src="item.src"
+            :src="item.thumbSrc"
             :alt="item.title || 'Фотография'"
             :loading="index > 8 ? 'lazy' : 'eager'"
             decoding="async"
@@ -144,7 +156,7 @@ function openPhoto(p: Photo) {
           <!-- body (слева) -->
           <div class="flex-1 min-w-0 min-h-0 p-4 flex items-center justify-center bg-elevated/50">
             <img
-              :src="selected.src"
+              :src="selected.fullSrc"
               :alt="selected.title || 'Фотография'"
               class="max-h-full max-w-full w-auto h-auto object-contain rounded-lg"
               decoding="async"

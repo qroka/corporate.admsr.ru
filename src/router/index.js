@@ -16,6 +16,7 @@ import TestsPage from '../pages/TestsPage.vue';
 import HrDepartmentPage from '../pages/HrDepartmentPage.vue';
 import MunicipalServiceDepartmentPage from '../pages/MunicipalServiceDepartmentPage.vue';
 import DevelopmentMotivationDepartmentPage from '../pages/DevelopmentMotivationDepartmentPage.vue';
+import AdminDashboardPage from '../pages/Admin/AdminDashboardPage.vue';
 
 const routes = [
   { path: '/', name: 'home', component: HomePage, meta: { title: 'Главная' } },
@@ -39,6 +40,7 @@ const routes = [
   { path: '/hr-department', name: 'hr-department', component: HrDepartmentPage, meta: { title: 'Отдел кадров' } },
   { path: '/municipal-service', name: 'municipal-service', component: MunicipalServiceDepartmentPage, meta: { title: 'Отдел муниципальной службы' } },
   { path: '/development-motivation', name: 'development-motivation', component: DevelopmentMotivationDepartmentPage, meta: { title: 'Отдел развития и мотивации' } },
+  { path: '/admin', name: 'admin', component: AdminDashboardPage, meta: { title: 'Дэшборд администратора', requiresAdmin: true } },
 ];
 
 export const router = createRouter({

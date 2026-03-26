@@ -1,51 +1,94 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, watch, reactive } from 'vue';
+import { computed, ref, watch, reactive } from 'vue';
 import type { BlogPostProps } from '@nuxt/ui';
 import { currentRole } from '../../stores/role';
-
-const API_URL = '/api/events.php';
 
 type EventPost = BlogPostProps & {
   id?: number;
   badge?: string;
 };
 
-// ─── Данные ──────────────────────────────────────────────────────────────────
-const posts = ref<EventPost[]>([]);
-const loading = ref(true);
-const fetchError = ref<string | null>(null);
-
-async function fetchEvents() {
-  loading.value = true;
-  fetchError.value = null;
-  try {
-    const res = await fetch(API_URL);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
-    if (!json.success) throw new Error(json.message);
-    posts.value = (json.data as any[]).map((event) => ({
-      ...event,
-      to: `/events/${event.id}`,
-      target: undefined,
-    }));
-  } catch (e: any) {
-    fetchError.value = e?.message ?? 'Не удалось загрузить мероприятия';
-  } finally {
-    loading.value = false;
-  }
+const coverModules = import.meta.glob('../../img/EventsWebp/*.webp', {
+  eager: true,
+  import: 'default',
+});
+const coverSrcs = Object.entries(coverModules)
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([, src]) => src as string);
+function coverAt(index: number): string {
+  return coverSrcs.length ? coverSrcs[index % coverSrcs.length] : '/src/img/Logo.svg';
 }
 
-onMounted(fetchEvents);
+// ─── Данные ──────────────────────────────────────────────────────────────────
+const posts = ref<EventPost[]>([
+  {
+    id: 110,
+    title: 'Зимний корпоратив',
+    description: 'Встречаемся всей командой: награждения, конкурсы и фото-зона.',
+    date: '2026-01-25',
+    badge: 'Корпоратив',
+    to: `/events/110`,
+    image: { src: coverAt(0), alt: 'Зимний корпоратив' },
+  },
+  {
+    id: 111,
+    title: 'День донора',
+    description: 'Корпоративная донорская акция. Участие добровольное.',
+    date: '2026-02-12',
+    badge: 'Волонтёрство',
+    to: `/events/111`,
+    image: { src: coverAt(1), alt: 'День донора' },
+  },
+  {
+    id: 112,
+    title: 'Спартакиада сотрудников',
+    description: 'Командные соревнования и спортивный праздник.',
+    date: '2026-03-10',
+    badge: 'Спорт',
+    to: `/events/112`,
+    image: { src: coverAt(2), alt: 'Спартакиада' },
+  },
+  {
+    id: 113,
+    title: 'Лекция: новые инструменты',
+    description: 'Внутренняя лекция и демо полезных практик.',
+    date: '2026-03-22',
+    badge: 'Обучение',
+    to: `/events/113`,
+    image: { src: coverAt(3), alt: 'Лекция' },
+  },
+  {
+    id: 114,
+    title: 'Субботник',
+    description: 'Наводим порядок и завершаем чаепитием.',
+    date: '2026-04-06',
+    badge: 'Команда',
+    to: `/events/114`,
+    image: { src: coverAt(4), alt: 'Субботник' },
+  },
+  {
+    id: 115,
+    title: 'Экскурсия для новичков',
+    description: 'Знакомство с офисом, сервисами и командой.',
+    date: '2026-04-18',
+    badge: 'Новичкам',
+    to: `/events/115`,
+    image: { src: coverAt(5), alt: 'Экскурсия' },
+  },
+]);
+const loading = ref(false);
 
 // ─── Фильтры и поиск ─────────────────────────────────────────────────────────
 const searchQuery = ref('');
-const selectedBadges = ref<string[]>([]);
-const dateFrom = ref('');
-const dateTo = ref('');
-const filtersOpen = ref(false);
-const inputDate = ref();
-type DateRangeValue = { start?: any; end?: any } | null;
-const modelValue = ref<DateRangeValue>(null);
+
+// ─── Сортировка (как в Gallery) ───────────────────────────────────────────────
+const sortKey = ref<'newest' | 'oldest' | 'title-asc' | 'title-desc'>('newest');
+const sortOptions = [
+  { value: 'newest', label: 'Сначала новые' },
+  { value: 'oldest', label: 'Сначала старые' },
+  { value: 'title-asc', label: 'По названию (А‑Я)' },
+  { value: 'title-desc', label: 'По названию (Я‑А)' },
+];
 
 // ─── Форма создания мероприятия ───────────────────────────────────────────────
 const createOpen = ref(false);
@@ -78,9 +121,7 @@ const uniqueBadges = computed(() => {
   posts.value.forEach((p) => p.badge && set.add(p.badge));
   return Array.from(set).sort();
 });
-const badgeOptions = computed(() =>
-  uniqueBadges.value.map((b) => ({ value: b, label: b })),
-);
+const badgeOptions = computed(() => uniqueBadges.value.map((b) => ({ value: b, label: b })));
 
 const filteredPosts = computed(() => {
   let list = posts.value;
@@ -94,28 +135,8 @@ const filteredPosts = computed(() => {
     });
   }
 
-  if (selectedBadges.value.length > 0) {
-    list = list.filter((p) => p.badge && selectedBadges.value.includes(p.badge));
-  }
-
-  if (dateFrom.value) {
-    list = list.filter((p) => p.date && p.date >= dateFrom.value);
-  }
-  if (dateTo.value) {
-    list = list.filter((p) => p.date && p.date <= dateTo.value);
-  }
-
   return list;
 });
-
-function resetFilters() {
-  searchQuery.value = '';
-  selectedBadges.value = [];
-  dateFrom.value = '';
-  dateTo.value = '';
-  modelValue.value = null;
-  page.value = 1;
-}
 
 function resetCreateForm() {
   createState.title = '';
@@ -127,6 +148,24 @@ function resetCreateForm() {
   createDateValue.value = null;
   createError.value = null;
 }
+
+function openCreate() {
+  resetCreateForm();
+  createOpen.value = true;
+}
+
+const headerLinks = computed(() => {
+  if (currentRole !== 'admin') return [];
+  return [
+    {
+      label: 'Добавить мероприятие',
+      color: 'neutral',
+      variant: 'outline',
+      size: 'xl',
+      onClick: openCreate,
+    },
+  ];
+});
 
 // watch надёжнее @update:model-value — срабатывает и при ручном вводе, и при выборе из календаря
 watch(createDateValue, (val) => {
@@ -152,26 +191,21 @@ async function handleCreateSubmit() {
   createSubmitting.value = true;
   createError.value = null;
   try {
-    const res = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const nextId = Math.max(0, ...posts.value.map((p) => p.id ?? 0)) + 1;
+    posts.value = [
+      {
+        id: nextId,
         title: createState.title,
         description: createState.description,
-        badge: createState.badge,
+        badge: createState.badge ?? undefined,
         date: createState.date,
-        image: createState.image,
-        link: createState.link,
-      }),
-    });
-    const json = await res.json();
-    if (!json.success) {
-      createError.value = json.message;
-      return;
-    }
+        to: `/events/${nextId}`,
+        image: { src: coverAt(nextId), alt: createState.title },
+      },
+      ...posts.value,
+    ];
     createOpen.value = false;
     resetCreateForm();
-    await fetchEvents();
   } catch (e: any) {
     createError.value = e?.message ?? 'Ошибка при создании мероприятия';
   } finally {
@@ -179,176 +213,62 @@ async function handleCreateSubmit() {
   }
 }
 
-const activeFilterCount = computed(() => {
-  let count = selectedBadges.value.length;
-  if (dateFrom.value) count += 1;
-  if (dateTo.value) count += 1;
-  return count;
-});
+const sortedPosts = computed(() => {
+  const list = [...filteredPosts.value];
 
-// ─── Пагинация ────────────────────────────────────────────────────────────────
-const page = ref(1);
-
-const sm = ref(false);
-const md = ref(false);
-const lg = ref(false);
-
-const itemsPerPage = computed(() => {
-  if (lg.value) return 8;
-  if (md.value) return 6;
-  if (sm.value) return 4;
-  return 4;
-});
-
-watch(
-  modelValue,
-  (val) => {
-    const toStringSafe = (d: any) =>
-      d && typeof d.toString === 'function' ? d.toString() : '';
-
-    dateFrom.value = val?.start ? toStringSafe(val.start) : '';
-    dateTo.value = val?.end ? toStringSafe(val.end) : '';
-  },
-  { immediate: true }
-);
-
-onMounted(() => {
-  const qSm = window.matchMedia('(min-width: 640px)');
-  const qMd = window.matchMedia('(min-width: 768px)');
-  const qLg = window.matchMedia('(min-width: 1024px)');
-  const update = () => {
-    sm.value = qSm.matches;
-    md.value = qMd.matches;
-    lg.value = qLg.matches;
-  };
-  update();
-  qSm.addEventListener('change', update);
-  qMd.addEventListener('change', update);
-  qLg.addEventListener('change', update);
-  onUnmounted(() => {
-    qSm.removeEventListener('change', update);
-    qMd.removeEventListener('change', update);
-    qLg.removeEventListener('change', update);
+  list.sort((a, b) => {
+    if (sortKey.value === 'newest') return (b.date ?? '').localeCompare(a.date ?? '');
+    if (sortKey.value === 'oldest') return (a.date ?? '').localeCompare(b.date ?? '');
+    if (sortKey.value === 'title-asc') return (a.title ?? '').localeCompare(b.title ?? '', 'ru');
+    if (sortKey.value === 'title-desc') return (b.title ?? '').localeCompare(a.title ?? '', 'ru');
+    return 0;
   });
-});
 
-watch([itemsPerPage, filteredPosts], ([_, __], [oldSize]) => {
-  if (oldSize === undefined) return;
-  const total = filteredPosts.value.length;
-  const maxPage = Math.max(1, Math.ceil(total / itemsPerPage.value));
-  if (page.value > maxPage) page.value = maxPage;
-});
-
-watch(
-  () => [searchQuery.value, selectedBadges.value, dateFrom.value, dateTo.value],
-  () => {
-    page.value = 1;
-  }
-);
-
-const paginatedPosts = computed(() => {
-  const start = (page.value - 1) * itemsPerPage.value;
-  return filteredPosts.value.slice(start, start + itemsPerPage.value);
+  return list;
 });
 </script>
 
 <template>
-  <div class="flex flex-col gap-6 w-full h-full min-h-0">
-    <Headline class="text-zinc-700 dark:text-zinc-50">
-      <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between w-full">
-        <div>
-          <h1 class="text-4xl leading-12 font-display">Мероприятия</h1>
-          <p class="text-xl leading-6 text-zinc-500">
-            Здесь будет лента ближайших корпоративных мероприятий.
-          </p>
-        </div>
-        <UButton v-if="currentRole === 'admin'" color="neutral" variant="outline" size="xl"
-          class="w-full sm:w-auto justify-center" @click="
-            resetCreateForm();
-          createOpen = true;
-          ">
-          Добавить мероприятие
-        </UButton>
-      </div>
-    </Headline>
-    <UMain class="flex flex-1 min-h-0 flex-col w-full h-full gap-6">
-
-      <!-- Ошибка загрузки -->
-      <UAlert v-if="fetchError" color="red" variant="subtle" icon="i-lucide-alert-circle" :title="fetchError">
-        <template #footer>
-          <UButton size="sm" color="red" variant="ghost" @click="fetchEvents">
-            Повторить
-          </UButton>
+  <UMain class="flex flex-col w-full h-full min-h-0 gap-6">
+    <!-- Верхняя панель как в Gallery (фиксированная) -->
+    <UContainer class="flex flex-col max-w-full w-full gap-6 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0 shrink-0">
+      <UPageHeader :links="headerLinks" class="border-none p-0 w-full">
+        <template #title>
+          <h1 class="text-4xl font-normal font-unbounded">Мероприятия</h1>
         </template>
-      </UAlert>
+      </UPageHeader>
 
-      <!-- Поиск + кнопка фильтров -->
-      <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <UInput v-model="searchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline"
-          placeholder="Поиск по названию..." class="w-full" />
-        <UButton @click="filtersOpen = true" color="neutral" variant="outline" size="xl" class="justify-center">
-          Фильтры
-          <span v-if="activeFilterCount > 0"
-            class="inline-flex items-center justify-center rounded-full bg-zinc-900 text-zinc-50 dark:bg-zinc-50 dark:text-zinc-700 text-xs h-6 w-6">
-            {{ activeFilterCount }}
-          </span>
-        </UButton>
-      </div>
+      <!-- Поиск + сортировка -->
+      <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
+        <UInput
+          v-model="searchQuery"
+          icon="i-lucide-search"
+          size="xl"
+          color="neutral"
+          variant="outline"
+          placeholder="Поиск по названию..."
+          class="flex-1"
+        />
+        <USelect
+          v-model="sortKey"
+          :items="sortOptions"
+          size="xl"
+          color="neutral"
+        />
+      </UContainer>
 
-      <p v-if="!loading && filteredPosts.length !== posts.length" class="text-sm text-zinc-500 mb-2">
+      <p v-if="!loading && filteredPosts.length !== posts.length" class="text-sm text-muted -mt-2">
         Найдено: {{ filteredPosts.length }} из {{ posts.length }}
       </p>
+    </UContainer>
 
-      <!-- Скелетон при загрузке -->
-      <div v-if="loading" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 flex-1 min-h-0">
-        <USkeleton v-for="n in 8" :key="n" class="h-64 rounded-xl" />
-      </div>
-
+    <!-- Скроллится только список -->
+    <UContainer class="flex-1 min-h-0 overflow-y-auto sm:p-px max-w-full w-full md:p-px lg:p-px xl:p-px scrollbar-hide mx-0">
       <!-- Список мероприятий -->
-      <div v-else class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 flex-1 min-h-0">
-        <UBlogPost v-for="post in paginatedPosts" :key="post.id ?? post.title" v-bind="post" class="h-full" />
+      <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+        <UBlogPost v-for="post in sortedPosts" :key="post.id ?? post.title" v-bind="post" class="h-full" />
       </div>
-
-      <div v-if="!loading" class="flex justify-center">
-        <UPagination size="xl" v-model:page="page" :total="filteredPosts.length" :items-per-page="itemsPerPage" />
-      </div>
-
-      <!-- Slideover с фильтрами -->
-      <USlideover v-model:open="filtersOpen" side="right" title="Фильтры" description="">
-        <template #body>
-          <div class="flex flex-col gap-3 py-4">
-            <h3 class="text-sm font-medium text-zinc-700 dark:text-zinc-200">
-              Категория
-            </h3>
-            <USelect placeholder="Выберите категорию" size="xl" v-model="selectedBadges" multiple :items="badgeOptions"
-              class="w-full" />
-            <h3 class="text-sm font-medium text-zinc-700 dark:text-zinc-200">
-              Даты проведения
-            </h3>
-            <UInputDate class="w-full" size="xl" ref="inputDate" v-model="modelValue" range>
-              <template #trailing>
-                <UPopover :reference="inputDate?.inputsRef[0]?.$el">
-                  <UButton color="neutral" variant="link" size="sm" icon="i-lucide-calendar"
-                    aria-label="Select a date range" class="px-0" />
-                  <template #content>
-                    <UCalendar v-model="modelValue" class="p-2" :number-of-months="2" range />
-                  </template>
-                </UPopover>
-              </template>
-            </UInputDate>
-          </div>
-        </template>
-        <template #footer>
-          <div class="flex justify-between gap-3 items-center w-full">
-            <UButton @click="resetFilters" color="neutral" variant="outline" size="xl" class="w-full justify-center">
-              Сбросить
-            </UButton>
-            <UButton @click="filtersOpen = false" size="xl" class="w-full justify-center">
-              Применить
-            </UButton>
-          </div>
-        </template>
-      </USlideover>
+    </UContainer>
 
       <!-- Slideover создания мероприятия (только для администратора) -->
       <USlideover v-model:open="createOpen" side="right" title="Новое мероприятие" description="">
@@ -402,6 +322,5 @@ const paginatedPosts = computed(() => {
           </div>
         </template>
       </USlideover>
-    </UMain>
-  </div>
+  </UMain>
 </template>
