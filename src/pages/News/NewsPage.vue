@@ -73,33 +73,56 @@ const filtered = computed(() => {
 </script>
 
 <template>
-  <UMain class="flex flex-1 min-h-0">
-    <UContainer class="flex flex-col gap-4 w-full min-h-0">
-      <UPageHeader title="Новости" description="Все новости корпоративного портала" class="border-none p-0" />
+  <UMain class="flex flex-col w-full h-full min-h-0 gap-6">
+    <UContainer class="flex flex-col max-w-full w-full gap-6 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0 shrink-0">
+      <UPageHeader class="border-none p-0 w-full">
+        <template #title>
+          <h1 class="text-4xl font-normal font-unbounded">Новости</h1>
+        </template>
+      </UPageHeader>
 
-      <UContainer class="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between p-0">
-        <UInput v-model="searchQuery" placeholder="Поиск по новостям..." class="w-full sm:max-w-[520px]" />
-        <USelectMenu v-model="sortKey" :items="sortOptions" value-key="value" label-key="label" class="w-full sm:w-64" />
+      <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
+        <UInput
+          v-model="searchQuery"
+          icon="i-lucide-search"
+          size="xl"
+          color="neutral"
+          variant="outline"
+          placeholder="Поиск по новостям..."
+          class="flex-1"
+        />
+        <USelect
+          v-model="sortKey"
+          :items="sortOptions"
+          size="xl"
+          color="neutral"
+        />
       </UContainer>
 
-      <UScrollArea class="min-h-0 flex-1 rounded-lg border border-default">
-        <UContainer class="flex flex-col gap-3 p-3">
-          <USkeleton v-if="loading" class="h-28 w-full" />
-          <UBlogPost
-            v-for="post in filtered"
-            v-else
-            :key="post.id"
-            v-bind="post"
-            class="w-full"
-          />
-          <UEmpty
-            v-if="!loading && !filtered.length"
-            icon="i-lucide-newspaper"
-            title="Новостей не найдено"
-            description="Попробуйте изменить запрос или сортировку."
-          />
-        </UContainer>
-      </UScrollArea>
+      <p v-if="!loading && filtered.length !== postsBase.length" class="text-sm text-muted -mt-2">
+        Найдено: {{ filtered.length }} из {{ postsBase.length }}
+      </p>
+    </UContainer>
+
+    <UContainer class="flex-1 min-h-0 overflow-y-auto sm:p-px max-w-full w-full md:p-px lg:p-px xl:p-px scrollbar-hide mx-0">
+      <UContainer class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:p-0 max-w-full w-full md:p-0 lg:p-0 xl:p-0 mx-0">
+        <USkeleton v-if="loading" class="h-28 w-full" />
+        <UBlogPost
+          v-for="post in filtered"
+          v-else
+          :key="post.id"
+          v-bind="post"
+          class="h-full max-w-full w-full"
+        />
+      </UContainer>
+
+      <UEmpty
+        v-if="!loading && !filtered.length"
+        icon="i-lucide-newspaper"
+        title="Новостей не найдено"
+        description="Попробуйте изменить запрос или сортировку."
+        class="mt-3"
+      />
     </UContainer>
   </UMain>
 </template>

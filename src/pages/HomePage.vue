@@ -4,14 +4,37 @@ import type { ButtonProps } from '@nuxt/ui'
 import type { BlogPostProps } from '@nuxt/ui'
 import { useNewsData, formatUnixDate, resolveNewsImageSrc, stripHtmlToText } from '../composables/useNewsData';
 
-const links = <ButtonProps[]>([
+const eventsLinks = <ButtonProps[]>([
   {
     icon: 'i-lucide-arrow-up-right',
-    to: '/',
-    target: '_blank',
+    to: '/events',
     size: 'xl',
+    color: 'neutral',
+    variant: 'outline',
     class: 'rounded-full',
-  }
+  },
+])
+
+const newsLinks = <ButtonProps[]>([
+  {
+    icon: 'i-lucide-arrow-up-right',
+    to: '/news',
+    size: 'xl',
+    color: 'neutral',
+    variant: 'outline',
+    class: 'rounded-full',
+  },
+])
+
+const birthdayLinks = <ButtonProps[]>([
+  {
+    icon: 'i-lucide-arrow-up-right',
+    to: '/profile',
+    size: 'xl',
+    color: 'neutral',
+    variant: 'outline',
+    class: 'rounded-full',
+  },
 ])
 
 /** Карточки «Актуальные события»: без `to` на карточке — кнопки записи в слоте описания (body) */
@@ -179,7 +202,7 @@ const birthdayGroups = <BirthdayGroup[]>[
 <template>
   <UMain class="flex flex-1 flex-row w-full h-full gap-6 min-h-0 max-h-full overflow-hidden">
     <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 max-w-96">
-      <UPageHeader title="" :links="links" class="border-none p-0">
+      <UPageHeader title="" :links="eventsLinks" class="border-none p-0">
         <template #title>
           <h1 class="text-2xl font-medium">Актуальные мероприятия</h1>
         </template>
@@ -223,7 +246,7 @@ const birthdayGroups = <BirthdayGroup[]>[
       </UContainer>
     </UContainer>
     <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0">
-      <UPageHeader title="" :links="links" class="border-none p-0">
+      <UPageHeader title="" :links="newsLinks" class="border-none p-0">
         <template #title>
           <h1 class="text-2xl font-medium">Лента новостей</h1>
         </template>
@@ -273,7 +296,7 @@ const birthdayGroups = <BirthdayGroup[]>[
       </UContainer>
     </UContainer>
     <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-fit">
-      <UPageHeader title="" :links="links" class="border-none p-0">
+      <UPageHeader title="" :links="birthdayLinks" class="border-none p-0">
         <template #title>
           <h1 class="text-2xl font-medium">Дни рождения коллег</h1>
         </template>

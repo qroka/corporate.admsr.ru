@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { BlogPostProps } from '@nuxt/ui';
+import type { ButtonProps } from '@nuxt/ui';
 import { useRouter } from 'vue-router';
 import { useNewsData, formatUnixDate, resolveNewsImageSrc, stripHtmlToText } from '../../composables/useNewsData';
 
@@ -10,6 +11,17 @@ const router = useRouter();
 
 const { loading, error, sortedNews, ensureLoaded } = useNewsData();
 ensureLoaded();
+
+const links = <ButtonProps[]>([
+  {
+    icon: 'i-lucide-arrow-up-right',
+    to: '/kiosk/news',
+    size: 'xl',
+    color: 'neutral',
+    variant: 'outline',
+    class: 'rounded-full',
+  },
+])
 
 const posts = computed<NewsPost[]>(() =>
   sortedNews.value.map((n, idx) => {
@@ -151,10 +163,25 @@ const items = [
 <template>
   <UMain class="flex flex-col w-full h-full min-h-0 gap-6">
     <UContainer class="flex flex-col gap-6 w-full min-h-0 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
+      <UPageHeader  :links="links" class="border-none p-0">
+        <template #title>
+          <h1 class="text-4xl font-normal font-unbounded">Лента новостей</h1>
+        </template>
+      </UPageHeader>
       <UScrollArea ref="scrollAreaRef" class="flex-1 min-h-0 scrollbar-hide">
         <UContainer class="flex flex-col gap-6 sm:p-px md:p-px lg:p-px xl:p-px mx-0 w-full">
           <USkeleton v-if="loading" class="h-32 w-full" />
-          <UBlogPost v-for="post in posts" v-else :key="post.id" v-bind="post" class="w-full rounded-3xl">
+          <UBlogPost
+            v-for="post in posts"
+            v-else
+            :key="post.id"
+            v-bind="post"
+            class="w-full rounded-3xl"
+            :ui="{
+              header: 'relative overflow-hidden w-full pointer-events-none h-96',
+              image: 'object-cover object-center w-full h-full',
+            }"
+          >
             <template #description>
               <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0">
                 <p class="text-base text-pretty text-muted">

@@ -5,6 +5,7 @@ import type { BlogPostProps } from '@nuxt/ui';
 import { currentRole } from '../../stores/role';
 import { useEventsData } from '../../composables/useEventsData';
 import { useAppToast } from '../../composables/useAppToast';
+import UContentSurround from '../../components/UContentSurround.vue';
 
 type EventPost = BlogPostProps & {
   id?: number;
@@ -41,6 +42,40 @@ const event = computed<EventPost | null>(() => {
     badge: e.badge,
     to: `/events/${e.id}`,
     image: { src: coverAt(e.coverIndex ?? idx), alt: e.title },
+  };
+});
+
+const sortedEvents = computed(() => {
+  const list = events.value.slice();
+  list.sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? ''), 'ru-RU') || (b.id ?? 0) - (a.id ?? 0));
+  return list;
+});
+
+const surround = computed(() => {
+  const id = event.value?.id;
+  if (!id) return { prev: null, next: null };
+  const idx = sortedEvents.value.findIndex((x) => x.id === id);
+  if (idx < 0) return { prev: null, next: null };
+
+  const prev = idx > 0 ? sortedEvents.value[idx - 1] : null;
+  const next = idx >= 0 && idx < sortedEvents.value.length - 1 ? sortedEvents.value[idx + 1] : null;
+  const prefix = isKiosk.value ? '/kiosk/events/' : '/events/';
+
+  return {
+    prev: prev
+      ? {
+          title: prev.title,
+          description: prev.description,
+          to: `${prefix}${prev.id}`,
+        }
+      : null,
+    next: next
+      ? {
+          title: next.title,
+          description: next.description,
+          to: `${prefix}${next.id}`,
+        }
+      : null,
   };
 });
 
@@ -99,11 +134,19 @@ const isJoined = computed(() => {
 function toggleJoin() {
   const id = event.value?.id;
   if (!id) return;
+  const wasJoined = isJoined.value;
   const map = getRsvpMap();
   const key = String(id);
   map[key] = !map[key];
   setRsvpMap(map);
   joinPulse.value++;
+
+  toast.add({
+    title: wasJoined ? 'Запись отменена' : 'Вы записались на мероприятие',
+    description: wasJoined ? 'Вы больше не в списке участников (демо).' : 'Добавили вас в список участников (демо).',
+    color: 'success',
+    icon: 'i-lucide-circle-check',
+  });
 }
 
 // ─── Share / Calendar helpers ────────────────────────────────────────────────
@@ -435,6 +478,8 @@ async function handleDelete() {
             </UCard>
           </div>
         </div>
+
+        <UContentSurround v-if="surround.prev || surround.next" :prev="surround.prev" :next="surround.next" />
       </div>
 
       <!-- Не найдено -->

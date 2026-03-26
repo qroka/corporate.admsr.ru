@@ -52,7 +52,7 @@ watch(
           <svg :class="[
             'overflow-visible absolute w-10 h-10 transition-all duration-300 ease-out',
             isDark
-              ? 'group-hover:filter-[drop-shadow(0_0_10px_currentColor)_drop-shadow(0_0_5px_currentColor)_drop-shadow(0_0_1px_currentColor)]'
+              ? 'group-hover:[filter:drop-shadow(0_0_10px_currentColor)_drop-shadow(0_0_5px_currentColor)_drop-shadow(0_0_1px_currentColor)]'
               : '',
             'opacity-0 group-hover:opacity-100 fill-primary text-primary'
           ]" viewBox="16 16 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -68,19 +68,19 @@ watch(
     </RouterLink>
 
     <UContainer class="header-nav bg-elevated relative rounded-full w-fit gap-0 sm:p-3 md:p-3 lg:p-3 xl:p-3 z-0 mx-0">
-      <UButton type="button" color="neutral"  class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted" :class="activeNav === 'events' ? 'z-10 bg-primary text-inverted shadow-none dark:shadow-brand [&_svg]:text-inverted hover:bg-primary hover:text-inverted active:bg-primary active:text-inverted active:[&_svg]:text-inverted' : ''" size="xl" icon="i-lucide-calendar"
+      <UButton type="button" color="neutral"  class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted" :class="activeNav === 'events' ? 'z-10 bg-primary text-zinc-50 shadow-none dark:shadow-brand [&_svg]:text-zinc-50 hover:bg-primary hover:text-zinc-50 active:bg-primary active:text-zinc-50 active:[&_svg]:text-zinc-50' : ''" size="xl" icon="i-lucide-calendar"
         @click="navigate('events')">
         Мероприятия
       </UButton>
-      <UButton type="button" color="neutral"  class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted" :class="activeNav === 'gallery' ? 'z-10 bg-primary text-inverted shadow-none dark:shadow-brand [&_svg]:text-inverted hover:bg-primary hover:text-inverted active:bg-primary active:text-inverted active:[&_svg]:text-inverted' : ''" size="xl" icon="i-lucide-images"
+      <UButton type="button" color="neutral"  class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted" :class="activeNav === 'gallery' ? 'z-10 bg-primary text-zinc-50 shadow-none dark:shadow-brand [&_svg]:text-zinc-50 hover:bg-primary hover:text-zinc-50 active:bg-primary active:text-zinc-50 active:[&_svg]:text-zinc-50' : ''" size="xl" icon="i-lucide-images"
         @click="navigate('gallery')">
         Фотогалерея
       </UButton>
-      <UButton type="button" color="neutral"  class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted" :class="activeNav === 'newcomers' ? 'z-10 bg-primary text-inverted shadow-none dark:shadow-brand [&_svg]:text-inverted hover:bg-primary hover:text-inverted active:bg-primary active:text-inverted active:[&_svg]:text-inverted' : ''" size="xl" icon="i-lucide-sparkles"
+      <UButton type="button" color="neutral"  class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted" :class="activeNav === 'newcomers' ? 'z-10 bg-primary text-zinc-50 shadow-none dark:shadow-brand [&_svg]:text-zinc-50 hover:bg-primary hover:text-zinc-50 active:bg-primary active:text-zinc-50 active:[&_svg]:text-zinc-50' : ''" size="xl" icon="i-lucide-sparkles"
         @click="navigate('newcomers')">
         Новичкам
       </UButton>
-      <UButton type="button" color="neutral"  class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50 [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted" :class="activeNav === 'culture' ? 'z-10 bg-primary text-inverted shadow-none dark:shadow-brand [&_svg]:text-inverted hover:bg-primary hover:text-inverted active:bg-primary active:text-inverted active:[&_svg]:text-inverted' : ''" size="xl"
+      <UButton type="button" color="neutral"  class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50 [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted" :class="activeNav === 'culture' ? 'z-10 bg-primary text-zinc-50 shadow-none dark:shadow-brand [&_svg]:text-zinc-50 hover:bg-primary hover:text-zinc-50 active:bg-primary active:text-zinc-50 active:[&_svg]:text-zinc-50' : ''" size="xl"
         @click="navigate('culture')" icon="i-lucide-users">
         Корпоративная культура
       </UButton>

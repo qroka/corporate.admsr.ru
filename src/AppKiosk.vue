@@ -4,6 +4,8 @@
       <KioskHeader
         :hero-title="heroTitle"
         :hero-subtitle="heroSubtitle"
+        :is-dark="isDark"
+        @toggle-theme="startThemeTransition"
         @open-all-services="allServicesOpen = true"
       />
 
@@ -21,7 +23,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import KioskHeader from './components/KioskHeader.vue';
 import KioskAside from './components/KioskAside.vue';
@@ -39,6 +41,60 @@ function go(tile: KioskTile) {
   if (tile.disabled) return;
   if (tile.routeName) router.push({ name: tile.routeName });
   else if (tile.to) router.push(tile.to);
+}
+
+// --- Поддержка светлой / тёмной темы для Nuxt UI (kiosk) ---
+const COLOR_MODE_KEY = 'ui-color-mode';
+const isDark = ref(false);
+
+function applyColorMode(mode: 'light' | 'dark') {
+  const root = document.documentElement;
+  if (!root) return;
+
+  if (mode === 'dark') root.classList.add('dark');
+  else root.classList.remove('dark');
+}
+
+function toggleColorMode() {
+  isDark.value = !isDark.value;
+}
+
+// Анимированная смена темы с помощью View Transitions API
+function startThemeTransition(event: MouseEvent) {
+  const anyDoc = document as any;
+  if (!anyDoc.startViewTransition) {
+    toggleColorMode();
+    return;
+  }
+
+  const x = event.clientX;
+  const y = event.clientY;
+  const endRadius =
+    Math.hypot(
+      Math.max(x, window.innerWidth - x),
+      Math.max(y, window.innerHeight - y),
+    ) + 8;
+
+  const transition = anyDoc.startViewTransition(() => {
+    toggleColorMode();
+  });
+
+  transition.ready.then(() => {
+    const duration = 600;
+    anyDoc.documentElement.animate(
+      {
+        clipPath: [
+          `circle(0px at ${x}px ${y}px)`,
+          `circle(${endRadius}px at ${x}px ${y}px)`,
+        ],
+      },
+      {
+        duration,
+        easing: 'cubic-bezier(.76,.32,.29,.99)',
+        pseudoElement: '::view-transition-new(root)',
+      },
+    );
+  });
 }
 
 // ─── Idle timeout: return to /kiosk ───────────────────────────────────────────
@@ -65,8 +121,28 @@ const idleEvents: Array<keyof WindowEventMap> = [
 ];
 
 onMounted(() => {
+  const saved = localStorage.getItem(COLOR_MODE_KEY);
+  let mode: 'light' | 'dark';
+
+  if (saved === 'light' || saved === 'dark') {
+    mode = saved;
+  } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    mode = 'dark';
+  } else {
+    mode = 'light';
+  }
+
+  isDark.value = mode === 'dark';
+  applyColorMode(mode);
+
   resetIdleTimer();
   for (const ev of idleEvents) window.addEventListener(ev, resetIdleTimer, { passive: true, capture: true });
+});
+
+watch(isDark, (value) => {
+  const mode: 'light' | 'dark' = value ? 'dark' : 'light';
+  localStorage.setItem(COLOR_MODE_KEY, mode);
+  applyColorMode(mode);
 });
 
 onUnmounted(() => {

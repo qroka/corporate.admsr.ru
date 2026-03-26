@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useGalleryData } from '../../composables/useGalleryData';
 import { useAppToast } from '../../composables/useAppToast';
+import UContentSurround from '../../components/UContentSurround.vue';
 
 type Photo = {
   id: string;
@@ -17,7 +18,7 @@ const router = useRouter();
 
 const albumId = computed(() => String(route.params.albumId ?? ''));
 
-const { loading: galleryLoading, error: galleryError, getAlbum, buildPhotoMeta, ensureLoaded } = useGalleryData();
+const { loading: galleryLoading, error: galleryError, getAlbum, buildPhotoMeta, ensureLoaded, albums } = useGalleryData();
 ensureLoaded();
 
 const { toast } = useAppToast();
@@ -38,6 +39,34 @@ watch(
 const album = computed(() => getAlbum(albumId.value));
 const albumTitle = computed(() => album.value.title);
 const albumDescription = computed(() => album.value.description);
+
+const isKiosk = computed(() => route.matched?.some((r) => r.meta?.kiosk));
+const sortedAlbums = computed(() => {
+  const list = albums.value.slice();
+  list.sort(
+    (a, b) =>
+      String(b.date ?? '').localeCompare(String(a.date ?? ''), 'ru-RU') ||
+      String(b.id).localeCompare(String(a.id), 'ru-RU'),
+  );
+  return list;
+});
+
+const surround = computed(() => {
+  const id = albumId.value;
+  if (!id) return { prev: null, next: null };
+  const list = sortedAlbums.value;
+  const idx = list.findIndex((x) => x.id === id);
+  if (idx < 0) return { prev: null, next: null };
+
+  const prev = idx > 0 ? list[idx - 1] : null;
+  const next = idx >= 0 && idx < list.length - 1 ? list[idx + 1] : null;
+  const prefix = isKiosk.value ? '/kiosk/gallery/' : '/gallery/';
+
+  return {
+    prev: prev ? { title: prev.title || `Альбом ${prev.id}`, description: prev.description, to: `${prefix}${prev.id}` } : null,
+    next: next ? { title: next.title || `Альбом ${next.id}`, description: next.description, to: `${prefix}${next.id}` } : null,
+  };
+});
 
 const thumbModules = (import.meta as any).glob('../../img/EventsWebp/*.webp', {
   eager: true,
@@ -118,32 +147,18 @@ function openPhoto(p: Photo) {
         </template>
       </UPageHeader>
     </UContainer>
-    <UScrollArea
-      v-slot="{ item, index }"
-      :items="items"
-      orientation="vertical"
-      :virtualize="{
-        gap: 12,
-        lanes,
-        estimateSize,
-        overscan: 6
-      }"
-      class="flex-1 min-h-0 w-full p-px scrollbar-hide"
-    >
+    <UScrollArea v-slot="{ item, index }" :items="items" orientation="vertical" :virtualize="{
+      gap: 12,
+      lanes,
+      estimateSize,
+      overscan: 6
+    }" class="flex-1 min-h-0 w-full p-px scrollbar-hide">
       <div class="rounded-xl overflow-hidden bg-elevated ring ring-transparent hover:ring-accented transition w-full">
-        <button
-          type="button"
-          class="block w-full"
-          @click="openPhoto(item)"
-        >
-          <img
-            :src="item.thumbSrc"
-            :alt="item.title || 'Фотография'"
-            :loading="index > 8 ? 'lazy' : 'eager'"
-            decoding="async"
-            class="block w-full h-auto"
-          >
+        <button type="button" class="block w-full" @click="openPhoto(item)">
+          <img :src="item.thumbSrc" :alt="item.title || 'Фотография'" :loading="index > 8 ? 'lazy' : 'eager'"
+            decoding="async" class="block w-full h-auto">
         </button>
+
 
         <!-- Метаданные как на макете: просто блок под фото -->
         <div v-if="item.title || item.description" class="border-t border-muted px-5 py-5">
@@ -157,43 +172,27 @@ function openPhoto(p: Photo) {
       </div>
     </UScrollArea>
 
-    <UModal
-      v-model:open="modalOpen"
-      class="w-[96vw] max-w-7xl h-[88vh] p-0"
-      :ui="{ content: 'p-0', header: 'p-0', body: 'p-0', footer: 'p-0' }"
-    >
+    <UModal v-model:open="modalOpen" class="w-[96vw] max-w-7xl h-[88vh] p-0"
+      :ui="{ content: 'p-0', header: 'p-0', body: 'p-0', footer: 'p-0' }">
       <template #content="{ close }">
-        <div
-          v-if="selected"
-          class="flex h-full w-full min-h-0"
-          :class="(selected.title || selected.description) ? '' : 'bg-elevated/50'"
-        >
+        <div v-if="selected" class="flex h-full w-full min-h-0"
+          :class="(selected.title || selected.description) ? '' : 'bg-elevated/50'">
           <!-- body (слева) -->
           <div class="flex-1 min-w-0 min-h-0 p-4 flex items-center justify-center bg-elevated/50">
-            <img
-              :src="selected.fullSrc"
-              :alt="selected.title || 'Фотография'"
-              class="max-h-full max-w-full w-auto h-auto object-contain rounded-lg"
-              decoding="async"
-            />
+            <img :src="selected.fullSrc" :alt="selected.title || 'Фотография'"
+              class="max-h-full max-w-full w-auto h-auto object-contain rounded-lg" decoding="async" />
           </div>
 
           <!-- если нет метаданных — показываем только картинку -->
-          <div v-if="selected.title || selected.description" class="w-96 shrink-0 min-h-0 border-l border-muted bg-default p-6 flex flex-col gap-4">
+          <div v-if="selected.title || selected.description"
+            class="w-96 shrink-0 min-h-0 border-l border-muted bg-default p-6 flex flex-col gap-4">
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
                 <h2 class="text-lg font-semibold text-highlighted truncate">
                   {{ selected.title || 'Без названия' }}
                 </h2>
               </div>
-              <UButton
-                type="button"
-                color="neutral"
-                variant="ghost"
-                icon="i-lucide-x"
-                square
-                @click="close()"
-              />
+              <UButton type="button" color="neutral" variant="ghost" icon="i-lucide-x" square @click="close()" />
             </div>
             <p v-if="selected.description" class="text-sm text-muted whitespace-pre-line">
               {{ selected.description }}
@@ -201,19 +200,10 @@ function openPhoto(p: Photo) {
           </div>
 
           <!-- кнопка закрытия, когда показываем только картинку -->
-          <UButton
-            v-else
-            type="button"
-            color="neutral"
-            variant="ghost"
-            icon="i-lucide-x"
-            square
-            class="absolute top-3 right-3"
-            @click="close()"
-          />
+          <UButton v-else type="button" color="neutral" variant="ghost" icon="i-lucide-x" square
+            class="absolute top-3 right-3" @click="close()" />
         </div>
       </template>
     </UModal>
   </UMain>
 </template>
-
