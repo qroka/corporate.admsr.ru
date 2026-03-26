@@ -3,13 +3,14 @@ import { computed, ref, watch, reactive } from 'vue';
 import type { BlogPostProps } from '@nuxt/ui';
 import { currentRole } from '../../stores/role';
 import { useEventsData } from '../../composables/useEventsData';
+import { useAppToast } from '../../composables/useAppToast';
 
 type EventPost = BlogPostProps & {
   id?: number;
   badge?: string;
 };
 
-const coverModules = import.meta.glob('../../img/EventsWebp/*.webp', {
+const coverModules = (import.meta as any).glob('../../img/EventsWebp/*.webp', {
   eager: true,
   import: 'default',
 });
@@ -22,6 +23,21 @@ function coverAt(index: number): string {
 
 const { loading, error, events, badges, ensureLoaded } = useEventsData();
 ensureLoaded();
+
+const { toast } = useAppToast();
+watch(
+  error,
+  (val) => {
+    if (!val) return;
+    toast.add({
+      title: 'Не удалось загрузить мероприятия',
+      description: String(val),
+      color: 'error',
+      icon: 'i-lucide-alert-circle',
+    });
+  },
+  { immediate: true },
+);
 
 const posts = computed<EventPost[]>(() =>
   events.value.map((e, idx) => ({
@@ -192,14 +208,6 @@ const sortedPosts = computed(() => {
           <h1 class="text-4xl font-normal font-unbounded">Мероприятия</h1>
         </template>
       </UPageHeader>
-
-      <UAlert
-        v-if="error"
-        color="error"
-        variant="subtle"
-        icon="i-lucide-alert-circle"
-        :title="error"
-      />
 
       <!-- Поиск + сортировка -->
       <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">

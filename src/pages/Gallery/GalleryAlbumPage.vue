@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useGalleryData } from '../../composables/useGalleryData';
+import { useAppToast } from '../../composables/useAppToast';
 
 type Photo = {
   id: string;
@@ -19,16 +20,31 @@ const albumId = computed(() => String(route.params.albumId ?? ''));
 const { loading: galleryLoading, error: galleryError, getAlbum, buildPhotoMeta, ensureLoaded } = useGalleryData();
 ensureLoaded();
 
+const { toast } = useAppToast();
+watch(
+  galleryError,
+  (val) => {
+    if (!val) return;
+    toast.add({
+      title: 'Не удалось загрузить альбом',
+      description: String(val),
+      color: 'error',
+      icon: 'i-lucide-alert-circle',
+    });
+  },
+  { immediate: true },
+);
+
 const album = computed(() => getAlbum(albumId.value));
 const albumTitle = computed(() => album.value.title);
 const albumDescription = computed(() => album.value.description);
 
-const thumbModules = import.meta.glob('../../img/EventsWebp/*.webp', {
+const thumbModules = (import.meta as any).glob('../../img/EventsWebp/*.webp', {
   eager: true,
   import: 'default',
 }) as Record<string, string>;
 
-const fullModules = import.meta.glob('../../img/EventsWebpFull/*.webp', {
+const fullModules = (import.meta as any).glob('../../img/EventsWebpFull/*.webp', {
   eager: true,
   import: 'default',
 }) as Record<string, string>;
@@ -102,15 +118,6 @@ function openPhoto(p: Photo) {
         </template>
       </UPageHeader>
     </UContainer>
-    <UContainer v-if="galleryError" class="max-w-full w-full mx-0">
-      <UAlert
-        color="error"
-        variant="subtle"
-        icon="i-lucide-alert-circle"
-        :title="galleryError"
-      />
-    </UContainer>
-
     <UScrollArea
       v-slot="{ item, index }"
       :items="items"

@@ -1,12 +1,28 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { BlogPostProps } from '@nuxt/ui';
 import { useNewsData, formatUnixDate, resolveNewsImageSrc, stripHtmlToText } from '../../composables/useNewsData';
+import { useAppToast } from '../../composables/useAppToast';
 
 type NewsPost = BlogPostProps & { id: string };
 
 const { loading, error, sortedNews, ensureLoaded } = useNewsData();
 ensureLoaded();
+
+const { toast } = useAppToast();
+watch(
+  error,
+  (val) => {
+    if (!val) return;
+    toast.add({
+      title: 'Не удалось загрузить новости',
+      description: String(val),
+      color: 'error',
+      icon: 'i-lucide-alert-circle',
+    });
+  },
+  { immediate: true },
+);
 
 const searchQuery = ref('');
 const sortKey = ref<'newest' | 'oldest' | 'title-asc' | 'title-desc'>('newest');
@@ -61,14 +77,12 @@ const filtered = computed(() => {
     <UContainer class="flex flex-col gap-4 w-full min-h-0">
       <UPageHeader title="Новости" description="Все новости корпоративного портала" class="border-none p-0" />
 
-      <UAlert v-if="error" color="error" variant="soft" :title="error" />
-
       <UContainer class="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between p-0">
         <UInput v-model="searchQuery" placeholder="Поиск по новостям..." class="w-full sm:max-w-[520px]" />
         <USelectMenu v-model="sortKey" :items="sortOptions" value-key="value" label-key="label" class="w-full sm:w-64" />
       </UContainer>
 
-      <UScrollArea class="min-h-0 flex-1 rounded-lg border border-[var(--ui-border)]">
+      <UScrollArea class="min-h-0 flex-1 rounded-lg border border-default">
         <UContainer class="flex flex-col gap-3 p-3">
           <USkeleton v-if="loading" class="h-28 w-full" />
           <UBlogPost

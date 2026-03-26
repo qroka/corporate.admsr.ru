@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import type { BlogPostProps } from '@nuxt/ui';
 import { currentRole } from '../../stores/role';
 import { useEventsData } from '../../composables/useEventsData';
+import { useAppToast } from '../../composables/useAppToast';
 
 type EventPost = BlogPostProps & {
   id?: number;
@@ -14,7 +15,7 @@ type EventPost = BlogPostProps & {
 const route = useRoute();
 const router = useRouter();
 
-const coverModules = import.meta.glob('../../img/EventsWebp/*.webp', {
+const coverModules = (import.meta as any).glob('../../img/EventsWebp/*.webp', {
   eager: true,
   import: 'default',
 });
@@ -46,6 +47,150 @@ const event = computed<EventPost | null>(() => {
 const badgeOptions = computed(() => badges.value.map((b) => ({ value: b, label: b })));
 
 const isAdmin = computed(() => currentRole.value === 'admin');
+const isKiosk = computed(() => route.matched?.some((r) => r.meta?.kiosk));
+
+const { toast } = useAppToast();
+
+watch(
+  error,
+  (val) => {
+    if (!val) return;
+    toast.add({
+      title: 'Не удалось загрузить мероприятие',
+      description: String(val),
+      color: 'error',
+      icon: 'i-lucide-alert-circle',
+    });
+  },
+  { immediate: true },
+);
+
+// ─── RSVP (local demo) ────────────────────────────────────────────────────────
+const RSVP_STORAGE_KEY = 'events-rsvp:v1';
+const joinPulse = ref(0);
+
+function getRsvpMap(): Record<string, boolean> {
+  try {
+    const raw = window.localStorage.getItem(RSVP_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function setRsvpMap(map: Record<string, boolean>) {
+  try {
+    window.localStorage.setItem(RSVP_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // ignore
+  }
+}
+
+const isJoined = computed(() => {
+  // joinPulse is only here to make re-computation deterministic after toggle
+  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+  joinPulse.value;
+  const id = event.value?.id;
+  if (!id) return false;
+  if (typeof window === 'undefined') return false;
+  return !!getRsvpMap()[String(id)];
+});
+
+function toggleJoin() {
+  const id = event.value?.id;
+  if (!id) return;
+  const map = getRsvpMap();
+  const key = String(id);
+  map[key] = !map[key];
+  setRsvpMap(map);
+  joinPulse.value++;
+}
+
+// ─── Share / Calendar helpers ────────────────────────────────────────────────
+async function copyEventLink() {
+  if (typeof window === 'undefined') return;
+  const url = window.location.href;
+  try {
+    await navigator.clipboard.writeText(url);
+    toast.add({
+      title: 'Ссылка скопирована',
+      description: 'Можно отправлять или открывать на другом устройстве.',
+      color: 'success',
+      icon: 'i-lucide-circle-check',
+    });
+  } catch {
+    toast.add({
+      title: 'Не удалось скопировать ссылку',
+      description: 'Браузер мог запретить доступ к буферу обмена.',
+      color: 'error',
+      icon: 'i-lucide-alert-circle',
+    });
+  }
+}
+
+function parseEventDate(value: string): Date | null {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function toIcsDate(d: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return (
+    d.getUTCFullYear() +
+    pad(d.getUTCMonth() + 1) +
+    pad(d.getUTCDate()) +
+    'T' +
+    pad(d.getUTCHours()) +
+    pad(d.getUTCMinutes()) +
+    pad(d.getUTCSeconds()) +
+    'Z'
+  );
+}
+
+function downloadIcs() {
+  if (!event.value || typeof window === 'undefined') return;
+  const title = (event.value.title ?? 'Мероприятие').replace(/\r?\n/g, ' ').trim();
+  const desc = (event.value.description ?? '').replace(/\r?\n/g, ' ').trim();
+  const dt = parseEventDate(String((event.value as any).date ?? '')) ?? new Date();
+  const dtEnd = new Date(dt.getTime() + 60 * 60 * 1000);
+  const uid = `event-${event.value.id ?? 'x'}@corporate.admsr.ru`;
+
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//corporate.admsr.ru//Events//RU',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `DTSTAMP:${toIcsDate(new Date())}`,
+    `DTSTART:${toIcsDate(dt)}`,
+    `DTEND:${toIcsDate(dtEnd)}`,
+    `SUMMARY:${title}`,
+    desc ? `DESCRIPTION:${desc}` : '',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ]
+    .filter(Boolean)
+    .join('\r\n');
+
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${title || 'event'}.ics`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
+
+  toast.add({
+    title: 'Файл календаря готов',
+    description: 'Откройте .ics, чтобы добавить событие.',
+    color: 'success',
+    icon: 'i-lucide-circle-check',
+  });
+}
 
 // ─── Форма редактирования ─────────────────────────────────────────────────────
 type EditFormState = {
@@ -142,6 +287,26 @@ const deleteConfirmOpen = ref(false);
 const deleteSubmitting = ref(false);
 const deleteError = ref<string | null>(null);
 
+watch(editError, (val) => {
+  if (!val) return;
+  toast.add({
+    title: 'Не удалось сохранить',
+    description: String(val),
+    color: 'error',
+    icon: 'i-lucide-alert-circle',
+  });
+});
+
+watch(deleteError, (val) => {
+  if (!val) return;
+  toast.add({
+    title: 'Не удалось удалить',
+    description: String(val),
+    color: 'error',
+    icon: 'i-lucide-alert-circle',
+  });
+});
+
 async function handleDelete() {
   if (!event.value) return;
   deleteSubmitting.value = true;
@@ -159,149 +324,129 @@ async function handleDelete() {
 </script>
 
 <template>
-  <div class="flex flex-col gap-6 w-full h-full min-h-0">
-    <UAlert
-      v-if="error"
-      color="error"
-      variant="subtle"
-      icon="i-lucide-alert-circle"
-      :title="error"
-    />
-    <Headline class="text-zinc-700 dark:text-zinc-50">
-      <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between w-full">
-        <div>
-          <template v-if="loading">
-            <USkeleton class="h-12 w-64 rounded-xl" />
-            <USkeleton class="h-6 w-48 rounded-xl mt-2" />
-          </template>
-          <template v-else>
-            <h1 class="text-4xl leading-12 font-display">
-              {{ event?.title ?? 'Мероприятие не найдено' }}
-            </h1>
-            <p class="text-xl leading-6 text-zinc-500" v-if="event">
-              {{ event.description }}
-            </p>
-            <p class="text-xl leading-6 text-zinc-500" v-else>
-              Проверьте корректность ссылки или вернитесь к списку мероприятий.
-            </p>
-          </template>
+  <UMain class="flex flex-col w-full h-full min-h-0 gap-0">
+    <UContainer
+      class="flex-1 min-h-0 overflow-y-auto max-w-full w-full sm:p-0 md:p-0 lg:p-0 xl:p-0 scrollbar-hide mx-0 pb-8">
+
+      <!-- Скелетон -->
+      <div v-if="loading" class="space-y-6">
+        <USkeleton class="h-56 sm:h-72 rounded-3xl" />
+        <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-6 items-start">
+          <USkeleton class="h-64 rounded-3xl" />
+          <USkeleton class="h-64 rounded-3xl" />
         </div>
-        <div class="flex flex-col gap-2 w-full sm:w-auto">
-          <UButton
-            color="neutral"
-            variant="ghost"
-            size="xl"
-            class="w-full justify-center"
-            @click="router.push({ name: 'events' })"
-          >
-            К списку мероприятий
-          </UButton>
-          <div v-if="isAdmin && event && !loading" class="flex gap-2 justify-end">
-            <UButton
-              color="neutral"
-              variant="outline"
-              size="lg"
-              class="w-full sm:w-auto justify-center"
-              @click="openEdit"
-            >
-              Изменить
-            </UButton>
-            <UButton
-              color="red"
-              variant="soft"
-              size="lg"
-              class="w-full sm:w-auto justify-center"
-              @click="deleteConfirmOpen = true"
-            >
-              Удалить
-            </UButton>
+      </div>
+
+      <!-- Контент -->
+      <div v-else-if="event" class="flex flex-col gap-6">
+        <!-- Hero -->
+        <div class="relative overflow-hidden rounded-3xl ring ring-default bg-default">
+          <div class="relative h-96">
+            <img :src="(event.image as any)?.src" :alt="(event.image as any)?.alt ?? event.title"
+              class="absolute inset-0 h-full w-full object-cover" />
+            <div class="absolute inset-0 bg-linear-to-t from-black/65 via-black/25 to-transparent" />
+            <div class="absolute inset-0 p-6 flex flex-col justify-end">
+              <div class="flex flex-wrap items-center gap-2 mb-3">
+                <UBadge v-if="event.badge" color="primary" variant="solid" size="md">
+                  {{ event.badge }}
+                </UBadge>
+                <UBadge color="neutral" variant="soft" size="md" class="backdrop-blur">
+                  {{ event.date }}
+                </UBadge>
+              </div>
+              <h1 class="text-2xl sm:text-4xl font-semibold tracking-tight text-white">
+                {{ event.title }}
+              </h1>
+              <p v-if="event.description" class="mt-2 text-sm sm:text-base text-white/85 max-w-3xl">
+                {{ event.description }}
+              </p>
+            </div>
           </div>
         </div>
-      </div>
-    </Headline>
 
-    <!-- Ошибка загрузки (events.json) -->
-    <UAlert
-      v-if="error"
-      color="red"
-      variant="subtle"
-      icon="i-lucide-alert-circle"
-      :title="error"
-    />
+        <!-- Body -->
+        <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-6 items-start p-px">
+          <UCard class="rounded-3xl">
+            <template #header>
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-lucide-info" class="size-5 text-primary" />
+                  <span class="text-sm font-semibold text-highlighted">О мероприятии</span>
+                </div>
+              </div>
+            </template>
 
-    <!-- Скелетон -->
-    <UMain v-if="loading" class="flex flex-1 min-h-0 flex-col w-full gap-6">
-      <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-6 items-start">
-        <USkeleton class="h-64 rounded-xl" />
-        <USkeleton class="h-48 rounded-xl" />
-      </div>
-    </UMain>
+            <div class="space-y-4">
+              <p v-if="event.description" class="text-base leading-6 text-muted">
+                {{ event.description }}
+              </p>
+              <p v-else class="text-sm text-muted">
+                Описание мероприятия пока не добавлено.
+              </p>
 
-    <!-- Контент мероприятия -->
-    <UMain v-else-if="event" class="flex flex-1 min-h-0 flex-col w-full h-full gap-6">
-      <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-6 items-start">
-        <UCard class="w-full">
-          <template #header>
-            <div class="flex items-center justify-between gap-3">
-              <span
-                v-if="event.badge"
-                class="inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200 px-3 py-1 text-xs font-medium"
-              >
-                {{ event.badge }}
-              </span>
-              <span class="ml-auto text-sm text-zinc-500 dark:text-zinc-400">
-                {{ event.date }}
-              </span>
+              <div class="flex flex-wrap gap-2 pt-1">
+                <UButton :color="isJoined ? 'neutral' : 'primary'" :variant="isJoined ? 'soft' : 'solid'" size="lg"
+                  :icon="isJoined ? 'i-lucide-check' : 'i-lucide-ticket'" @click="toggleJoin">
+                  {{ isJoined ? 'Вы записаны' : 'Записаться' }}
+                </UButton>
+                <UButton color="neutral" variant="outline" size="lg" icon="i-lucide-link" @click="copyEventLink">
+                  Скопировать ссылку
+                </UButton>
+              </div>
             </div>
-          </template>
+          </UCard>
 
           <div class="space-y-4">
-            <p v-if="event.description" class="text-base leading-6 text-zinc-700 dark:text-zinc-100">
-              {{ event.description }}
-            </p>
-            <p v-else class="text-sm text-zinc-500 dark:text-zinc-400">
-              Описание мероприятия пока не добавлено.
-            </p>
+            <UCard class="rounded-3xl">
+              <template #header>
+                <div class="flex items-center gap-2">
+                  <UIcon name="i-lucide-calendar-days" class="size-5 text-primary" />
+                  <span class="text-sm font-semibold text-highlighted">Детали</span>
+                </div>
+              </template>
 
-            <div v-if="event.link && event.link !== '#'" class="pt-2">
-              <UButton
-                as="a"
-                :href="event.link"
-                target="_blank"
-                rel="noopener noreferrer"
-                size="lg"
-              >
-                Перейти к подробностям
-              </UButton>
-            </div>
+              <dl class="grid grid-cols-1 gap-3">
+                <div class="flex items-start justify-between gap-3">
+                  <dt class="text-sm text-muted">Дата</dt>
+                  <dd class="text-sm font-medium text-highlighted text-right">
+                    {{ event.date }}
+                  </dd>
+                </div>
+                <div v-if="event.badge" class="flex items-start justify-between gap-3">
+                  <dt class="text-sm text-muted">Категория</dt>
+                  <dd class="text-sm font-medium text-highlighted text-right">
+                    {{ event.badge }}
+                  </dd>
+                </div>
+                <div class="flex items-start justify-between gap-3">
+                  <dt class="text-sm text-muted">Статус</dt>
+                  <dd class="text-sm font-medium text-highlighted text-right">
+                    {{ isJoined ? 'Вы записаны' : 'Не записаны' }}
+                  </dd>
+                </div>
+              </dl>
+
+              <div v-if="(event as any).link && (event as any).link !== '#'" class="pt-4">
+                <UButton as="a" :href="(event as any).link" target="_blank" rel="noopener noreferrer" size="lg"
+                  color="neutral" variant="solid" class="w-full justify-center" icon="i-lucide-external-link">
+                  Открыть страницу
+                </UButton>
+              </div>
+            </UCard>
           </div>
-        </UCard>
-
-        <div class="space-y-4">
-          <UCard v-if="event.image" class="overflow-hidden">
-            <img
-              :src="(event.image as any).src"
-              :alt="(event.image as any).alt ?? event.title"
-              class="w-full h-48 object-cover"
-            />
-          </UCard>
         </div>
       </div>
-    </UMain>
 
-    <!-- Мероприятие не найдено -->
-    <UMain v-else class="flex flex-1 items-center justify-center">
-      <UAlert
-        color="red"
-        variant="subtle"
-        icon="i-lucide-alert-circle"
-        title="Мероприятие не найдено"
-        description="Возможно, оно было удалено или вы перешли по неверной ссылке."
-      />
-    </UMain>
+      <!-- Не найдено -->
+      <div v-else class="py-10">
+        <UEmpty icon="i-lucide-calendar-x" title="Мероприятие не найдено"
+          description="Возможно, оно было удалено или вы перешли по неверной ссылке." />
+      </div>
+    </UContainer>
 
     <!-- Slideover редактирования -->
-    <USlideover v-model:open="editOpen" side="right" title="Редактирование мероприятия" description="Измените данные мероприятия">
+    <USlideover v-model:open="editOpen" side="right" title="Редактирование мероприятия"
+      description="Измените данные мероприятия">
       <template #body>
         <div class="flex flex-col gap-4 py-2">
           <UForm :state="editState" class="space-y-4" @submit.prevent="handleEditSubmit">
@@ -310,41 +455,20 @@ async function handleDelete() {
             </UFormField>
 
             <UFormField label="Категория (бейдж)" name="badge">
-              <USelect
-                v-model="editState.badge"
-                :items="badgeOptions"
-                placeholder="Выберите категорию"
-                size="lg"
-                class="w-full"
-              />
+              <USelect v-model="editState.badge" :items="badgeOptions" placeholder="Выберите категорию" size="lg"
+                class="w-full" />
             </UFormField>
 
             <UFormField label="Описание" name="description">
-              <UTextarea
-                v-model="editState.description"
-                size="lg"
-                :rows="3"
-                placeholder="Описание мероприятия"
-              />
+              <UTextarea v-model="editState.description" size="lg" :rows="3" placeholder="Описание мероприятия" />
             </UFormField>
 
             <UFormField label="Дата проведения" name="date" required>
-              <UInputDate
-                v-model="editDateValue"
-                size="lg"
-                class="w-full"
-
-              >
+              <UInputDate v-model="editDateValue" size="lg" class="w-full">
                 <template #trailing>
                   <UPopover>
-                    <UButton
-                      color="neutral"
-                      variant="link"
-                      size="sm"
-                      icon="i-lucide-calendar"
-                      aria-label="Выбрать дату"
-                      class="px-0"
-                    />
+                    <UButton color="neutral" variant="link" size="sm" icon="i-lucide-calendar" aria-label="Выбрать дату"
+                      class="px-0" />
                     <template #content>
                       <UCalendar v-model="editDateValue" class="p-2" />
                     </template>
@@ -354,44 +478,22 @@ async function handleDelete() {
             </UFormField>
 
             <UFormField label="Ссылка на подробности" name="link">
-              <UInput
-                v-model="editState.link"
-                size="lg"
-                placeholder="https://..."
-              />
+              <UInput v-model="editState.link" size="lg" placeholder="https://..." />
             </UFormField>
 
             <UFormField label="Изображение (URL)" name="image">
               <UInput v-model="editState.image" size="lg" placeholder="/src/img/event-cover.svg" />
             </UFormField>
 
-            <UAlert
-              v-if="editError"
-              color="red"
-              variant="subtle"
-              icon="i-lucide-alert-circle"
-              :description="editError"
-            />
           </UForm>
         </div>
       </template>
       <template #footer>
         <div class="flex justify-between gap-3 items-center w-full">
-          <UButton
-            color="neutral"
-            variant="outline"
-            size="xl"
-            class="w-full justify-center"
-            @click="editOpen = false"
-          >
+          <UButton color="neutral" variant="outline" size="xl" class="w-full justify-center" @click="editOpen = false">
             Отмена
           </UButton>
-          <UButton
-            size="xl"
-            class="w-full justify-center"
-            :loading="editSubmitting"
-            @click="handleEditSubmit"
-          >
+          <UButton size="xl" class="w-full justify-center" :loading="editSubmitting" @click="handleEditSubmit">
             Сохранить
           </UButton>
         </div>
@@ -399,42 +501,25 @@ async function handleDelete() {
     </USlideover>
 
     <!-- Модал подтверждения удаления -->
-    <UModal v-model:open="deleteConfirmOpen" title="Удалить мероприятие?" description="Подтвердите удаление мероприятия">
+    <UModal v-model:open="deleteConfirmOpen" title="Удалить мероприятие?"
+      description="Подтвердите удаление мероприятия">
       <template #body>
-        <p class="text-zinc-700 dark:text-zinc-200">
+        <p class="text-default">
           Вы уверены, что хотите удалить
           <strong>«{{ event?.title }}»</strong>?
           Это действие нельзя отменить.
         </p>
-        <UAlert
-          v-if="deleteError"
-          color="red"
-          variant="subtle"
-          icon="i-lucide-alert-circle"
-          :description="deleteError"
-          class="mt-3"
-        />
       </template>
       <template #footer>
         <div class="flex gap-3 justify-end w-full">
-          <UButton
-            color="neutral"
-            variant="outline"
-            size="lg"
-            @click="deleteConfirmOpen = false"
-          >
+          <UButton color="neutral" variant="outline" size="lg" @click="deleteConfirmOpen = false">
             Отмена
           </UButton>
-          <UButton
-            color="red"
-            size="lg"
-            :loading="deleteSubmitting"
-            @click="handleDelete"
-          >
+          <UButton color="red" size="lg" :loading="deleteSubmitting" @click="handleDelete">
             Удалить
           </UButton>
         </div>
       </template>
     </UModal>
-  </div>
+  </UMain>
 </template>

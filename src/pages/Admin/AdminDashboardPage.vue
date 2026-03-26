@@ -7,7 +7,7 @@ import { useGroupsData } from '../../composables/useGroupsData';
 import { useUsersData, type AdminUserRow } from '../../composables/useUsersData';
 import { currentRole } from '../../stores/role';
 
-const { adminUserSaved, adminOfoSaved } = useAppToast();
+const { toast, adminUserSaved, adminOfoSaved } = useAppToast();
 
 const UBadge = resolveComponent('UBadge');
 const UButton = resolveComponent('UButton');
@@ -31,6 +31,48 @@ const {
 } = useUsersData();
 
 const { loading: groupsLoading, error: groupsError, groups } = useGroupsData();
+
+watch(
+  usersError,
+  (val) => {
+    if (!val) return;
+    toast.add({
+      title: 'Не удалось загрузить пользователей',
+      description: String(val),
+      color: 'error',
+      icon: 'i-lucide-alert-circle',
+    });
+  },
+  { immediate: true },
+);
+
+watch(
+  ofoError,
+  (val) => {
+    if (!val) return;
+    toast.add({
+      title: 'Не удалось загрузить ОФО',
+      description: String(val),
+      color: 'error',
+      icon: 'i-lucide-alert-circle',
+    });
+  },
+  { immediate: true },
+);
+
+watch(
+  groupsError,
+  (val) => {
+    if (!val) return;
+    toast.add({
+      title: 'Не удалось загрузить группы',
+      description: String(val),
+      color: 'error',
+      icon: 'i-lucide-alert-circle',
+    });
+  },
+  { immediate: true },
+);
 
 type OfoViewMode = 'cards' | 'table';
 const ofoViewMode = ref<OfoViewMode>('cards');
@@ -860,13 +902,6 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
           </template>
 
           <div class="flex flex-col gap-4 p-0 sm:p-0 md:p-0 lg:p-0 xl:p-0 overflow-visible">
-            <UAlert
-              v-if="usersError"
-              color="error"
-              variant="subtle"
-              icon="i-lucide-alert-circle"
-              :title="usersError"
-            />
             <UContainer class="flex flex-col w-full gap-3 sm:flex-row sm:flex-wrap sm:items-end p-0 sm:p-0 md:p-0 lg:p-0 xl:p-0 max-w-full mx-0 overflow-visible">
               <UInput
                 v-model="userSearchQuery"

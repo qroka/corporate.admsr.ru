@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { BlogPostProps } from '@nuxt/ui';
 import { useGalleryData } from '../../composables/useGalleryData';
+import { useAppToast } from '../../composables/useAppToast';
 
 type Album = BlogPostProps & { id: string; date: string };
 
@@ -18,6 +19,21 @@ function coverAt(index: number): string {
 
 const { loading, error, albums: albumRecords, ensureLoaded } = useGalleryData();
 ensureLoaded();
+
+const { toast } = useAppToast();
+watch(
+  error,
+  (val) => {
+    if (!val) return;
+    toast.add({
+      title: 'Не удалось загрузить альбомы',
+      description: String(val),
+      color: 'error',
+      icon: 'i-lucide-alert-circle',
+    });
+  },
+  { immediate: true },
+);
 
 const albums = computed<Album[]>(() =>
   albumRecords.value.map((a, idx) => ({
@@ -91,15 +107,6 @@ const filteredAlbums = computed(() => {
           color="neutral"
         />
       </UContainer>
-    </UContainer>
-
-    <UContainer v-if="error" class="max-w-full w-full mx-0">
-      <UAlert
-        color="error"
-        variant="subtle"
-        icon="i-lucide-alert-circle"
-        :title="error"
-      />
     </UContainer>
 
     <UContainer class="flex-1 min-h-0 overflow-y-auto sm:p-px max-w-full w-full md:p-px lg:p-px xl:p-px scrollbar-hide mx-0">

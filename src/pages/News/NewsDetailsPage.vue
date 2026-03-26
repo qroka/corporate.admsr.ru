@@ -1,11 +1,27 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useNewsData, formatUnixDate, resolveNewsImageSrc } from '../../composables/useNewsData';
+import { useAppToast } from '../../composables/useAppToast';
 
 const route = useRoute();
 const { loading, error, getById, ensureLoaded } = useNewsData();
 ensureLoaded();
+
+const { toast } = useAppToast();
+watch(
+  error,
+  (val) => {
+    if (!val) return;
+    toast.add({
+      title: 'Не удалось загрузить новость',
+      description: String(val),
+      color: 'error',
+      icon: 'i-lucide-alert-circle',
+    });
+  },
+  { immediate: true },
+);
 
 const newsId = computed(() => String(route.params.id ?? '').trim());
 const item = computed(() => (newsId.value ? getById(newsId.value) : undefined));
@@ -19,8 +35,6 @@ const html = computed(() => item.value?.html || item.value?.shortHtml || '');
 <template>
   <UMain class="flex flex-1 min-h-0">
     <UContainer class="flex flex-col gap-4 w-full min-h-0">
-      <UAlert v-if="error" color="error" variant="soft" :title="error" />
-
       <UCard>
         <template #header>
           <UContainer class="flex flex-col gap-2 p-0">
@@ -43,7 +57,7 @@ const html = computed(() => item.value?.html || item.value?.shortHtml || '');
             <img
               :src="imageSrc"
               :alt="title"
-              class="w-full max-h-[420px] object-cover rounded-lg border border-[var(--ui-border)]"
+              class="w-full max-h-[420px] object-cover rounded-lg border border-default"
               loading="lazy"
             />
           </UContainer>

@@ -204,6 +204,49 @@
                       />
                     </div>
 
+                    <USeparator />
+
+                    <div>
+                      <h3 class="text-sm font-semibold text-highlighted mb-2">
+                        Цвета интерфейса
+                      </h3>
+                      <p class="text-sm text-muted mb-4">
+                        Выберите палитры. Настройка сохранится в браузере и применится сразу.
+                      </p>
+
+                      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
+                        <UFormField label="Основной цвет (primary)" name="uiPrimary">
+                          <USelectMenu
+                            v-model="themePrimary"
+                            :items="primaryColorItems"
+                            size="xl"
+                            class="w-full"
+                            placeholder="Выберите цвет"
+                            :content="{ sideOffset: 8 }"
+                          />
+                        </UFormField>
+
+                        <UFormField label="Нейтральный (neutral)" name="uiNeutral">
+                          <USelectMenu
+                            v-model="themeNeutral"
+                            :items="neutralColorItems"
+                            size="xl"
+                            class="w-full"
+                            placeholder="Выберите нейтральный"
+                            :content="{ sideOffset: 8 }"
+                          />
+                        </UFormField>
+                      </div>
+
+                      <div class="mt-4 flex items-center gap-3">
+                        <div class="h-8 w-8 rounded-full bg-primary-500 ring-2 ring-default" aria-hidden="true" />
+                        <div class="h-8 w-8 rounded-full bg-neutral-800 ring-2 ring-default" aria-hidden="true" />
+                        <span class="text-sm text-muted">
+                          Превью: primary 500 и neutral 800
+                        </span>
+                      </div>
+                    </div>
+
                     <div class="flex flex-wrap items-center gap-3 pt-2">
                       <UButton type="submit" color="primary" size="xl">
                         Сохранить
@@ -237,6 +280,7 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { useAppToast } from '../composables/useAppToast';
 import { currentRole, setRole } from '../stores/role';
+import { setSavedUiTheme, getSavedUiTheme } from '../composables/useUiTheme';
 
 const { profileSaved } = useAppToast();
 
@@ -330,4 +374,31 @@ watch(currentRole, (val) => {
     setRole('user');
   }
 });
+
+const primaryColorItems = [
+  { value: 'sky', label: 'Sky (голубой)' },
+  { value: 'emerald', label: 'Emerald (зелёный)' },
+  { value: 'violet', label: 'Violet (фиолетовый)' },
+  { value: 'rose', label: 'Rose (розовый)' },
+  { value: 'amber', label: 'Amber (оранжевый)' },
+];
+
+const neutralColorItems = [
+  { value: 'slate', label: 'Slate (сланцевый)' },
+  { value: 'zinc', label: 'Zinc (цинк)' },
+  { value: 'gray', label: 'Gray (серый)' },
+  { value: 'neutral', label: 'Neutral (нейтральный)' },
+];
+
+const savedTheme = getSavedUiTheme();
+const themePrimary = ref(savedTheme.primary);
+const themeNeutral = ref(savedTheme.neutral);
+
+watch(
+  [themePrimary, themeNeutral],
+  ([primary, neutral]) => {
+    setSavedUiTheme({ primary, neutral });
+  },
+  { immediate: true },
+);
 </script>
