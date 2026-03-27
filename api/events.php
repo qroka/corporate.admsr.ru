@@ -8,188 +8,144 @@
  * PUT    /api/events.php?id=1     — обновить мероприятие
  * DELETE /api/events.php?id=1     — удалить мероприятие
  *
- * Требования:
- *   — XAMPP / локальный Apache + PHP + MySQL
- *   — создайте БД и таблицу (SQL ниже в комментарии)
- *   — поместите файл в папку htdocs/corporate/api/events.php
- *     или настройте Virtual Host, чтобы корень проекта был в htdocs
- *
  * SQL для создания таблицы:
  * -------------------------------------------------------
- * CREATE DATABASE IF NOT EXISTS corporate_portal
- *   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
- *
- * USE corporate_portal;
- *
- * CREATE TABLE IF NOT EXISTS events (
- *   id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ * CREATE TABLE events (
+ *   id          SERIAL        PRIMARY KEY,
  *   title       VARCHAR(255)  NOT NULL,
- *   description TEXT          NULL,
- *   badge       VARCHAR(100)  NULL,
- *   date        DATE          NULL,
- *   image       VARCHAR(500)  NOT NULL DEFAULT '/src/img/tailwindcss-v4.svg',
- *   link        VARCHAR(500)  NOT NULL DEFAULT '#',
- *   created_at  TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
- *   updated_at  TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
- *                             ON UPDATE CURRENT_TIMESTAMP
- * ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+ *   description TEXT,
+ *   badge       VARCHAR(100),
+ *   date        DATE          NOT NULL,
+ *   image       VARCHAR(500)  NOT NULL DEFAULT '/favicon.svg',
+ *   image_full  VARCHAR(500)  NOT NULL DEFAULT '/favicon.svg',
+ *   created_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+ *   updated_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+ * );
  * -------------------------------------------------------
  */
 
-// ─── Настройки подключения ────────────────────────────────────────────────────
+// ─── Подключение ──────────────────────────────────────────────────────────────
 define('DB_HOST', 'localhost');
-define('DB_PORT', '3306');
+define('DB_PORT', '5432');
 define('DB_NAME', 'corporate_portal');
-define('DB_USER', 'root');
-define('DB_PASS', '');          // стандартный пароль XAMPP — пустой
-// ─────────────────────────────────────────────────────────────────────────────
+define('DB_USER', 'postgres');
+define('DB_PASS', 'VZAIMno4753');   // ← укажите ваш пароль PostgreSQL
 
-// ─── Заголовки ───────────────────────────────────────────────────────────────
+// ─── Заголовки ────────────────────────────────────────────────────────────────
 header('Content-Type: application/json; charset=utf-8');
 
-// Разрешаем запросы с dev-сервера Vite (localhost:5173) и со своего домена
 $allowedOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173'];
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-if (in_array($origin, $allowedOrigins, true)) {
-    header("Access-Control-Allow-Origin: $origin");
-} else {
-    header('Access-Control-Allow-Origin: http://localhost:5173');
-}
+header('Access-Control-Allow-Origin: ' . (in_array($origin, $allowedOrigins, true) ? $origin : $allowedOrigins[0]));
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 header('Access-Control-Max-Age: 86400');
 
-// Preflight (OPTIONS) — браузер отправляет перед реальным запросом
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(204);
-    exit;
-}
-// ─────────────────────────────────────────────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 
-// ─── Подключение к БД ────────────────────────────────────────────────────────
+// ─── PDO ──────────────────────────────────────────────────────────────────────
 try {
-    $dsn = sprintf(
-        'mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4',
-        DB_HOST, DB_PORT, DB_NAME
+    $pdo = new PDO(
+        sprintf('pgsql:host=%s;port=%s;dbname=%s', DB_HOST, DB_PORT, DB_NAME),
+        DB_USER, DB_PASS,
+        [
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES   => false,
+        ]
     );
-    $pdo = new PDO($dsn, DB_USER, DB_PASS, [
-        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES   => false,
-    ]);
+    $pdo->exec("SET client_encoding = 'UTF8'");
 } catch (PDOException $e) {
     jsonError(500, 'Ошибка подключения к БД: ' . $e->getMessage());
 }
-// ─────────────────────────────────────────────────────────────────────────────
 
 $method = $_SERVER['REQUEST_METHOD'];
 $id     = isset($_GET['id']) ? (int) $_GET['id'] : null;
 
 switch ($method) {
 
-    // ── GET ──────────────────────────────────────────────────────────────────
+    // ── GET ───────────────────────────────────────────────────────────────────
     case 'GET':
         if ($id !== null) {
-            // Одно мероприятие
             $stmt = $pdo->prepare('SELECT * FROM events WHERE id = ?');
             $stmt->execute([$id]);
-            $event = $stmt->fetch();
-            if (!$event) {
-                jsonError(404, 'Мероприятие не найдено');
-            }
-            jsonOk(formatEvent($event));
+            $row = $stmt->fetch();
+            if (!$row) jsonError(404, 'Мероприятие не найдено');
+            jsonOk(fmt($row));
         } else {
-            // Список с опциональными фильтрами
-            [$sql, $params] = buildListQuery($_GET);
+            [$sql, $params] = buildQuery($_GET);
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
-            $rows = $stmt->fetchAll();
-            jsonOk(array_map('formatEvent', $rows));
+            jsonOk(array_map('fmt', $stmt->fetchAll()));
         }
         break;
 
-    // ── POST ─────────────────────────────────────────────────────────────────
+    // ── POST ──────────────────────────────────────────────────────────────────
     case 'POST':
-        $data = jsonBody();
-        validateRequired($data, ['title', 'date']);
+        $d = jsonBody();
+        required($d, ['title', 'date']);
 
         $stmt = $pdo->prepare(
-            'INSERT INTO events (title, description, badge, date, image, link)
-             VALUES (:title, :description, :badge, :date, :image, :link)'
+            'INSERT INTO events (title, description, badge, date, image, image_full)
+             VALUES (:title, :description, :badge, :date, :image, :image_full)
+             RETURNING id'
         );
+        $def = '/favicon.svg';
         $stmt->execute([
-            ':title'       => trim($data['title']),
-            ':description' => isset($data['description']) ? trim($data['description']) : null,
-            ':badge'       => isset($data['badge'])       ? trim($data['badge'])       : null,
-            ':date'        => $data['date'],
-            ':image'       => !empty($data['image']) ? trim($data['image']) : '/src/img/tailwindcss-v4.svg',
-            ':link'        => !empty($data['link'])  ? trim($data['link'])  : '#',
+            ':title'       => trim($d['title']),
+            ':description' => isset($d['description']) ? trim($d['description']) : null,
+            ':badge'       => isset($d['badge'])        ? trim($d['badge'])        : null,
+            ':date'        => $d['date'],
+            ':image'       => !empty($d['image'])       ? trim($d['image'])       : $def,
+            ':image_full'  => !empty($d['image_full'])  ? trim($d['image_full'])  : (!empty($d['image']) ? trim($d['image']) : $def),
         ]);
 
-        $newId = (int) $pdo->lastInsertId();
-
+        $newId = (int) $stmt->fetchColumn();
         $stmt2 = $pdo->prepare('SELECT * FROM events WHERE id = ?');
         $stmt2->execute([$newId]);
-
         http_response_code(201);
-        jsonOk(formatEvent($stmt2->fetch()), 'Мероприятие создано');
+        jsonOk(fmt($stmt2->fetch()), 'Мероприятие создано');
         break;
 
-    // ── PUT ──────────────────────────────────────────────────────────────────
+    // ── PUT ───────────────────────────────────────────────────────────────────
     case 'PUT':
-        if (!$id) {
-            jsonError(400, 'Укажите id в параметрах запроса (?id=...)');
-        }
+        if (!$id) jsonError(400, 'Укажите ?id=...');
+        $d = jsonBody();
+        required($d, ['title', 'date']);
 
-        $data = jsonBody();
-        validateRequired($data, ['title', 'date']);
-
-        // Проверяем существование записи
-        $check = $pdo->prepare('SELECT id FROM events WHERE id = ?');
-        $check->execute([$id]);
-        if (!$check->fetch()) {
-            jsonError(404, 'Мероприятие не найдено');
-        }
+        $cur = $pdo->prepare('SELECT image, image_full FROM events WHERE id = ?');
+        $cur->execute([$id]);
+        $curRow = $cur->fetch();
+        if (!$curRow) jsonError(404, 'Мероприятие не найдено');
 
         $stmt = $pdo->prepare(
             'UPDATE events
-             SET title       = :title,
-                 description = :description,
-                 badge       = :badge,
-                 date        = :date,
-                 image       = :image,
-                 link        = :link
-             WHERE id = :id'
+             SET title=:title, description=:description, badge=:badge,
+                 date=:date, image=:image, image_full=:image_full
+             WHERE id=:id'
         );
         $stmt->execute([
-            ':title'       => trim($data['title']),
-            ':description' => isset($data['description']) ? trim($data['description']) : null,
-            ':badge'       => isset($data['badge'])       ? trim($data['badge'])       : null,
-            ':date'        => $data['date'],
-            ':image'       => !empty($data['image']) ? trim($data['image']) : '/src/img/tailwindcss-v4.svg',
-            ':link'        => !empty($data['link'])  ? trim($data['link'])  : '#',
+            ':title'       => trim($d['title']),
+            ':description' => isset($d['description']) ? trim($d['description']) : null,
+            ':badge'       => isset($d['badge'])        ? trim($d['badge'])        : null,
+            ':date'        => $d['date'],
+            ':image'       => !empty($d['image'])      ? trim($d['image'])      : $curRow['image'],
+            ':image_full'  => !empty($d['image_full']) ? trim($d['image_full']) : $curRow['image_full'],
             ':id'          => $id,
         ]);
 
         $stmt2 = $pdo->prepare('SELECT * FROM events WHERE id = ?');
         $stmt2->execute([$id]);
-        jsonOk(formatEvent($stmt2->fetch()), 'Мероприятие обновлено');
+        jsonOk(fmt($stmt2->fetch()), 'Мероприятие обновлено');
         break;
 
-    // ── DELETE ───────────────────────────────────────────────────────────────
+    // ── DELETE ────────────────────────────────────────────────────────────────
     case 'DELETE':
-        if (!$id) {
-            jsonError(400, 'Укажите id в параметрах запроса (?id=...)');
-        }
-
+        if (!$id) jsonError(400, 'Укажите ?id=...');
         $check = $pdo->prepare('SELECT id FROM events WHERE id = ?');
         $check->execute([$id]);
-        if (!$check->fetch()) {
-            jsonError(404, 'Мероприятие не найдено');
-        }
-
-        $stmt = $pdo->prepare('DELETE FROM events WHERE id = ?');
-        $stmt->execute([$id]);
+        if (!$check->fetch()) jsonError(404, 'Мероприятие не найдено');
+        $pdo->prepare('DELETE FROM events WHERE id = ?')->execute([$id]);
         jsonOk(null, 'Мероприятие удалено');
         break;
 
@@ -197,132 +153,78 @@ switch ($method) {
         jsonError(405, 'Метод не поддерживается');
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// ─── Вспомогательные функции ─────────────────────────────────────────────────
-
-/**
- * Формирует SQL-запрос для GET-списка с поддержкой фильтров:
- *   ?badge=Опрос
- *   ?date_from=2026-03-01&date_to=2026-04-30
- *   ?search=семинар
- *   ?order=date&dir=asc   (по умолчанию: date ASC)
- */
-function buildListQuery(array $get): array
+function buildQuery(array $get): array
 {
-    $conditions = [];
-    $params     = [];
+    $cond   = [];
+    $params = [];
 
     if (!empty($get['search'])) {
-        $conditions[] = '(title LIKE :search OR description LIKE :search)';
+        $cond[] = '(title ILIKE :search OR description ILIKE :search)';
         $params[':search'] = '%' . trim($get['search']) . '%';
     }
 
     if (!empty($get['badge'])) {
-        // Поддержка нескольких значений через запятую: ?badge=Опрос,Праздник
         $badges = array_filter(array_map('trim', explode(',', $get['badge'])));
         if ($badges) {
-            $placeholders = [];
-            foreach ($badges as $i => $b) {
-                $key = ":badge$i";
-                $placeholders[] = $key;
-                $params[$key] = $b;
-            }
-            $conditions[] = 'badge IN (' . implode(', ', $placeholders) . ')';
+            $ph = [];
+            foreach ($badges as $i => $b) { $ph[] = ":b$i"; $params[":b$i"] = $b; }
+            $cond[] = 'badge IN (' . implode(',', $ph) . ')';
         }
     }
 
-    if (!empty($get['date_from'])) {
-        $conditions[] = 'date >= :date_from';
-        $params[':date_from'] = $get['date_from'];
-    }
+    if (!empty($get['date_from'])) { $cond[] = 'date >= :date_from'; $params[':date_from'] = $get['date_from']; }
+    if (!empty($get['date_to']))   { $cond[] = 'date <= :date_to';   $params[':date_to']   = $get['date_to'];   }
 
-    if (!empty($get['date_to'])) {
-        $conditions[] = 'date <= :date_to';
-        $params[':date_to'] = $get['date_to'];
-    }
+    $allowed = ['date', 'title', 'created_at', 'badge'];
+    $order   = in_array($get['order'] ?? '', $allowed, true) ? $get['order'] : 'date';
+    $dir     = strtolower($get['dir'] ?? '') === 'desc' ? 'DESC' : 'ASC';
 
-    $allowedOrder = ['date', 'title', 'created_at', 'badge'];
-    $orderBy      = in_array($get['order'] ?? '', $allowedOrder, true) ? $get['order'] : 'date';
-    $dir          = strtolower($get['dir'] ?? '') === 'desc' ? 'DESC' : 'ASC';
-
-    $sql = 'SELECT * FROM events';
-    if ($conditions) {
-        $sql .= ' WHERE ' . implode(' AND ', $conditions);
-    }
-    $sql .= " ORDER BY $orderBy $dir";
-
+    $sql = 'SELECT * FROM events' . ($cond ? ' WHERE ' . implode(' AND ', $cond) : '') . " ORDER BY $order $dir";
     return [$sql, $params];
 }
 
-/**
- * Приводит строку БД к формату, ожидаемому фронтендом.
- * Поле `link` → `to` (BlogPostProps), числа — к int.
- */
-function formatEvent(array $row): array
+function fmt(array $r): array
 {
     return [
-        'id'          => (int) $row['id'],
-        'title'       => $row['title'],
-        'description' => $row['description'] ?? '',
-        'badge'       => $row['badge'] ?? null,
-        'date'        => $row['date'],           // формат YYYY-MM-DD
-        'image'       => $row['image'],
-        'to'          => $row['link'],            // фронтенд ожидает `to`
-        'link'        => $row['link'],            // дублируем для удобства
-        'created_at'  => $row['created_at'],
-        'updated_at'  => $row['updated_at'],
+        'id'          => (int) $r['id'],
+        'title'       => $r['title'],
+        'description' => $r['description'] ?? '',
+        'badge'       => $r['badge'] ?? null,
+        'date'        => $r['date'],
+        'image'       => $r['image'],
+        'image_full'  => $r['image_full'],
+        'created_at'  => $r['created_at'],
+        'updated_at'  => $r['updated_at'],
     ];
 }
 
-/**
- * Читает и декодирует тело запроса как JSON.
- */
 function jsonBody(): array
 {
     $raw = file_get_contents('php://input');
-    if (!$raw) {
-        jsonError(400, 'Тело запроса пустое');
-    }
+    if (!$raw) jsonError(400, 'Тело запроса пустое');
     $data = json_decode($raw, true);
-    if (!is_array($data)) {
-        jsonError(400, 'Некорректный JSON');
-    }
+    if (!is_array($data)) jsonError(400, 'Некорректный JSON');
     return $data;
 }
 
-/**
- * Проверяет наличие обязательных полей.
- */
-function validateRequired(array $data, array $fields): void
+function required(array $data, array $fields): void
 {
-    foreach ($fields as $field) {
-        if (empty($data[$field])) {
-            jsonError(422, "Поле «$field» обязательно");
-        }
+    foreach ($fields as $f) {
+        if (empty($data[$f])) jsonError(422, "Поле «$f» обязательно");
     }
 }
 
-/**
- * Отправляет успешный JSON-ответ.
- */
-function jsonOk(mixed $data, string $message = 'OK'): never
+function jsonOk(mixed $data, string $msg = 'OK'): never
 {
-    echo json_encode(
-        ['success' => true, 'message' => $message, 'data' => $data],
-        JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
-    );
+    echo json_encode(['success' => true, 'message' => $msg, 'data' => $data], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
 
-/**
- * Отправляет JSON с ошибкой и нужным HTTP-кодом.
- */
-function jsonError(int $code, string $message): never
+function jsonError(int $code, string $msg): never
 {
     http_response_code($code);
-    echo json_encode(
-        ['success' => false, 'message' => $message, 'data' => null],
-        JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
-    );
+    echo json_encode(['success' => false, 'message' => $msg, 'data' => null], JSON_UNESCAPED_UNICODE);
     exit;
 }
