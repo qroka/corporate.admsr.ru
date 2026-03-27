@@ -4,13 +4,12 @@ import { useRoute, useRouter } from 'vue-router';
 import { useGalleryData } from '../../composables/useGalleryData';
 import { useAppToast } from '../../composables/useAppToast';
 import UContentSurround from '../../components/UContentSurround.vue';
+import { currentRole } from '../../stores/role';
 
 type Photo = {
   id: string;
   thumbSrc: string;
   fullSrc: string;
-  title?: string;
-  description?: string;
 };
 
 const route = useRoute();
@@ -18,7 +17,15 @@ const router = useRouter();
 
 const albumId = computed(() => String(route.params.albumId ?? ''));
 
-const { loading: galleryLoading, error: galleryError, getAlbum, buildPhotoMeta, ensureLoaded, albums } = useGalleryData();
+const {
+  loading: galleryLoading,
+  error: galleryError,
+  getAlbum,
+  ensureLoaded,
+  albums,
+  updateAlbum,
+  removeAlbum,
+} = useGalleryData();
 ensureLoaded();
 
 const { toast } = useAppToast();
@@ -39,6 +46,62 @@ watch(
 const album = computed(() => getAlbum(albumId.value));
 const albumTitle = computed(() => album.value.title);
 const albumDescription = computed(() => album.value.description);
+const isAdmin = computed(() => currentRole.value === 'admin');
+
+const editOpen = ref(false);
+const editSubmitting = ref(false);
+const editError = ref<string | null>(null);
+const editState = ref({
+  title: '',
+  description: '',
+  date: '',
+});
+const editFiles = ref<File[] | undefined>(undefined);
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(new Error('Не удалось прочитать файл'));
+    reader.readAsDataURL(file);
+  });
+}
+
+const deleteConfirmOpen = ref(false);
+const deleteSubmitting = ref(false);
+const deleteError = ref<string | null>(null);
+
+const headerLinks = computed(() => {
+  if (!isAdmin.value) return [];
+  return [
+    {
+      label: 'Редактировать',
+      color: 'neutral',
+      variant: 'outline',
+      size: 'xl',
+      onClick: () => {
+        editState.value = {
+          title: album.value.title ?? '',
+          description: album.value.description ?? '',
+          date: album.value.date ?? '',
+        };
+        editFiles.value = undefined;
+        editError.value = null;
+        editOpen.value = true;
+      },
+    },
+    {
+      label: 'Удалить',
+      color: 'error',
+      variant: 'outline',
+      size: 'xl',
+      onClick: () => {
+        deleteError.value = null;
+        deleteConfirmOpen.value = true;
+      },
+    },
+  ];
+});
 
 const isKiosk = computed(() => route.matched?.some((r) => r.meta?.kiosk));
 const sortedAlbums = computed(() => {
@@ -88,18 +151,27 @@ function numericKey(path: string) {
 }
 
 const items = computed<Photo[]>(() => {
+  const linkedPhotos = Array.isArray((album.value as any)?.photoLinks)
+    ? ((album.value as any).photoLinks as string[]).filter((s) => String(s ?? '').trim().length > 0)
+    : [];
+
+  if (linkedPhotos.length) {
+    return linkedPhotos.map((src, index) => ({
+      id: `link-${index + 1}`,
+      thumbSrc: src,
+      fullSrc: src,
+    }));
+  }
+
   return Object.entries(thumbModules)
     .sort(([a], [b]) => numericKey(a) - numericKey(b))
     .map(([path, src], index) => {
       const filename = path.split('/').pop() ?? `photo-${index + 1}`;
       const fullSrc = (fullByName.get(filename) as string | undefined) ?? src;
-      const n = index + 1;
-      const meta = buildPhotoMeta(albumId.value, n);
       return {
         id: filename,
         thumbSrc: src,
         fullSrc,
-        ...(meta as any),
       };
     });
 });
@@ -130,12 +202,62 @@ const modalOpen = computed({
 function openPhoto(p: Photo) {
   selected.value = p;
 }
+
+async function handleEditSubmit() {
+  if (!albumId.value) return;
+  if (!editState.value.title.trim()) {
+    editError.value = 'Заполните название альбома.';
+    return;
+  }
+  editSubmitting.value = true;
+  editError.value = null;
+  try {
+    const nextPhotoLinks =
+      editFiles.value?.length
+        ? await Promise.all(editFiles.value.map((f) => fileToDataUrl(f)))
+        : undefined;
+    const nextCover = nextPhotoLinks?.[0];
+
+    updateAlbum(albumId.value, {
+      title: editState.value.title.trim(),
+      description: editState.value.description.trim(),
+      date: editState.value.date.trim(),
+      ...(nextPhotoLinks ? { photoLinks: nextPhotoLinks } : {}),
+      ...(nextCover ? { image: nextCover } : {}),
+    });
+    editOpen.value = false;
+    toast.add({
+      title: 'Альбом обновлен',
+      color: 'success',
+      icon: 'i-lucide-check-circle',
+    });
+  } catch (e: any) {
+    editError.value = e?.message ?? 'Ошибка при сохранении';
+  } finally {
+    editSubmitting.value = false;
+  }
+}
+
+async function handleDelete() {
+  if (!albumId.value) return;
+  deleteSubmitting.value = true;
+  deleteError.value = null;
+  try {
+    removeAlbum(albumId.value);
+    deleteConfirmOpen.value = false;
+    await router.push(isKiosk.value ? '/kiosk/gallery' : '/gallery');
+  } catch (e: any) {
+    deleteError.value = e?.message ?? 'Ошибка при удалении';
+  } finally {
+    deleteSubmitting.value = false;
+  }
+}
 </script>
 
 <template>
   <UMain class="flex flex-col w-full h-full min-h-0 gap-6">
     <UContainer class="flex flex-col gap-4 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0 shrink-0">
-      <UPageHeader class="border-none p-0 w-full">
+      <UPageHeader :links="headerLinks" class="border-none p-0 w-full">
         <template #title>
           <div class="flex items-center gap-3 min-w-0">
             <div class="min-w-0">
@@ -155,53 +277,88 @@ function openPhoto(p: Photo) {
     }" class="flex-1 min-h-0 w-full p-px scrollbar-hide">
       <div class="rounded-xl overflow-hidden bg-elevated ring ring-transparent hover:ring-accented transition w-full">
         <button type="button" class="block w-full" @click="openPhoto(item)">
-          <img :src="item.thumbSrc" :alt="item.title || 'Фотография'" :loading="index > 8 ? 'lazy' : 'eager'"
+          <img :src="item.thumbSrc" alt="Фотография" :loading="index > 8 ? 'lazy' : 'eager'"
             decoding="async" class="block w-full h-auto">
         </button>
-
-
-        <!-- Метаданные как на макете: просто блок под фото -->
-        <div v-if="item.title || item.description" class="border-t border-muted px-5 py-5">
-          <h3 v-if="item.title" class="text-xl font-semibold text-highlighted leading-tight">
-            {{ item.title }}
-          </h3>
-          <p v-if="item.description" class="mt-3 text-base text-muted whitespace-pre-line">
-            {{ item.description }}
-          </p>
-        </div>
       </div>
     </UScrollArea>
 
-    <UModal v-model:open="modalOpen" class="w-[96vw] max-w-7xl h-[88vh] p-0"
-      :ui="{ content: 'p-0', header: 'p-0', body: 'p-0', footer: 'p-0' }">
-      <template #content="{ close }">
-        <div v-if="selected" class="flex h-full w-full min-h-0"
-          :class="(selected.title || selected.description) ? '' : 'bg-elevated/50'">
-          <!-- body (слева) -->
-          <div class="flex-1 min-w-0 min-h-0 p-4 flex items-center justify-center bg-elevated/50">
-            <img :src="selected.fullSrc" :alt="selected.title || 'Фотография'"
-              class="max-h-full max-w-full w-auto h-auto object-contain rounded-lg" decoding="async" />
-          </div>
+    <UModal
+      v-model:open="modalOpen"
+      class="w-[96vw] max-w-7xl h-[88vh] p-0"
+      :ui="{ content: 'p-0', header: 'p-0', body: 'p-0', footer: 'p-0' }"
+    >
+      <template #content>
+        <img
+          v-if="selected"
+          :src="selected.fullSrc"
+          alt="Фотография"
+          class="block h-[88vh] w-full object-contain"
+          decoding="async"
+        />
+      </template>
+    </UModal>
 
-          <!-- если нет метаданных — показываем только картинку -->
-          <div v-if="selected.title || selected.description"
-            class="w-96 shrink-0 min-h-0 border-l border-muted bg-default p-6 flex flex-col gap-4">
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <h2 class="text-lg font-semibold text-highlighted truncate">
-                  {{ selected.title || 'Без названия' }}
-                </h2>
-              </div>
-              <UButton type="button" color="neutral" variant="ghost" icon="i-lucide-x" square @click="close()" />
-            </div>
-            <p v-if="selected.description" class="text-sm text-muted whitespace-pre-line">
-              {{ selected.description }}
-            </p>
-          </div>
+    <USlideover
+      v-model:open="editOpen"
+      side="right"
+      title="Редактирование альбома"
+      description="Измените данные альбома"
+    >
+      <template #body>
+        <UForm :state="editState" class="space-y-4" @submit.prevent="handleEditSubmit">
+          <UFormField label="Название" name="title" required>
+            <UInput v-model="editState.title" size="lg" placeholder="Название альбома" />
+          </UFormField>
+          <UFormField label="Описание" name="description">
+            <UTextarea v-model="editState.description" size="lg" :rows="4" placeholder="Описание альбома" />
+          </UFormField>
+          <UFormField label="Дата" name="date">
+            <UInput v-model="editState.date" size="lg" placeholder="YYYY-MM-DD" />
+          </UFormField>
+          <UFormField label="Заменить фотографии" name="editFiles">
+            <UFileUpload
+              v-model="editFiles"
+              multiple
+              label="Перетащите фото сюда"
+              description="Оставьте пустым, если не нужно менять текущие фотографии"
+              class="w-full min-h-48"
+            />
+          </UFormField>
+          <p v-if="editError" class="text-sm text-error">{{ editError }}</p>
+        </UForm>
+      </template>
+      <template #footer>
+        <div class="flex justify-between gap-3 items-center w-full">
+          <UButton color="neutral" variant="outline" size="xl" class="w-full justify-center" @click="editOpen = false">
+            Отмена
+          </UButton>
+          <UButton size="xl" class="w-full justify-center" :loading="editSubmitting" @click="handleEditSubmit">
+            Сохранить
+          </UButton>
+        </div>
+      </template>
+    </USlideover>
 
-          <!-- кнопка закрытия, когда показываем только картинку -->
-          <UButton v-else type="button" color="neutral" variant="ghost" icon="i-lucide-x" square
-            class="absolute top-3 right-3" @click="close()" />
+    <UModal
+      v-model:open="deleteConfirmOpen"
+      title="Удалить альбом?"
+      description="Подтвердите удаление альбома"
+    >
+      <template #body>
+        <p class="text-default">
+          Вы уверены, что хотите удалить <strong>«{{ albumTitle }}»</strong>? Это действие нельзя отменить.
+        </p>
+        <p v-if="deleteError" class="mt-2 text-sm text-error">{{ deleteError }}</p>
+      </template>
+      <template #footer>
+        <div class="flex gap-3 justify-end w-full">
+          <UButton color="neutral" variant="outline" size="lg" @click="deleteConfirmOpen = false">
+            Отмена
+          </UButton>
+          <UButton color="error" size="lg" :loading="deleteSubmitting" @click="handleDelete">
+            Удалить
+          </UButton>
         </div>
       </template>
     </UModal>

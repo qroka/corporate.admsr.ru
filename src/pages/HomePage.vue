@@ -32,7 +32,7 @@ const newsLinks = <ButtonProps[]>([
 const birthdayLinks = <ButtonProps[]>([
   {
     icon: 'i-lucide-arrow-up-right',
-    to: '/profile',
+    to: '/birthdays',
     size: 'xl',
     color: 'neutral',
     variant: 'outline',

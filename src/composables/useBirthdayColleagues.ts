@@ -101,6 +101,22 @@ export type BirthdayGroup = {
   people: BirthdayPerson[];
 };
 
+export type UpcomingBirthdayItem = {
+  person: BirthdayPerson;
+  daysUntil: number;
+  dateLabel: string;
+};
+
+function nextOccurrenceOfMonthDay(md: { m: number; d: number }, from: Date): Date {
+  const y = from.getFullYear();
+  let t = new Date(y, md.m - 1, md.d);
+  t.setHours(0, 0, 0, 0);
+  const cur = new Date(from);
+  cur.setHours(0, 0, 0, 0);
+  if (t < cur) t = new Date(y + 1, md.m - 1, md.d);
+  return t;
+}
+
 function formatCalendarDayTitle(d: Date): string {
   return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
 }
@@ -144,6 +160,11 @@ function buildBirthdayGroups(users: RawUserForBirthday[]): BirthdayGroup[] {
   return groups;
 }
 
+/** Ключ месяц-день (1–12, 1–31) для сопоставления с ячейками календаря */
+function monthDayKey(m: number, d: number): string {
+  return `${m}-${d}`;
+}
+
 const sharedLoading = ref(false);
 const sharedError = ref<string | null>(null);
 const sharedUsers = ref<RawUserForBirthday[]>([]);
@@ -152,6 +173,44 @@ let sharedPromise: Promise<void> | null = null;
 
 export function useBirthdayColleagues() {
   const birthdayGroups = computed(() => buildBirthdayGroups(sharedUsers.value));
+
+  /** Именинники по ключу `${month}-${day}` (месяц и день как в календаре) */
+  const byMonthDay = computed(() => {
+    const map: Record<string, RawUserForBirthday[]> = {};
+    for (const u of sharedUsers.value) {
+      const k = monthDayKey(u.md.m, u.md.d);
+      if (!map[k]) map[k] = [];
+      map[k].push(u);
+    }
+    for (const k of Object.keys(map)) {
+      map[k].sort((a, b) => a.fio.localeCompare(b.fio, 'ru'));
+    }
+    return map;
+  });
+
+  const birthdayColleaguesCount = computed(() => sharedUsers.value.length);
+
+  const upcomingBirthdays = computed((): UpcomingBirthdayItem[] => {
+    const from = new Date();
+    from.setHours(0, 0, 0, 0);
+    const items: UpcomingBirthdayItem[] = [];
+    for (const u of sharedUsers.value) {
+      const next = nextOccurrenceOfMonthDay(u.md, from);
+      const daysUntil = Math.round((next.getTime() - from.getTime()) / 86400000);
+      items.push({
+        person: {
+          id: `u-${u.id}`,
+          name: u.fio,
+          role: u.positionTitle,
+          avatar: u.avatar,
+        },
+        daysUntil,
+        dateLabel: next.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }),
+      });
+    }
+    items.sort((a, b) => a.daysUntil - b.daysUntil);
+    return items.slice(0, 20);
+  });
 
   async function load() {
     if (sharedLoaded.value) return;
@@ -195,6 +254,9 @@ export function useBirthdayColleagues() {
     loading: sharedLoading,
     error: sharedError,
     birthdayGroups,
+    byMonthDay,
+    upcomingBirthdays,
+    birthdayColleaguesCount,
     ensureLoaded,
   };
 }

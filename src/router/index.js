@@ -21,6 +21,7 @@ import HrDepartmentPage from '../pages/HrDepartmentPage.vue';
 import MunicipalServiceDepartmentPage from '../pages/MunicipalServiceDepartmentPage.vue';
 import DevelopmentMotivationDepartmentPage from '../pages/DevelopmentMotivationDepartmentPage.vue';
 import AdminDashboardPage from '../pages/Admin/AdminDashboardPage.vue';
+import BirthdaysPage from '../pages/BirthdaysPage.vue';
 
 const routes = [
   { path: '/', name: 'home', component: HomePage, meta: { title: 'Главная' } },
@@ -38,6 +39,7 @@ const routes = [
       { path: 'gallery/:albumId', name: 'kiosk-gallery-album', component: GalleryAlbumPage, meta: { title: 'Альбом', kiosk: true } },
       { path: 'newcomers', name: 'kiosk-newcomers', component: NewcomersPage, meta: { title: 'Новичкам', kiosk: true } },
       { path: 'culture', name: 'kiosk-culture', component: CulturePage, meta: { title: 'Корпоративная культура', kiosk: true } },
+      { path: 'birthdays', name: 'kiosk-birthdays', component: BirthdaysPage, meta: { title: 'Дни рождения коллег', kiosk: true } },
       { path: 'profile', name: 'kiosk-profile', component: ProfilePage, meta: { title: 'Профиль', kiosk: true } },
       { path: 'absence-journal', name: 'kiosk-absence-journal', component: AbsenceJournalPage, meta: { title: 'Журнал отсутствия', kiosk: true } },
       { path: 'applications', name: 'kiosk-applications', component: ApplicationsPage, meta: { title: 'Заявки', kiosk: true } },
@@ -63,6 +65,7 @@ const routes = [
   { path: '/gallery/:albumId', name: 'gallery-album', component: GalleryAlbumPage, meta: { title: 'Альбом' } },
   { path: '/newcomers', name: 'newcomers', component: NewcomersPage, meta: { title: 'Новичкам' } },
   { path: '/culture', name: 'culture', component: CulturePage, meta: { title: 'Корпоративная культура' } },
+  { path: '/birthdays', name: 'birthdays', component: BirthdaysPage, meta: { title: 'Дни рождения коллег' } },
   { path: '/profile', name: 'profile', component: ProfilePage, meta: { title: 'Профиль' } },
   { path: '/absence-journal', name: 'absence-journal', component: AbsenceJournalPage, meta: { title: 'Журнал отсутствия' } },
   { path: '/applications', name: 'applications', component: ApplicationsPage, meta: { title: 'Заявки' } },
@@ -90,6 +93,7 @@ const kioskRouteNameByName = {
   'gallery-album': 'kiosk-gallery-album',
   newcomers: 'kiosk-newcomers',
   culture: 'kiosk-culture',
+  birthdays: 'kiosk-birthdays',
   profile: 'kiosk-profile',
   'absence-journal': 'kiosk-absence-journal',
   applications: 'kiosk-applications',

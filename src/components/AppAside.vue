@@ -57,6 +57,21 @@ const isNewsActive = () =>
           />
         </UTooltip>
 
+        <UTooltip arrow :content="{side: 'right'}" text="Дни рождения коллег">
+          <UButton
+            type="button"
+            color="neutral"
+            square
+            class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
+            :class="route.name === 'birthdays'
+              ? 'z-10 bg-primary text-neutral-50 shadow-none dark:shadow-brand [&_svg]:text-neutral-50 hover:bg-primary hover:text-neutral-50 active:bg-primary active:text-neutral-50 active:[&_svg]:text-neutral-50'
+              : ''"
+            size="xl"
+            icon="i-lucide-cake"
+            @click="navigate('birthdays')"
+          />
+        </UTooltip>
+
         <UTooltip arrow :content="{side: 'right'}" text="Заявки">
           <UButton
             type="button"
