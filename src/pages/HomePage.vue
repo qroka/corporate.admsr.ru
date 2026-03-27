@@ -5,6 +5,7 @@ import type { BlogPostProps } from '@nuxt/ui'
 import { useRouter } from 'vue-router';
 import { useNewsData, formatUnixDate, resolveNewsImageSrc, stripHtmlToText } from '../composables/useNewsData';
 import { useEventsData } from '../composables/useEventsData';
+import { useBirthdayColleagues } from '../composables/useBirthdayColleagues';
 
 const eventsLinks = <ButtonProps[]>([
   {
@@ -149,55 +150,9 @@ function formatViews(n: number) {
   return n.toLocaleString('ru-RU');
 }
 
-type BirthdayPerson = {
-  id: string;
-  name: string;
-  role: string;
-  avatar: string;
-};
-
-type BirthdayGroup = {
-  id: string;
-  dateLabel: string;
-  dayLabel: string;
-  dayColor: 'primary' | 'neutral';
-  people: BirthdayPerson[];
-};
-
-const birthdayGroups = <BirthdayGroup[]>[
-  {
-    id: 'bday-today',
-    dateLabel: '12 марта',
-    dayLabel: 'Сегодня',
-    dayColor: 'primary',
-    people: [
-      { id: 'p1', name: 'Константинопольский Константин', role: 'Инженер', avatar: '/src/img/sticker 1.png' },
-      { id: 'p2', name: 'Константинопольский Константин', role: 'Инженер', avatar: '/src/img/sticker 1.png' },
-      { id: 'p3', name: 'Константинопольский Константин', role: 'Инженер', avatar: '/src/img/sticker 1.png' },
-      { id: 'p4', name: 'Константинопольский Константин', role: 'Инженер', avatar: '/src/img/sticker 1.png' },
-    ],
-  },
-  {
-    id: 'bday-tomorrow',
-    dateLabel: '13 марта',
-    dayLabel: 'Завтра',
-    dayColor: 'neutral',
-    people: [
-      { id: 'p5', name: 'Константинопольский Константин', role: 'Инженер', avatar: '/src/img/sticker 1.png' },
-      { id: 'p6', name: 'Константинопольский Константин', role: 'Инженер', avatar: '/src/img/sticker 1.png' },
-    ],
-  },
-  {
-    id: 'bday-after-tomorrow',
-    dateLabel: '14 марта',
-    dayLabel: 'Послезавтра',
-    dayColor: 'neutral',
-    people: [
-      { id: 'p7', name: 'Константинопольский Константин', role: 'Инженер', avatar: '/src/img/sticker 1.png' },
-      { id: 'p8', name: 'Константинопольский Константин', role: 'Инженер', avatar: '/src/img/sticker 1.png' },
-    ],
-  },
-];
+const { birthdayGroups, loading: birthdaysLoading, error: birthdaysError, ensureLoaded: ensureBirthdaysLoaded } =
+  useBirthdayColleagues();
+ensureBirthdaysLoaded();
 
 </script>
 
@@ -278,17 +233,22 @@ const birthdayGroups = <BirthdayGroup[]>[
         </template>
       </UPageHeader>
       <UContainer class="overflow-y-auto sm:p-px md:p-px lg:p-px xl:p-px scrollbar-hide">
-        <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-fit">
+        <UContainer v-if="birthdaysLoading" class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-fit">
+          <USkeleton v-for="n in 3" :key="n" class="h-32 w-96 rounded-lg" />
+        </UContainer>
+        <p v-else-if="birthdaysError" class="text-sm text-error max-w-96">
+          {{ birthdaysError }}
+        </p>
+        <UContainer v-else class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-fit">
           <UCard
             v-for="group in birthdayGroups"
             :key="group.id"
           >
-
             <UContainer class="flex flex-col gap-4 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-fit">
               <UContainer class="flex items-center gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0">
-                <h1 class="text-2xl font-medium leading-none text-highlighted">
+                <h2 class="text-2xl font-medium leading-none text-highlighted">
                   {{ group.dateLabel }}
-                </h1>
+                </h2>
                 <UBadge
                   :color="group.dayColor"
                   :variant="group.dayLabel === 'Сегодня' ? 'solid' : 'subtle'"
@@ -296,6 +256,9 @@ const birthdayGroups = <BirthdayGroup[]>[
                   :label="group.dayLabel"
                 />
               </UContainer>
+              <p v-if="!group.people.length" class="text-sm text-muted max-w-96">
+                В этот день никого нет
+              </p>
               <UContainer
                 v-for="person in group.people"
                 :key="person.id"

@@ -1,0 +1,200 @@
+import { computed, ref } from 'vue';
+import { resolveNewsImageSrc } from './useNewsData';
+
+function extractTableData(exportJson: unknown, tableName: string): Record<string, unknown>[] {
+  if (!Array.isArray(exportJson)) return [];
+  for (const item of exportJson) {
+    if (item && typeof item === 'object') {
+      const maybe = item as { type?: string; name?: string; data?: unknown[] };
+      if (maybe.type === 'table' && maybe.name === tableName && Array.isArray(maybe.data)) {
+        return maybe.data as Record<string, unknown>[];
+      }
+    }
+  }
+  return [];
+}
+
+const PLACEHOLDER_AVATAR = '/src/img/sticker 1.png';
+
+function parseBirthMonthDay(s: unknown): { m: number; d: number } | null {
+  if (s == null) return null;
+  const str = String(s).trim();
+  if (!str || str === '0000-00-00') return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str);
+  if (!m) return null;
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return { m: month, d: day };
+}
+
+function resolveUserAvatarSrc(raw: unknown): string {
+  const p = String(raw ?? '')
+    .replace(/\\/g, '/')
+    .trim();
+  if (!p || p.toLowerCase().includes('no-avatar')) return PLACEHOLDER_AVATAR;
+  const abs = resolveNewsImageSrc(p);
+  return abs ?? PLACEHOLDER_AVATAR;
+}
+
+type RawUserForBirthday = {
+  id: number;
+  fio: string;
+  md: { m: number; d: number };
+  avatar: string;
+  /** Должность из `office_seats.title` по `users.pos` = `office_seats.id` */
+  positionTitle: string;
+};
+
+function buildSeatTitleById(seatRows: Record<string, unknown>[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const row of seatRows) {
+    const id = String(row.id ?? '').trim();
+    if (!id) continue;
+    const title = String(row.title ?? '')
+      .replace(/\t/g, '')
+      .trim();
+    if (title) map.set(id, title);
+  }
+  return map;
+}
+
+function positionFromPos(posRaw: unknown, seatTitles: Map<string, string>): string {
+  const key = String(posRaw ?? '').trim();
+  if (!key || key === '0' || key === '-1') return 'Сотрудник';
+  return seatTitles.get(key) ?? 'Сотрудник';
+}
+
+function mapRows(rows: Record<string, unknown>[], seatTitles: Map<string, string>): RawUserForBirthday[] {
+  const out: RawUserForBirthday[] = [];
+  for (const r of rows) {
+    if (String(r.active ?? '0') !== '1') continue;
+    const id = Number(r.id);
+    if (!Number.isFinite(id) || id <= 0) continue;
+    const md = parseBirthMonthDay(r.birthdate);
+    if (!md) continue;
+    const fio = String(r.fio ?? '').trim();
+    if (!fio) continue;
+    out.push({
+      id,
+      fio,
+      md,
+      avatar: resolveUserAvatarSrc(r.avatar),
+      positionTitle: positionFromPos(r.pos, seatTitles),
+    });
+  }
+  return out;
+}
+
+export type BirthdayPerson = {
+  id: string;
+  name: string;
+  role: string;
+  avatar: string;
+};
+
+export type BirthdayGroup = {
+  id: string;
+  dateLabel: string;
+  dayLabel: string;
+  dayColor: 'primary' | 'neutral';
+  people: BirthdayPerson[];
+};
+
+function formatCalendarDayTitle(d: Date): string {
+  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+}
+
+function buildBirthdayGroups(users: RawUserForBirthday[]): BirthdayGroup[] {
+  const base = new Date();
+  base.setHours(0, 0, 0, 0);
+
+  const dayLabels = ['Сегодня', 'Завтра', 'Послезавтра'] as const;
+  const colors: ('primary' | 'neutral')[] = ['primary', 'neutral', 'neutral'];
+
+  const groups: BirthdayGroup[] = [];
+
+  for (let i = 0; i < 3; i++) {
+    const d = new Date(base);
+    d.setDate(base.getDate() + i);
+    const m = d.getMonth() + 1;
+    const day = d.getDate();
+
+    const people = users
+      .filter((u) => u.md.m === m && u.md.d === day)
+      .sort((a, b) => a.fio.localeCompare(b.fio, 'ru'))
+      .map(
+        (u): BirthdayPerson => ({
+          id: `u-${u.id}`,
+          name: u.fio,
+          role: u.positionTitle,
+          avatar: u.avatar,
+        }),
+      );
+
+    groups.push({
+      id: `bday-offset-${i}`,
+      dateLabel: formatCalendarDayTitle(d),
+      dayLabel: dayLabels[i],
+      dayColor: colors[i],
+      people,
+    });
+  }
+
+  return groups;
+}
+
+const sharedLoading = ref(false);
+const sharedError = ref<string | null>(null);
+const sharedUsers = ref<RawUserForBirthday[]>([]);
+const sharedLoaded = ref(false);
+let sharedPromise: Promise<void> | null = null;
+
+export function useBirthdayColleagues() {
+  const birthdayGroups = computed(() => buildBirthdayGroups(sharedUsers.value));
+
+  async function load() {
+    if (sharedLoaded.value) return;
+    if (sharedPromise) return sharedPromise;
+
+    sharedLoading.value = true;
+    sharedError.value = null;
+
+    sharedPromise = (async () => {
+      try {
+        const [usersRes, seatsRes] = await Promise.all([
+          fetch('/data/users.json', { cache: 'force-cache' }),
+          fetch('/data/office_seats.json', { cache: 'force-cache' }),
+        ]);
+        if (!usersRes.ok) throw new Error(`Не удалось загрузить users.json (${usersRes.status})`);
+        if (!seatsRes.ok) throw new Error(`Не удалось загрузить office_seats.json (${seatsRes.status})`);
+        const usersRaw = await usersRes.json();
+        const seatsRaw = await seatsRes.json();
+        const seatRows = extractTableData(seatsRaw, 'office_seats');
+        const seatTitles = buildSeatTitleById(seatRows);
+        const table = extractTableData(usersRaw, 'users');
+        sharedUsers.value = mapRows(table, seatTitles);
+        sharedLoaded.value = true;
+      } catch (e) {
+        sharedError.value = e instanceof Error ? e.message : 'Ошибка загрузки';
+        sharedUsers.value = [];
+      } finally {
+        sharedLoading.value = false;
+        sharedPromise = null;
+      }
+    })();
+
+    return sharedPromise;
+  }
+
+  function ensureLoaded() {
+    void load();
+  }
+
+  return {
+    loading: sharedLoading,
+    error: sharedError,
+    birthdayGroups,
+    ensureLoaded,
+  };
+}
