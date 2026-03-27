@@ -5,7 +5,6 @@ import type { BlogPostProps } from '@nuxt/ui'
 import { useRouter } from 'vue-router';
 import { useNewsData, formatUnixDate, resolveNewsImageSrc, stripHtmlToText } from '../composables/useNewsData';
 import { useEventsData } from '../composables/useEventsData';
-import { useAppToast } from '../composables/useAppToast';
 
 const eventsLinks = <ButtonProps[]>([
   {
@@ -40,7 +39,7 @@ const birthdayLinks = <ButtonProps[]>([
   },
 ])
 
-/** Карточки «Актуальные события»: без `to` на карточке — кнопки записи в слоте описания (body) */
+/** Карточки «Актуальные события»: клик ведёт на детальную страницу мероприятия */
 type ActualEventItem = {
   id: string;
   eventId: number;
@@ -62,7 +61,6 @@ function eventCoverAt(index: number): string {
 
 const { events, ensureLoaded: ensureEventsLoaded } = useEventsData();
 ensureEventsLoaded();
-const { toast } = useAppToast();
 
 const actualEvents = computed<ActualEventItem[]>(() =>
   events.value
@@ -80,32 +78,6 @@ const actualEvents = computed<ActualEventItem[]>(() =>
       },
     })),
 );
-
-const eventParticipation = ref<Record<string, boolean>>({});
-
-watch(
-  actualEvents,
-  (items) => {
-    const next = { ...eventParticipation.value };
-    for (const item of items) {
-      if (!(item.id in next)) next[item.id] = false;
-    }
-    eventParticipation.value = next;
-  },
-  { immediate: true },
-);
-
-function toggleEventParticipation(eventId: string) {
-  const wasJoined = !!eventParticipation.value[eventId];
-  eventParticipation.value = { ...eventParticipation.value, [eventId]: !wasJoined };
-
-  toast.add({
-    title: wasJoined ? 'Запись отменена' : 'Вы записались на мероприятие',
-    description: wasJoined ? 'Вы больше не в списке участников (демо).' : 'Добавили вас в список участников (демо).',
-    color: 'success',
-    icon: 'i-lucide-circle-check',
-  });
-}
 
 function openEventDetails(eventId: number) {
   void router.push(`/events/${eventId}`);
@@ -245,34 +217,7 @@ const birthdayGroups = <BirthdayGroup[]>[
             v-bind="item.post"
             class="w-full cursor-pointer"
             @click="openEventDetails(item.eventId)"
-          >
-            <template #description>
-              <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0">
-                <p class="text-base text-pretty text-muted">
-                  {{ item.post.description }}
-                </p>
-                <UButton
-                  v-if="!eventParticipation[item.id]"
-                  color="primary"
-                  size="lg"
-                  class="w-full justify-center rounded-full"
-                  @click.stop.prevent="toggleEventParticipation(item.id)"
-                >
-                  Записаться на мероприятие
-                </UButton>
-                <UButton
-                  v-else
-                  color="primary"
-                  variant="soft"
-                  size="lg"
-                  class="w-full justify-center rounded-full"
-                  @click.stop.prevent="toggleEventParticipation(item.id)"
-                >
-                  Отписаться от мероприятия
-                </UButton>
-              </UContainer>
-            </template>
-          </UBlogPost>
+          />
         </UContainer>
       </UContainer>
     </UContainer>
