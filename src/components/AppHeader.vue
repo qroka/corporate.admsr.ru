@@ -38,8 +38,9 @@ watch(
 
 <template>
   <header class="flex items-center h-fit justify-between w-full gap-3 min-w-0 p-0">
-    <RouterLink :to="{ name: 'home' }"
-      class="group bg-elevated flex p-3 pr-5 rounded-full">
+    <UTooltip arrow :content="{ side: 'bottom' }" text="На главную">
+      <RouterLink :to="{ name: 'home' }"
+        class="group bg-elevated flex p-3 pr-5 rounded-full">
       <UContainer class="header-logo flex items-center gap-1.5 sm:p-0 md:p-0 lg:p-0 xl:p-0">
         <UContainer class="relative w-10 h-10 sm:p-0 md:p-0 lg:p-0 xl:p-0">
           <svg :class="[
@@ -52,7 +53,7 @@ watch(
           <svg :class="[
             'overflow-visible absolute w-10 h-10 transition-all duration-300 ease-out',
             isDark
-              ? 'group-hover:[filter:drop-shadow(0_0_10px_currentColor)_drop-shadow(0_0_5px_currentColor)_drop-shadow(0_0_1px_currentColor)]'
+              ? 'group-hover:filter-[drop-shadow(0_0_10px_currentColor)_drop-shadow(0_0_5px_currentColor)_drop-shadow(0_0_1px_currentColor)]'
               : '',
             'opacity-0 group-hover:opacity-100 fill-primary text-primary'
           ]" viewBox="16 16 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -66,34 +67,51 @@ watch(
         </span>
       </UContainer>
     </RouterLink>
+    </UTooltip>
 
     <UContainer class="header-nav bg-elevated relative rounded-full w-fit gap-0 sm:p-3 md:p-3 lg:p-3 xl:p-3 z-0 mx-0">
-      <UButton type="button" color="neutral"  class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted" :class="activeNav === 'events' ? 'z-10 bg-primary text-zinc-50 shadow-none dark:shadow-brand [&_svg]:text-zinc-50 hover:bg-primary hover:text-zinc-50 active:bg-primary active:text-zinc-50 active:[&_svg]:text-zinc-50' : ''" size="xl" icon="i-lucide-calendar"
-        @click="navigate('events')">
-        Мероприятия
-      </UButton>
-      <UButton type="button" color="neutral"  class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted" :class="activeNav === 'gallery' ? 'z-10 bg-primary text-zinc-50 shadow-none dark:shadow-brand [&_svg]:text-zinc-50 hover:bg-primary hover:text-zinc-50 active:bg-primary active:text-zinc-50 active:[&_svg]:text-zinc-50' : ''" size="xl" icon="i-lucide-images"
-        @click="navigate('gallery')">
-        Фотогалерея
-      </UButton>
-      <UButton type="button" color="neutral"  class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted" :class="activeNav === 'newcomers' ? 'z-10 bg-primary text-zinc-50 shadow-none dark:shadow-brand [&_svg]:text-zinc-50 hover:bg-primary hover:text-zinc-50 active:bg-primary active:text-zinc-50 active:[&_svg]:text-zinc-50' : ''" size="xl" icon="i-lucide-sparkles"
-        @click="navigate('newcomers')">
-        Новичкам
-      </UButton>
-      <UButton type="button" color="neutral"  class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50 [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted" :class="activeNav === 'culture' ? 'z-10 bg-primary text-zinc-50 shadow-none dark:shadow-brand [&_svg]:text-zinc-50 hover:bg-primary hover:text-zinc-50 active:bg-primary active:text-zinc-50 active:[&_svg]:text-zinc-50' : ''" size="xl"
-        @click="navigate('culture')" icon="i-lucide-users">
-        Корпоративная культура
-      </UButton>
+      <UTooltip arrow :content="{ side: 'bottom' }" text="Мероприятия">
+        <UButton type="button" color="neutral" square  class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted" :class="activeNav === 'events' ? 'z-10 bg-primary text-zinc-50 shadow-none dark:shadow-brand [&_svg]:text-zinc-50 hover:bg-primary hover:text-zinc-50 active:bg-primary active:text-zinc-50 active:[&_svg]:text-zinc-50' : ''" size="xl" icon="i-lucide-calendar"
+          @click="navigate('events')">
+          <span class="hidden min-[1600px]:inline">Мероприятия</span>
+        </UButton>
+      </UTooltip>
+      <UTooltip arrow :content="{ side: 'bottom' }" text="Фотогалерея">
+        <UButton type="button" color="neutral" square class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted" :class="activeNav === 'gallery' ? 'z-10 bg-primary text-zinc-50 shadow-none dark:shadow-brand [&_svg]:text-zinc-50 hover:bg-primary hover:text-zinc-50 active:bg-primary active:text-zinc-50 active:[&_svg]:text-zinc-50' : ''" size="xl" icon="i-lucide-images"
+          @click="navigate('gallery')">
+          <span class="hidden min-[1600px]:inline">Фотогалерея</span>
+        </UButton>
+      </UTooltip>
+      <UTooltip arrow :content="{ side: 'bottom' }" text="Новичкам">
+        <UButton type="button" color="neutral" square  class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted" :class="activeNav === 'newcomers' ? 'z-10 bg-primary text-zinc-50 shadow-none dark:shadow-brand [&_svg]:text-zinc-50 hover:bg-primary hover:text-zinc-50 active:bg-primary active:text-zinc-50 active:[&_svg]:text-zinc-50' : ''" size="xl" icon="i-lucide-sparkles"
+          @click="navigate('newcomers')">
+          <span class="hidden min-[1600px]:inline">Новичкам</span>
+        </UButton>
+      </UTooltip>
+      <UTooltip arrow :content="{ side: 'bottom' }" text="Корпоративная культура">
+        <UButton type="button" color="neutral" square  class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50 [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted" :class="activeNav === 'culture' ? 'z-10 bg-primary text-zinc-50 shadow-none dark:shadow-brand [&_svg]:text-zinc-50 hover:bg-primary hover:text-zinc-50 active:bg-primary active:text-zinc-50 active:[&_svg]:text-zinc-50' : ''" size="xl"
+          @click="navigate('culture')" icon="i-lucide-users">
+          <span class="hidden min-[1600px]:inline">Корпоративная культура</span>
+        </UButton>
+      </UTooltip>
     </UContainer>
 
-    <RouterLink :to="{ name: 'profile' }"
-      class="bg-elevated rounded-full py-2.5 pl-3 pr-5">
-      <UUser name="Константин Константинович"     size="xl" class="bg-elevated rounded-full" description="Инженер" :avatar="{
-        src: 'https://i.pravatar.cc/150?u=john-doe',
-        loading: 'lazy',
-        icon: 'i-lucide-image',
-      }" />
-    </RouterLink>
+    <UTooltip arrow :content="{ side: 'bottom' }" text="Профиль">
+      <RouterLink :to="{ name: 'profile' }"
+        class="bg-elevated rounded-full py-2.5 pl-3 pr-5">
+        <UUser
+          name="Константин Константинович"
+          size="xl"
+          class="bg-elevated rounded-full"
+          description="Инженер"
+          :avatar="{
+            src: 'https://i.pravatar.cc/150?u=john-doe',
+            loading: 'lazy',
+            icon: 'i-lucide-image',
+          }"
+        />
+      </RouterLink>
+    </UTooltip>
   </header>
 
 </template>

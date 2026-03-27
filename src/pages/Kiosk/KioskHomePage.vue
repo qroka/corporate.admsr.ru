@@ -152,10 +152,10 @@ function formatViews(n: number) {
 }
 
 const items = [
-  'src/img/EventsWebpFull/event_110_73.webp',
-  'src/img/EventsWebpFull/event_110_73.webp',
-  'src/img/EventsWebpFull/event_110_73.webp',
-  'src/img/EventsWebpFull/event_110_73.webp',
+  'src/img/EventsWebpFull/event_110_1.webp',
+  'src/img/EventsWebpFull/event_110_50.webp',
+  'src/img/EventsWebpFull/event_110_40.webp',
+  'src/img/EventsWebpFull/event_110_70.webp',
 ]
 
 </script>
@@ -163,6 +163,9 @@ const items = [
 <template>
   <UMain class="flex flex-col w-full h-full min-h-0 gap-6">
     <UContainer class="flex flex-col gap-6 w-full min-h-0 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
+      <UCarousel v-slot="{ item }" :autoplay="{ delay: 5000 }" :items="items" class="w-full mx-0">
+        <img :src="item" class="rounded-3xl object-cover w-full h-96" loading="lazy">
+      </UCarousel>
       <UPageHeader  :links="links" class="border-none p-0">
         <template #title>
           <h1 class="text-4xl font-normal font-unbounded">Лента новостей</h1>
@@ -178,7 +181,7 @@ const items = [
             v-bind="post"
             class="w-full rounded-3xl"
             :ui="{
-              header: 'relative overflow-hidden w-full pointer-events-none h-96',
+              header: 'relative overflow-hidden w-full pointer-events-none',
               image: 'object-cover object-center w-full h-full',
             }"
           >

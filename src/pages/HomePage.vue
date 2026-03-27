@@ -2,7 +2,10 @@
 import { computed, ref, watch } from 'vue';
 import type { ButtonProps } from '@nuxt/ui'
 import type { BlogPostProps } from '@nuxt/ui'
+import { useRouter } from 'vue-router';
 import { useNewsData, formatUnixDate, resolveNewsImageSrc, stripHtmlToText } from '../composables/useNewsData';
+import { useEventsData } from '../composables/useEventsData';
+import { useAppToast } from '../composables/useAppToast';
 
 const eventsLinks = <ButtonProps[]>([
   {
@@ -40,45 +43,72 @@ const birthdayLinks = <ButtonProps[]>([
 /** Карточки «Актуальные события»: без `to` на карточке — кнопки записи в слоте описания (body) */
 type ActualEventItem = {
   id: string;
+  eventId: number;
   post: BlogPostProps;
 };
 
-const actualEvents = <ActualEventItem[]>([
-  {
-    id: 'evt-1',
-    post: {
-      title: 'Nuxt Icon v1',
-      description: 'Discover Nuxt Icon v1!',
-      image: 'https://nuxt.com/assets/blog/nuxt-icon/cover.png',
-    },
-  },
-  {
-    id: 'evt-2',
-    post: {
-      title: 'Nuxt 3.14',
-      description: 'Nuxt 3.14 is out!',
-      image: 'https://nuxt.com/assets/blog/v3.14.png',
-    },
-  },
-  {
-    id: 'evt-3',
-    post: {
-      title: 'Nuxt 3.13',
-      description: 'Nuxt 3.13 is out!',
-      image: 'https://nuxt.com/assets/blog/v3.13.png',
-    },
-  },
-]);
+const router = useRouter();
 
-/** Записан ли пользователь на мероприятие (локально, для демо UI) */
-const eventParticipation = ref<Record<string, boolean>>({
-  'evt-1': false,
-  'evt-2': true,
-  'evt-3': false,
+const eventCoverModules = (import.meta as any).glob('../img/EventsWebp/*.webp', {
+  eager: true,
+  import: 'default',
 });
+const eventCoverSrcs = Object.entries(eventCoverModules)
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([, src]) => src as string);
+function eventCoverAt(index: number): string {
+  return eventCoverSrcs.length ? eventCoverSrcs[index % eventCoverSrcs.length] : '/src/img/Logo.svg';
+}
 
-function setParticipation(eventId: string, value: boolean) {
-  eventParticipation.value = { ...eventParticipation.value, [eventId]: value };
+const { events, ensureLoaded: ensureEventsLoaded } = useEventsData();
+ensureEventsLoaded();
+const { toast } = useAppToast();
+
+const actualEvents = computed<ActualEventItem[]>(() =>
+  events.value
+    .filter((e) => String(e.badge ?? '').trim().toLowerCase().includes('нов'))
+    .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? ''), 'ru-RU') || (b.id ?? 0) - (a.id ?? 0))
+    .map((e, idx) => ({
+      id: `evt-${e.id}`,
+      eventId: e.id,
+      post: {
+        title: e.title,
+        description: e.description,
+        image: eventCoverAt(e.coverIndex ?? idx),
+        date: e.date,
+        badge: e.badge,
+      },
+    })),
+);
+
+const eventParticipation = ref<Record<string, boolean>>({});
+
+watch(
+  actualEvents,
+  (items) => {
+    const next = { ...eventParticipation.value };
+    for (const item of items) {
+      if (!(item.id in next)) next[item.id] = false;
+    }
+    eventParticipation.value = next;
+  },
+  { immediate: true },
+);
+
+function toggleEventParticipation(eventId: string) {
+  const wasJoined = !!eventParticipation.value[eventId];
+  eventParticipation.value = { ...eventParticipation.value, [eventId]: !wasJoined };
+
+  toast.add({
+    title: wasJoined ? 'Запись отменена' : 'Вы записались на мероприятие',
+    description: wasJoined ? 'Вы больше не в списке участников (демо).' : 'Добавили вас в список участников (демо).',
+    color: 'success',
+    icon: 'i-lucide-circle-check',
+  });
+}
+
+function openEventDetails(eventId: number) {
+  void router.push(`/events/${eventId}`);
 }
 
 /** Лента новостей: карточка + просмотры; лайк — отдельное состояние */
@@ -93,7 +123,7 @@ const { sortedNews, ensureLoaded: ensureNewsLoaded } = useNewsData();
 ensureNewsLoaded();
 
 const newsItems = computed<NewsItem[]>(() =>
-  sortedNews.value.slice(0, 12).map((n) => {
+  sortedNews.value.map((n) => {
     const imageSrc = resolveNewsImageSrc(n.announceImagePath);
     const date = formatUnixDate(n.timestamp);
     const description = stripHtmlToText(n.shortHtml || n.html).slice(0, 220);
@@ -213,7 +243,8 @@ const birthdayGroups = <BirthdayGroup[]>[
             v-for="item in actualEvents"
             :key="item.id"
             v-bind="item.post"
-            class="w-full"
+            class="w-full cursor-pointer"
+            @click="openEventDetails(item.eventId)"
           >
             <template #description>
               <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0">
@@ -225,7 +256,7 @@ const birthdayGroups = <BirthdayGroup[]>[
                   color="primary"
                   size="lg"
                   class="w-full justify-center rounded-full"
-                  @click="setParticipation(item.id, true)"
+                  @click.stop.prevent="toggleEventParticipation(item.id)"
                 >
                   Записаться на мероприятие
                 </UButton>
@@ -235,7 +266,7 @@ const birthdayGroups = <BirthdayGroup[]>[
                   variant="soft"
                   size="lg"
                   class="w-full justify-center rounded-full"
-                  @click="setParticipation(item.id, false)"
+                  @click.stop.prevent="toggleEventParticipation(item.id)"
                 >
                   Отписаться от мероприятия
                 </UButton>
@@ -245,13 +276,13 @@ const birthdayGroups = <BirthdayGroup[]>[
         </UContainer>
       </UContainer>
     </UContainer>
-    <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0">
+    <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 min-h-0">
       <UPageHeader title="" :links="newsLinks" class="border-none p-0">
         <template #title>
           <h1 class="text-2xl font-medium">Лента новостей</h1>
         </template>
       </UPageHeader>
-      <UContainer class="overflow-y-auto sm:p-px md:p-px lg:p-px xl:p-px scrollbar-hide">
+      <UScrollArea class="flex-1 min-h-0 sm:p-px md:p-px lg:p-px xl:p-px scrollbar-hide">
         <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0">
           <UBlogPost
             v-for="item in newsItems"
@@ -293,7 +324,7 @@ const birthdayGroups = <BirthdayGroup[]>[
             </template>
           </UBlogPost>
         </UContainer>
-      </UContainer>
+      </UScrollArea>
     </UContainer>
     <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-fit">
       <UPageHeader title="" :links="birthdayLinks" class="border-none p-0">

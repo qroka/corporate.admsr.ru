@@ -197,6 +197,10 @@ const sortedPosts = computed(() => {
 
   return list;
 });
+
+function isNewBadge(value: unknown) {
+  return String(value ?? '').trim().toLowerCase().includes('нов');
+}
 </script>
 
 <template>
@@ -237,7 +241,17 @@ const sortedPosts = computed(() => {
     <UContainer class="flex-1 min-h-0 overflow-y-auto sm:p-px max-w-full w-full md:p-px lg:p-px xl:p-px scrollbar-hide mx-0">
       <!-- Список мероприятий -->
       <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-        <UBlogPost v-for="post in sortedPosts" :key="post.id ?? post.title" v-bind="post" class="h-full" />
+        <UBlogPost v-for="post in sortedPosts" :key="post.id ?? post.title" v-bind="post" class="h-full">
+          <template #badge>
+            <UBadge
+              v-if="post.badge"
+              :color="isNewBadge(post.badge) ? 'primary' : 'neutral'"
+              :variant="isNewBadge(post.badge) ? 'solid' : 'subtle'"
+            >
+              {{ post.badge }}
+            </UBadge>
+          </template>
+        </UBlogPost>
       </div>
     </UContainer>
 

@@ -113,7 +113,22 @@ const filtered = computed(() => {
           :key="post.id"
           v-bind="post"
           class="h-full max-w-full w-full"
-        />
+        >
+          <template #title>
+            <h3
+              class="text-base text-pretty font-semibold text-highlighted overflow-hidden [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]"
+            >
+              {{ post.title }}
+            </h3>
+          </template>
+          <template #description>
+            <p
+              class="text-sm text-muted text-pretty overflow-hidden [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]"
+            >
+              {{ post.description }}
+            </p>
+          </template>
+        </UBlogPost>
       </UContainer>
 
       <UEmpty

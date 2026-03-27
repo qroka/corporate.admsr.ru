@@ -39,6 +39,7 @@ watch(
 <template>
   <header class="flex items-center h-fit w-full max-w-none min-w-0 p-0">
     <div class="bg-elevated flex items-center justify-between gap-4 p-6 rounded-3xl w-full min-w-0">
+      <UTooltip arrow :content="{ side: 'bottom' }" text="На главную">
       <RouterLink :to="{ name: 'home' }" class="group min-w-0">
         <UContainer class="header-logo w-fit justify-start flex items-center gap-1.5 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
           <UContainer class="relative w-20 h-20 sm:p-0 md:p-0 lg:p-0 xl:p-0">
@@ -76,9 +77,10 @@ watch(
           </span>
         </UContainer>
       </RouterLink>
+      </UTooltip>
 
       <div class="flex items-center gap-2 shrink-0">
-        <UTooltip :text="isDark ? 'Светлая тема' : 'Тёмная тема'">
+        <UTooltip arrow :content="{ side: 'bottom' }" :text="isDark ? 'Светлая тема' : 'Тёмная тема'">
           <UButton
             type="button"
             color="neutral"

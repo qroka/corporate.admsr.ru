@@ -83,6 +83,14 @@ const badgeOptions = computed(() => badges.value.map((b) => ({ value: b, label: 
 
 const isAdmin = computed(() => currentRole.value === 'admin');
 const isKiosk = computed(() => route.matched?.some((r) => r.meta?.kiosk));
+const isArchivedEvent = computed(() => {
+  const badge = String(event.value?.badge ?? '').trim().toLowerCase();
+  return badge.includes('архив');
+});
+const isNewEvent = computed(() => {
+  const badge = String(event.value?.badge ?? '').trim().toLowerCase();
+  return badge.includes('нов');
+});
 
 const { toast } = useAppToast();
 
@@ -134,6 +142,7 @@ const isJoined = computed(() => {
 function toggleJoin() {
   const id = event.value?.id;
   if (!id) return;
+  if (isArchivedEvent.value) return;
   const wasJoined = isJoined.value;
   const map = getRsvpMap();
   const key = String(id);
@@ -390,7 +399,12 @@ async function handleDelete() {
             <div class="absolute inset-0 bg-linear-to-t from-black/65 via-black/25 to-transparent" />
             <div class="absolute inset-0 p-6 flex flex-col justify-end">
               <div class="flex flex-wrap items-center gap-2 mb-3">
-                <UBadge v-if="event.badge" color="primary" variant="solid" size="md">
+                <UBadge
+                  v-if="event.badge"
+                  :color="isNewEvent ? 'primary' : 'neutral'"
+                  :variant="isNewEvent ? 'solid' : 'soft'"
+                  size="md"
+                >
                   {{ event.badge }}
                 </UBadge>
                 <UBadge color="neutral" variant="soft" size="md" class="backdrop-blur">
@@ -428,9 +442,15 @@ async function handleDelete() {
               </p>
 
               <div class="flex flex-wrap gap-2 pt-1">
-                <UButton :color="isJoined ? 'neutral' : 'primary'" :variant="isJoined ? 'soft' : 'solid'" size="lg"
-                  :icon="isJoined ? 'i-lucide-check' : 'i-lucide-ticket'" @click="toggleJoin">
-                  {{ isJoined ? 'Вы записаны' : 'Записаться' }}
+                <UButton
+                  :color="isArchivedEvent ? 'neutral' : (isJoined ? 'neutral' : 'primary')"
+                  :variant="isArchivedEvent ? 'outline' : (isJoined ? 'soft' : 'solid')"
+                  size="lg"
+                  :icon="isArchivedEvent ? 'i-lucide-lock' : (isJoined ? 'i-lucide-check' : 'i-lucide-ticket')"
+                  :disabled="isArchivedEvent"
+                  @click="toggleJoin"
+                >
+                  {{ isArchivedEvent ? 'Запись недоступна' : (isJoined ? 'Вы записаны' : 'Записаться') }}
                 </UButton>
                 <UButton color="neutral" variant="outline" size="lg" icon="i-lucide-link" @click="copyEventLink">
                   Скопировать ссылку
@@ -464,7 +484,7 @@ async function handleDelete() {
                 <div class="flex items-start justify-between gap-3">
                   <dt class="text-sm text-muted">Статус</dt>
                   <dd class="text-sm font-medium text-highlighted text-right">
-                    {{ isJoined ? 'Вы записаны' : 'Не записаны' }}
+                    {{ isArchivedEvent ? 'Архив (запись закрыта)' : (isJoined ? 'Вы записаны' : 'Не записаны') }}
                   </dd>
                 </div>
               </dl>

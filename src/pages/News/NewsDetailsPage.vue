@@ -69,17 +69,17 @@ const surround = computed(() => {
   return {
     prev: prev
       ? {
-          title: prev.title || `Новость #${prev.id}`,
-          description: stripHtmlToText(prev.shortHtml || prev.html).slice(0, 140),
-          to: `${prefix}${prev.id}`,
-        }
+        title: prev.title || `Новость #${prev.id}`,
+        description: stripHtmlToText(prev.shortHtml || prev.html).slice(0, 140),
+        to: `${prefix}${prev.id}`,
+      }
       : null,
     next: next
       ? {
-          title: next.title || `Новость #${next.id}`,
-          description: stripHtmlToText(next.shortHtml || next.html).slice(0, 140),
-          to: `${prefix}${next.id}`,
-        }
+        title: next.title || `Новость #${next.id}`,
+        description: stripHtmlToText(next.shortHtml || next.html).slice(0, 140),
+        to: `${prefix}${next.id}`,
+      }
       : null,
   };
 });
@@ -87,55 +87,24 @@ const surround = computed(() => {
 
 <template>
   <UMain class="flex flex-col w-full h-full min-h-0 gap-0">
-    <!-- Top actions -->
-    <UContainer class="shrink-0 max-w-full w-full sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0 py-4">
-      <div class="flex items-center justify-between gap-3">
-        <UButton
-          color="neutral"
-          variant="ghost"
-          size="sm"
-          icon="i-lucide-arrow-left"
-          @click="router.push(isKiosk ? '/kiosk/news' : '/news')"
-        >
-          Назад
-        </UButton>
 
-        <UButton
-          v-if="item && !loading"
-          color="neutral"
-          variant="outline"
-          size="sm"
-          icon="i-lucide-link"
-          @click="copyNewsLink"
-        >
-          Ссылка
-        </UButton>
-      </div>
-    </UContainer>
-
-    <UContainer class="flex-1 min-h-0 overflow-y-auto max-w-full w-full sm:p-0 md:p-0 lg:p-0 xl:p-0 scrollbar-hide mx-0 pb-8">
+    <UContainer
+      class="flex-1 min-h-0 overflow-y-auto max-w-full w-full sm:p-0 md:p-0 lg:p-0 xl:p-0 scrollbar-hide mx-0">
       <!-- Loading skeleton -->
       <div v-if="loading" class="space-y-6">
-        <USkeleton class="h-56 sm:h-72 rounded-3xl" />
+        <USkeleton class="h-96 rounded-3xl" />
         <USkeleton class="h-64 rounded-3xl" />
       </div>
 
       <!-- Content -->
-      <div v-else-if="item" class="flex flex-col gap-6">
+      <div v-else-if="item" class="flex flex-col gap-6 p-px">
         <!-- Hero -->
         <div class="relative overflow-hidden rounded-3xl ring ring-default bg-default">
-          <div class="relative h-56 sm:h-72">
-            <img
-              v-if="imageSrc"
-              :src="imageSrc"
-              :alt="title"
-              class="absolute inset-0 h-full w-full object-cover"
-              loading="lazy"
-            />
-            <div
-              class="absolute inset-0"
-              :class="imageSrc ? 'bg-linear-to-t from-black/65 via-black/25 to-transparent' : 'bg-linear-to-br from-primary/12 via-transparent to-primary/8'"
-            />
+          <div class="relative h-96">
+            <img v-if="imageSrc" :src="imageSrc" :alt="title" class="absolute inset-0 h-full w-full object-cover"
+              loading="lazy" />
+            <div class="absolute inset-0"
+              :class="imageSrc ? 'bg-linear-to-t from-black/85 via-black/35 to-transparent' : 'bg-linear-to-br from-primary/12 via-transparent to-primary/8'" />
             <div class="absolute inset-0 p-5 sm:p-8 flex flex-col justify-end">
               <div class="flex flex-wrap items-center gap-2 mb-3">
                 <UBadge color="primary" variant="solid" size="md">Новости</UBadge>
@@ -143,12 +112,10 @@ const surround = computed(() => {
                   {{ date }}
                 </UBadge>
               </div>
-              <h1 class="text-2xl sm:text-4xl font-semibold tracking-tight" :class="imageSrc ? 'text-white' : 'text-highlighted'">
+              <h1 class="text-2xl sm:text-4xl font-semibold tracking-tight"
+                :class="imageSrc ? 'text-white' : 'text-highlighted'">
                 {{ title }}
               </h1>
-              <p v-if="summary" class="mt-2 text-sm sm:text-base max-w-3xl" :class="imageSrc ? 'text-white/85' : 'text-muted'">
-                {{ summary }}
-              </p>
             </div>
           </div>
         </div>
@@ -170,13 +137,9 @@ const surround = computed(() => {
 
       <!-- Not found -->
       <div v-else class="py-10">
-        <UEmpty
-          icon="i-lucide-file-question"
-          title="Новость не найдена"
-          description="Возможно, она была удалена или ссылка неверная."
-        />
+        <UEmpty icon="i-lucide-file-question" title="Новость не найдена"
+          description="Возможно, она была удалена или ссылка неверная." />
       </div>
     </UContainer>
   </UMain>
 </template>
-
