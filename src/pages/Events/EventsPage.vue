@@ -1,69 +1,112 @@
+
 <script setup lang="ts">
-import { computed, ref, watch, reactive } from 'vue';
+import { computed, ref, watch, reactive, onMounted } from 'vue';
 import type { BlogPostProps } from '@nuxt/ui';
 import { currentRole } from '../../stores/role';
-import { useEventsData } from '../../composables/useEventsData';
-import { useAppToast } from '../../composables/useAppToast';
 
 type EventPost = BlogPostProps & {
   id?: number;
   badge?: string;
 };
 
-const coverModules = (import.meta as any).glob('../../img/EventsWebp/*.webp', {
-  eager: true,
-  import: 'default',
-});
-const coverSrcs = Object.entries(coverModules)
-  .sort(([a], [b]) => a.localeCompare(b))
-  .map(([, src]) => src as string);
-function coverAt(index: number): string {
-  return coverSrcs.length ? coverSrcs[index % coverSrcs.length] : '/src/img/Logo.svg';
-}
+// ─── State ───────────────────────────────────────────────────────────────────
+const posts = ref<EventPost[]>([]);
+const loading = ref(false);
+const fetchError = ref<string | null>(null);
 
-const { loading, error, events, badges, ensureLoaded } = useEventsData();
-ensureLoaded();
-
-const { toast } = useAppToast();
-watch(
-  error,
-  (val) => {
-    if (!val) return;
-    toast.add({
-      title: 'Не удалось загрузить мероприятия',
-      description: String(val),
-      color: 'error',
-      icon: 'i-lucide-alert-circle',
-    });
-  },
-  { immediate: true },
-);
-
-const posts = computed<EventPost[]>(() =>
-  events.value.map((e, idx) => ({
-    id: e.id,
-    title: e.title,
-    description: e.description,
-    date: e.date,
-    badge: e.badge,
-    to: `/events/${e.id}`,
-    image: { src: coverAt(e.coverIndex ?? idx), alt: e.title },
-  })),
-);
-
-// ─── Фильтры и поиск ─────────────────────────────────────────────────────────
+// ─── Filters ─────────────────────────────────────────────────────────────────
 const searchQuery = ref('');
+const badgeFilter = ref('_all');
 
-// ─── Сортировка (как в Gallery) ───────────────────────────────────────────────
 const sortKey = ref<'newest' | 'oldest' | 'title-asc' | 'title-desc'>('newest');
 const sortOptions = [
-  { value: 'newest', label: 'Сначала новые' },
-  { value: 'oldest', label: 'Сначала старые' },
-  { value: 'title-asc', label: 'По названию (А‑Я)' },
+  { value: 'newest',     label: 'Сначала новые' },
+  { value: 'oldest',     label: 'Сначала старые' },
+  { value: 'title-asc',  label: 'По названию (А‑Я)' },
   { value: 'title-desc', label: 'По названию (Я‑А)' },
 ];
 
-// ─── Форма создания мероприятия ───────────────────────────────────────────────
+// ─── API ─────────────────────────────────────────────────────────────────────
+function firstSentence(text: string): string {
+  if (!text) return text;
+  return text.match(/^[^.!?]*[.!?]/)?.[0].trim() ?? text;
+}
+
+function mapEvent(raw: any): EventPost {
+  return {
+    id:          raw.id,
+    title:       raw.title,
+    description: firstSentence(raw.description ?? ''),
+    badge:       raw.badge ?? undefined,
+    date:        raw.date,
+    to:          `/events/${raw.id}`,
+    image:       raw.image ? { src: raw.image, alt: raw.title } : undefined,
+  };
+}
+
+async function fetchEvents() {
+  loading.value = true;
+  fetchError.value = null;
+  try {
+    const params = new URLSearchParams();
+    if (badgeFilter.value && badgeFilter.value !== '_all') params.set('badge', badgeFilter.value);
+
+    const qs = params.toString();
+    const res = await fetch(`/api/events.php${qs ? '?' + qs : ''}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Ошибка загрузки');
+
+    posts.value = (json.data as any[]).map(mapEvent);
+  } catch (e: any) {
+    fetchError.value = e.message ?? 'Не удалось загрузить мероприятия';
+  } finally {
+    loading.value = false;
+  }
+}
+
+onMounted(fetchEvents);
+watch(badgeFilter, fetchEvents);
+
+// ─── Computed ─────────────────────────────────────────────────────────────────
+const uniqueBadges = computed(() => {
+  const set = new Set<string>();
+  posts.value.forEach(p => p.badge && set.add(p.badge));
+  return Array.from(set).sort();
+});
+
+const badgeFilterOptions = computed(() => [
+  { value: '_all', label: 'Все категории' },
+  ...uniqueBadges.value.map(b => ({ value: b, label: b })),
+]);
+
+const badgeOptions = computed(() =>
+  uniqueBadges.value.map(b => ({ value: b, label: b }))
+);
+
+const filteredPosts = computed(() => {
+  if (!searchQuery.value.trim()) return posts.value;
+  const q = searchQuery.value.trim().toLowerCase();
+  return posts.value.filter(p =>
+    (p.title ?? '').toLowerCase().includes(q) ||
+    (p.description ?? '').toLowerCase().includes(q)
+  );
+});
+
+const sortedPosts = computed(() => {
+  const list = [...filteredPosts.value];
+  list.sort((a, b) => {
+    if (sortKey.value === 'newest')     return String(b.date ?? '').localeCompare(String(a.date ?? ''));
+    if (sortKey.value === 'oldest')     return String(a.date ?? '').localeCompare(String(b.date ?? ''));
+    if (sortKey.value === 'title-asc')  return (a.title ?? '').localeCompare(b.title ?? '', 'ru');
+    if (sortKey.value === 'title-desc') return (b.title ?? '').localeCompare(a.title ?? '', 'ru');
+    return 0;
+  });
+  return list;
+});
+
+// ─── Create form ──────────────────────────────────────────────────────────────
 const createOpen = ref(false);
 
 type CreateFormState = {
@@ -71,8 +114,6 @@ type CreateFormState = {
   description: string;
   badge: string | null;
   date: string;
-  image: string;
-  link: string;
 };
 
 const createState = reactive<CreateFormState>({
@@ -80,47 +121,22 @@ const createState = reactive<CreateFormState>({
   description: '',
   badge: null,
   date: '',
-  image: '/src/img/tailwindcss-v4.svg',
-  link: '#',
 });
+
+const createImageFile = ref<File | null>(null);
+const createImagePreview = ref('');
+
+function onCreateImageSelected(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0] ?? null;
+  createImageFile.value = file;
+  if (createImagePreview.value) URL.revokeObjectURL(createImagePreview.value);
+  createImagePreview.value = file ? URL.createObjectURL(file) : '';
+}
 
 type SingleDateValue = { value?: any } | any | null;
 const createDateValue = ref<SingleDateValue>(null);
 const createSubmitting = ref(false);
 const createError = ref<string | null>(null);
-
-const badgeOptions = computed(() => badges.value.map((b) => ({ value: b, label: b })));
-
-const filteredPosts = computed(() => {
-  let list = posts.value;
-
-  if (searchQuery.value.trim()) {
-    const q = searchQuery.value.trim().toLowerCase();
-    list = list.filter((p) => {
-      const title = p.title ?? '';
-      const description = p.description ?? '';
-      return title.toLowerCase().includes(q) || description.toLowerCase().includes(q);
-    });
-  }
-
-  return list;
-});
-
-function resetCreateForm() {
-  createState.title = '';
-  createState.description = '';
-  createState.badge = null;
-  createState.date = '';
-  createState.image = '/src/img/tailwindcss-v4.svg';
-  createState.link = '#';
-  createDateValue.value = null;
-  createError.value = null;
-}
-
-function openCreate() {
-  resetCreateForm();
-  createOpen.value = true;
-}
 
 const headerLinks = computed(() => {
   if (currentRole.value !== 'admin') return [];
@@ -135,11 +151,27 @@ const headerLinks = computed(() => {
   ];
 });
 
-// watch надёжнее @update:model-value — срабатывает и при ручном вводе, и при выборе из календаря
 watch(createDateValue, (val) => {
   const d = val?.value ?? val;
-  createState.date = (d && typeof d.toString === 'function') ? d.toString() : '';
+  createState.date = d && typeof d.toString === 'function' ? d.toString() : '';
 });
+
+function resetCreateForm() {
+  createState.title = '';
+  createState.description = '';
+  createState.badge = null;
+  createState.date = '';
+  createImageFile.value = null;
+  if (createImagePreview.value) URL.revokeObjectURL(createImagePreview.value);
+  createImagePreview.value = '';
+  createDateValue.value = null;
+  createError.value = null;
+}
+
+function openCreate() {
+  resetCreateForm();
+  createOpen.value = true;
+}
 
 function validateCreate(): boolean {
   if (!createState.title.trim()) {
@@ -159,53 +191,48 @@ async function handleCreateSubmit() {
   createSubmitting.value = true;
   createError.value = null;
   try {
-    const nextId = Math.max(0, ...events.value.map((p) => p.id ?? 0)) + 1;
-    events.value = [
-      {
-        id: nextId,
-        title: createState.title,
-        description: createState.description,
-        badge: createState.badge ?? undefined,
-        date: createState.date,
-        coverIndex: nextId,
-      },
-      ...events.value,
-    ];
+    const defaultImg = '/favicon.svg';
+    let imagePath     = defaultImg;
+    let imageFullPath = defaultImg;
+
+    if (createImageFile.value) {
+      const formData = new FormData();
+      formData.append('image', createImageFile.value);
+      const uploadRes = await fetch('/api/upload.php', { method: 'POST', body: formData });
+      const uploadJson = await uploadRes.json();
+      if (!uploadJson.success) throw new Error(uploadJson.message || 'Ошибка загрузки изображения');
+      imagePath     = uploadJson.data.image;
+      imageFullPath = uploadJson.data.image_full;
+    }
+
+    const res = await fetch('/api/events.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title:       createState.title.trim(),
+        description: createState.description.trim() || null,
+        badge:       createState.badge || null,
+        date:        createState.date,
+        image:       imagePath,
+        image_full:  imageFullPath,
+      }),
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Ошибка создания');
+
     createOpen.value = false;
     resetCreateForm();
+    await fetchEvents();
   } catch (e: any) {
-    createError.value = e?.message ?? 'Ошибка при создании мероприятия';
+    createError.value = e.message ?? 'Ошибка при создании мероприятия';
   } finally {
     createSubmitting.value = false;
   }
-}
-
-const sortedPosts = computed(() => {
-  const list = [...filteredPosts.value];
-
-  list.sort((a, b) => {
-    const aDate = String((a as any).date ?? '');
-    const bDate = String((b as any).date ?? '');
-    const aTitle = String((a as any).title ?? '');
-    const bTitle = String((b as any).title ?? '');
-    if (sortKey.value === 'newest') return bDate.localeCompare(aDate);
-    if (sortKey.value === 'oldest') return aDate.localeCompare(bDate);
-    if (sortKey.value === 'title-asc') return aTitle.localeCompare(bTitle, 'ru');
-    if (sortKey.value === 'title-desc') return bTitle.localeCompare(aTitle, 'ru');
-    return 0;
-  });
-
-  return list;
-});
-
-function isNewBadge(value: unknown) {
-  return String(value ?? '').trim().toLowerCase().includes('нов');
 }
 </script>
 
 <template>
   <UMain class="flex flex-col w-full h-full min-h-0 gap-6">
-    <!-- Верхняя панель как в Gallery (фиксированная) -->
     <UContainer class="flex flex-col max-w-full w-full gap-6 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0 shrink-0">
       <UPageHeader :links="headerLinks" class="border-none p-0 w-full">
         <template #title>
@@ -213,7 +240,6 @@ function isNewBadge(value: unknown) {
         </template>
       </UPageHeader>
 
-      <!-- Поиск + сортировка -->
       <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
         <UInput
           v-model="searchQuery"
@@ -223,6 +249,13 @@ function isNewBadge(value: unknown) {
           variant="outline"
           placeholder="Поиск по названию..."
           class="flex-1"
+        />
+        <USelect
+          v-model="badgeFilter"
+          :items="badgeFilterOptions"
+          size="xl"
+          color="neutral"
+          class="min-w-44"
         />
         <USelect
           v-model="sortKey"
@@ -237,75 +270,86 @@ function isNewBadge(value: unknown) {
       </p>
     </UContainer>
 
-    <!-- Скроллится только список -->
     <UContainer class="flex-1 min-h-0 overflow-y-auto sm:p-px max-w-full w-full md:p-px lg:p-px xl:p-px scrollbar-hide mx-0">
-      <!-- Список мероприятий -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-        <UBlogPost v-for="post in sortedPosts" :key="post.id ?? post.title" v-bind="post" class="h-full">
-          <template #badge>
-            <UBadge
-              v-if="post.badge"
-              :color="isNewBadge(post.badge) ? 'primary' : 'neutral'"
-              :variant="isNewBadge(post.badge) ? 'solid' : 'subtle'"
-            >
-              {{ post.badge }}
-            </UBadge>
-          </template>
-        </UBlogPost>
+      <UAlert
+        v-if="fetchError"
+        color="error"
+        variant="subtle"
+        icon="i-lucide-alert-circle"
+        :description="fetchError"
+        class="mb-4"
+      >
+        <template #footer>
+          <UButton size="sm" color="error" variant="ghost" @click="fetchEvents">
+            Повторить
+          </UButton>
+        </template>
+      </UAlert>
+
+      <div v-if="loading" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+        <USkeleton v-for="i in 6" :key="i" class="h-64 rounded-2xl" />
+      </div>
+
+      <div v-else-if="!fetchError && sortedPosts.length === 0" class="flex flex-col items-center justify-center h-48 gap-3 text-muted">
+        <UIcon name="i-lucide-calendar-x" class="text-4xl" />
+        <p class="text-sm">Мероприятия не найдены</p>
+      </div>
+
+      <div v-else class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+        <UBlogPost v-for="post in sortedPosts" :key="post.id ?? post.title" v-bind="post" class="h-full" />
       </div>
     </UContainer>
 
-      <!-- Slideover создания мероприятия (только для администратора) -->
-      <USlideover v-model:open="createOpen" side="right" title="Новое мероприятие" description="">
-        <template #body>
-          <UForm :state="createState" class="space-y-4" @submit.prevent="handleCreateSubmit">
-            <UFormField label="Название мероприятия" name="title" required>
-              <UInput v-model="createState.title" size="xl" class="w-full"
-                placeholder="Введите название мероприятия" />
-            </UFormField>
+    <USlideover v-model:open="createOpen" side="right" title="Новое мероприятие" description="">
+      <template #body>
+        <UForm :state="createState" class="space-y-4" @submit.prevent="handleCreateSubmit">
+          <UFormField label="Название мероприятия" name="title" required>
+            <UInput v-model="createState.title" size="xl" class="w-full" placeholder="Введите название мероприятия" />
+          </UFormField>
 
-            <UFormField label="Категория" name="badge">
-              <USelect v-model="createState.badge" :items="badgeOptions" placeholder="Выберите категорию" size="xl"
-                class="w-full" />
-            </UFormField>
+          <UFormField label="Категория" name="badge">
+            <USelect v-model="createState.badge" :items="badgeOptions" placeholder="Выберите категорию" size="xl" class="w-full" />
+          </UFormField>
 
-            <UFormField label="Описание" name="description">
-              <UTextarea v-model="createState.description" size="xl" class="w-full" :rows="3"
-                placeholder="Кратко опишите цель и формат мероприятия..." />
-            </UFormField>
+          <UFormField label="Описание" name="description">
+            <UTextarea v-model="createState.description" size="xl" class="w-full" :rows="3"
+              placeholder="Кратко опишите цель и формат мероприятия..." />
+          </UFormField>
 
-            <UFormField label="Дата проведения" name="date" required>
-              <UInputDate v-model="createDateValue" size="xl" class="w-full">
-                <template #trailing>
-                  <UPopover>
-                    <UButton color="neutral" variant="link" size="sm" icon="i-lucide-calendar" aria-label="Выбрать дату"
-                      class="px-0" />
-                    <template #content>
-                      <UCalendar v-model="createDateValue" class="p-2" />
-                    </template>
-                  </UPopover>
-                </template>
-              </UInputDate>
-            </UFormField>
-            <UFormField label="Изображение (URL)" name="image">
-              <UFileUpload label="Drop your image here"
-                description="SVG, PNG, JPG or GIF (max. 2MB)" class="w-full min-h-48" />
-            </UFormField>
-            <UAlert v-if="createError" color="red" variant="subtle" icon="i-lucide-alert-circle"
-              :description="createError" />
-          </UForm>
-        </template>
-        <template #footer>
-          <div class="flex justify-between gap-3 items-center w-full">
-            <UButton color="neutral" variant="outline" size="xl" class="w-full justify-center"
-              @click="createOpen = false">
-              Отмена
-            </UButton>
-            <UButton size="xl" class="w-full justify-center" :loading="createSubmitting" @click="handleCreateSubmit">
-              Создать
-            </UButton>
-          </div>
-        </template>
-      </USlideover>
+          <UFormField label="Дата проведения" name="date" required>
+            <UInputDate v-model="createDateValue" size="xl" class="w-full">
+              <template #trailing>
+                <UPopover>
+                  <UButton color="neutral" variant="link" size="sm" icon="i-lucide-calendar" aria-label="Выбрать дату" class="px-0" />
+                  <template #content>
+                    <UCalendar v-model="createDateValue" class="p-2" />
+                  </template>
+                </UPopover>
+              </template>
+            </UInputDate>
+          </UFormField>
+
+          <UFormField label="Изображение" name="image">
+            <div class="flex flex-col gap-2 w-full">
+              <input id="createFileInput" type="file" accept="image/jpeg,image/png,image/webp" class="hidden" @change="onCreateImageSelected" />
+              <img v-if="createImagePreview" :src="createImagePreview" alt="Предпросмотр" class="w-full h-40 object-cover rounded-lg" />
+              <label for="createFileInput" class="flex items-center justify-center gap-2 cursor-pointer rounded-lg border border-default px-4 py-2.5 text-sm font-medium text-default hover:bg-elevated/50 transition-colors">
+                <UIcon name="i-lucide-upload" class="text-base shrink-0" />
+                {{ createImageFile ? 'Изменить фото' : 'Загрузить фото' }}
+              </label>
+              <p v-if="createImageFile" class="text-xs text-muted truncate px-1">{{ createImageFile.name }}</p>
+            </div>
+          </UFormField>
+
+          <UAlert v-if="createError" color="error" variant="subtle" icon="i-lucide-alert-circle" :description="createError" />
+        </UForm>
+      </template>
+      <template #footer>
+        <div class="flex justify-between gap-3 items-center w-full">
+          <UButton color="neutral" variant="outline" size="xl" class="w-full justify-center" @click="createOpen = false">Отмена</UButton>
+          <UButton size="xl" class="w-full justify-center" :loading="createSubmitting" @click="handleCreateSubmit">Создать</UButton>
+        </div>
+      </template>
+    </USlideover>
   </UMain>
 </template>
