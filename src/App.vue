@@ -31,7 +31,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ru } from '@nuxt/ui/locale';
 import { useRoute } from 'vue-router';
 import AppHeader from './components/AppHeader.vue';
@@ -76,6 +76,17 @@ onMounted(() => {
 
   isDark.value = mode === 'dark';
   applyColorMode(mode);
+
+    // Синхронизация смены темы из других частей UI (например, из профиля)
+    const onExternalMode = (e) => {
+    const next = e?.detail?.mode;
+    if (next !== 'light' && next !== 'dark') return;
+    isDark.value = next === 'dark';
+  };
+  window.addEventListener('ui-color-mode-change', onExternalMode);
+  onBeforeUnmount(() => {
+    window.removeEventListener('ui-color-mode-change', onExternalMode);
+  });
 });
 
 watch(isDark, (value) => {
