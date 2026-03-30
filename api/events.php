@@ -28,7 +28,7 @@
 define('DB_HOST', 'localhost');
 define('DB_PORT', '5432');
 define('DB_NAME', 'corporate_portal');
-define('DB_USER', 'postgres');
+define('DB_USER', 'myuser');
 define('DB_PASS', 'VZAIMno4753');   // ← укажите ваш пароль PostgreSQL
 
 // ─── Заголовки ────────────────────────────────────────────────────────────────

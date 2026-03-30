@@ -1,7 +1,7 @@
 <template>
   <div class="app-root h-screen overflow-hidden">
     <UApp :locale="ru">
-      <RouterView v-if="isKiosk" />
+      <RouterView v-if="isKiosk || isAuth" />
 
       <!-- Основной лейаут приложения -->
       <div
@@ -44,6 +44,7 @@ const route = useRoute();
 const activeNav = computed(() => (route.name ?? 'events'));
 
 const isKiosk = computed(() => route.matched.some((r) => r.meta?.kiosk));
+const isAuth = computed(() => route.meta?.layout === 'auth');
 
 
 // --- Поддержка светлой / тёмной темы для Nuxt UI ---

@@ -22,8 +22,10 @@ import MunicipalServiceDepartmentPage from '../pages/MunicipalServiceDepartmentP
 import DevelopmentMotivationDepartmentPage from '../pages/DevelopmentMotivationDepartmentPage.vue';
 import AdminDashboardPage from '../pages/Admin/AdminDashboardPage.vue';
 import BirthdaysPage from '../pages/BirthdaysPage.vue';
+import LoginPage from '../pages/login.vue';
 
 const routes = [
+  { path: '/login', name: 'login', component: LoginPage, meta: { title: 'Вход', layout: 'auth' } },
   { path: '/', name: 'home', component: HomePage, meta: { title: 'Главная' } },
   {
     path: '/kiosk',
