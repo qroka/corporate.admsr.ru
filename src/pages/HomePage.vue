@@ -60,7 +60,7 @@ function eventCoverAt(index: number): string {
   return eventCoverSrcs.length ? eventCoverSrcs[index % eventCoverSrcs.length] : '/src/img/Logo.svg';
 }
 
-const { events, ensureLoaded: ensureEventsLoaded } = useEventsData();
+const { events, loading: eventsLoading, ensureLoaded: ensureEventsLoaded } = useEventsData();
 ensureEventsLoaded();
 
 const actualEvents = computed<ActualEventItem[]>(() =>
@@ -79,6 +79,8 @@ const actualEvents = computed<ActualEventItem[]>(() =>
       },
     })),
 );
+
+const hasActualEvents = computed(() => !eventsLoading.value && actualEvents.value.length > 0);
 
 function openEventDetails(eventId: number) {
   void router.push(`/events/${eventId}`);
@@ -158,7 +160,7 @@ ensureBirthdaysLoaded();
 
 <template>
   <UMain class="flex flex-1 flex-row w-full h-full gap-6 min-h-0 max-h-full overflow-hidden">
-    <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 max-w-96">
+    <UContainer v-if="hasActualEvents" class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 max-w-96">
       <UPageHeader title="" :links="eventsLinks" class="border-none p-0">
         <template #title>
           <h1 class="text-2xl font-medium">Актуальные мероприятия</h1>
