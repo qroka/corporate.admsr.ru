@@ -3,7 +3,6 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useGalleryData } from '../../composables/useGalleryData';
 import { useAppToast } from '../../composables/useAppToast';
-import UContentSurround from '../../components/UContentSurround.vue';
 import { currentRole } from '../../stores/role';
 
 type Photo = {
@@ -131,49 +130,40 @@ const surround = computed(() => {
   };
 });
 
-const thumbModules = (import.meta as any).glob('../../img/EventsWebp/*.webp', {
-  eager: true,
-  import: 'default',
-}) as Record<string, string>;
-
-const fullModules = (import.meta as any).glob('../../img/EventsWebpFull/*.webp', {
-  eager: true,
-  import: 'default',
-}) as Record<string, string>;
-
-const fullByName = new Map(
-  Object.entries(fullModules).map(([p, src]) => [p.split('/').pop() ?? p, src]),
-);
-
-function numericKey(path: string) {
-  const m = path.match(/(\d+)\.(webp)$/i);
-  return m ? Number(m[1]) : Number.POSITIVE_INFINITY;
+function resolveGalleryPhotoSrcs(src: string): { thumbSrc: string; fullSrc: string } {
+  const s = String(src ?? '').trim();
+  if (!s) return { thumbSrc: '', fullSrc: '' };
+  if (s.startsWith('data:') || s.startsWith('blob:')) {
+    return { thumbSrc: s, fullSrc: s };
+  }
+  if (s.includes('/img/FullPic/')) {
+    return {
+      fullSrc: s,
+      thumbSrc: s.replace('/img/FullPic/', '/img/SmallPic/'),
+    };
+  }
+  if (s.includes('/img/SmallPic/')) {
+    return {
+      thumbSrc: s,
+      fullSrc: s.replace('/img/SmallPic/', '/img/FullPic/'),
+    };
+  }
+  return { thumbSrc: s, fullSrc: s };
 }
 
 const items = computed<Photo[]>(() => {
-  const linkedPhotos = Array.isArray((album.value as any)?.photoLinks)
-    ? ((album.value as any).photoLinks as string[]).filter((s) => String(s ?? '').trim().length > 0)
+  const linkedPhotos = Array.isArray(album.value.photoLinks)
+    ? album.value.photoLinks.filter((x) => String(x ?? '').trim().length > 0)
     : [];
 
-  if (linkedPhotos.length) {
-    return linkedPhotos.map((src, index) => ({
-      id: `link-${index + 1}`,
-      thumbSrc: src,
-      fullSrc: src,
-    }));
-  }
-
-  return Object.entries(thumbModules)
-    .sort(([a], [b]) => numericKey(a) - numericKey(b))
-    .map(([path, src], index) => {
-      const filename = path.split('/').pop() ?? `photo-${index + 1}`;
-      const fullSrc = (fullByName.get(filename) as string | undefined) ?? src;
-      return {
-        id: filename,
-        thumbSrc: src,
-        fullSrc,
-      };
-    });
+  return linkedPhotos.map((src, index) => {
+    const { thumbSrc, fullSrc } = resolveGalleryPhotoSrcs(src);
+    return {
+      id: `photo-${index + 1}`,
+      thumbSrc,
+      fullSrc,
+    };
+  });
 });
 
 const viewportWidth = ref<number>(typeof window === 'undefined' ? 1280 : window.innerWidth);
@@ -269,16 +259,35 @@ async function handleDelete() {
         </template>
       </UPageHeader>
     </UContainer>
-    <UScrollArea v-slot="{ item, index }" :items="items" orientation="vertical" :virtualize="{
-      gap: 12,
-      lanes,
-      estimateSize,
-      overscan: 6
-    }" class="flex-1 min-h-0 w-full p-px scrollbar-hide">
+    <UEmpty
+      v-if="!items.length"
+      icon="i-lucide-image-off"
+      title="Нет фотографий"
+      description="В этом альбоме пока нет снимков."
+      class="flex-1 min-h-0 py-12"
+    />
+    <UScrollArea
+      v-else
+      v-slot="{ item, index }"
+      :items="items"
+      orientation="vertical"
+      :virtualize="{
+        gap: 12,
+        lanes,
+        estimateSize,
+        overscan: 6,
+      }"
+      class="flex-1 min-h-0 w-full p-px scrollbar-hide"
+    >
       <div class="rounded-xl overflow-hidden bg-elevated ring ring-transparent hover:ring-accented transition w-full">
         <button type="button" class="block w-full" @click="openPhoto(item)">
-          <img :src="item.thumbSrc" alt="Фотография" :loading="index > 8 ? 'lazy' : 'eager'"
-            decoding="async" class="block w-full h-auto">
+          <img
+            :src="item.thumbSrc"
+            alt="Фотография"
+            :loading="index > 8 ? 'lazy' : 'eager'"
+            decoding="async"
+            class="block w-full h-auto"
+          />
         </button>
       </div>
     </UScrollArea>

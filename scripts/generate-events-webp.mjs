@@ -65,7 +65,7 @@ async function main() {
         .rotate()
         // Модалка: выше качество и размер
         .resize({ width: 1920, withoutEnlargement: true })
-        .webp({ quality: 86, effort: 5 })
+        .webp({ quality: 100, effort: 5 })
         .toFile(outFullPath);
       convertedFull++;
     }

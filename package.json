@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "images:webp": "node scripts/generate-events-webp.mjs",
+    "gallery:json": "node scripts/build-gallery-json.mjs",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

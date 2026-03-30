@@ -162,21 +162,17 @@ async function handleCreateSubmit() {
   if (!validateCreate()) return;
   createSubmitting.value = true;
   try {
-    const usedIds = new Set(albumRecords.value.map((a) => Number(a.id)).filter((n) => Number.isFinite(n)));
-    let nextId = 1;
-    while (usedIds.has(nextId)) nextId += 1;
     const files = createFiles.value ?? [];
     const photoLinks = await Promise.all(files.map((f) => fileToDataUrl(f)));
     const coverSrc = photoLinks[0];
 
     addAlbum({
-      id: String(nextId),
+      id: `local-${Date.now()}`,
       title: createState.title.trim(),
       description:
         createState.description.trim() ||
         `В альбоме ${createFiles.value?.length ?? 0} ${createFiles.value?.length === 1 ? 'файл' : 'файлов'}.`,
       date: createState.date,
-      coverIndex: nextId,
       image: coverSrc,
       photoLinks,
     });
@@ -185,7 +181,7 @@ async function handleCreateSubmit() {
     resetCreateForm();
     toast.add({
       title: 'Альбом добавлен',
-      description: 'Альбом сохранен в JSON-хранилище и отображается в списке.',
+      description: 'Локальный альбом сохранён и отображается в списке.',
       color: 'success',
       icon: 'i-lucide-check-circle',
     });
