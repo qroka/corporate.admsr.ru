@@ -6,6 +6,9 @@ dist/
 dist-ssr/
 *.local
 
+# Public uploads / generated images
+public/img/
+
 # Logs
 logs/
 *.log
