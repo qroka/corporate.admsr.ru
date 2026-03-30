@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import type { DropdownMenuItem } from '@nuxt/ui';
+import { useColorMode } from '@vueuse/core';
 import { useAppToast } from '../composables/useAppToast';
+import { useAppConfig } from '../composables/useAppConfig';
 import { currentRole, setRole } from '../stores/role';
-import { NEUTRAL_PALETTES, PRIMARY_PALETTES, getSavedUiTheme, setSavedUiTheme } from '../composables/useUiTheme';
+import { NEUTRAL_COLORS, PRIMARY_COLORS } from '../composables/useUiTheme';
 
 const { profileSaved } = useAppToast();
 
@@ -38,40 +40,10 @@ async function copyProfileUrl() {
 }
 
 // --- Theme dropdown (primary / neutral / light-dark) ---
-const colors = Object.keys(PRIMARY_PALETTES) as Array<keyof typeof PRIMARY_PALETTES>;
-const neutrals = Object.keys(NEUTRAL_PALETTES) as Array<keyof typeof NEUTRAL_PALETTES>;
-
-const savedTheme = getSavedUiTheme();
-const themePrimary = ref(savedTheme.primary);
-const themeNeutral = ref(savedTheme.neutral);
-
-watch(
-  [themePrimary, themeNeutral],
-  ([primary, neutral]) => {
-    setSavedUiTheme({ primary, neutral });
-  },
-  { immediate: true },
-);
-
-const COLOR_MODE_KEY = 'ui-color-mode';
-const colorMode = ref<'light' | 'dark'>(
-  typeof window !== 'undefined' && window.localStorage.getItem(COLOR_MODE_KEY) === 'dark' ? 'dark' : 'light',
-);
-
-watch(
-  colorMode,
-  (mode) => {
-    if (typeof document === 'undefined') return;
-    document.documentElement.classList.toggle('dark', mode === 'dark');
-    try {
-      window.localStorage.setItem(COLOR_MODE_KEY, mode);
-    } catch {
-      // ignore
-    }
-    window.dispatchEvent(new CustomEvent('ui-color-mode-change', { detail: { mode } }));
-  },
-  { immediate: true },
-);
+const colors = PRIMARY_COLORS;
+const neutrals = NEUTRAL_COLORS;
+const colorMode = useColorMode({ storageKey: 'ui-color-mode' });
+const appConfig = useAppConfig();
 
 const themeMenuItems = computed<DropdownMenuItem[][]>(() => [
   [
@@ -82,34 +54,34 @@ const themeMenuItems = computed<DropdownMenuItem[][]>(() => [
         {
           label: 'Primary',
           slot: 'chip',
-          chip: themePrimary.value,
+          chip: appConfig.ui.colors.primary,
           content: { align: 'center', collisionPadding: 16 },
           children: colors.map((c) => ({
             label: String(c),
             chip: c,
             slot: 'chip',
-            checked: themePrimary.value === c,
+            checked: appConfig.ui.colors.primary === c,
             type: 'checkbox',
             onSelect: (e: Event) => {
               e.preventDefault();
-              themePrimary.value = c;
+              appConfig.ui.colors.primary = c;
             },
           })),
         },
         {
           label: 'Neutral',
           slot: 'chip',
-          chip: themeNeutral.value,
+          chip: appConfig.ui.colors.neutral,
           content: { align: 'end', collisionPadding: 16 },
           children: neutrals.map((c) => ({
             label: String(c),
             chip: c,
             slot: 'chip',
             type: 'checkbox',
-            checked: themeNeutral.value === c,
+            checked: appConfig.ui.colors.neutral === c,
             onSelect: (e: Event) => {
               e.preventDefault();
-              themeNeutral.value = c;
+              appConfig.ui.colors.neutral = c;
             },
           })),
         },
@@ -146,11 +118,9 @@ const themeMenuItems = computed<DropdownMenuItem[][]>(() => [
 
 function chipColorHex(chip: string | undefined, shade: '500' | '400'): string {
   if (!chip) return '#999';
-  const p = (PRIMARY_PALETTES as any)[chip];
-  if (p && typeof p === 'object') return String(p[shade] ?? p['500'] ?? '#999');
-  const n = (NEUTRAL_PALETTES as any)[chip];
-  if (n && typeof n === 'object') return String(n[shade] ?? n['500'] ?? '#999');
-  return '#999';
+  if (typeof window === 'undefined') return '#999';
+  const v = getComputedStyle(document.documentElement).getPropertyValue(`--color-${chip}-${shade}`).trim();
+  return v || '#999';
 }
 
 function onChangeCover() {
