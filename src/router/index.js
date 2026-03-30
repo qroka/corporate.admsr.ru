@@ -108,9 +108,72 @@ const kioskRouteNameByName = {
   admin: 'kiosk-admin',
 };
 
-router.beforeEach((to, from, next) => {
+const AUTH_CHECK_INTERVAL = 15 * 60 * 1000; // 15 минут
+
+function getStoredUser() {
+  try {
+    return JSON.parse(localStorage.getItem('auth-user'));
+  } catch {
+    return null;
+  }
+}
+
+async function checkAuthInDb(id) {
+  try {
+    const res = await fetch('/api/check-auth.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    const data = await res.json();
+    if (data.success && data.auth === true) {
+      localStorage.setItem('auth-last-check', Date.now().toString());
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function needsDbCheck() {
+  const last = parseInt(localStorage.getItem('auth-last-check') || '0', 10);
+  return Date.now() - last >= AUTH_CHECK_INTERVAL;
+}
+
+router.beforeEach(async (to, from, next) => {
   const toIsKiosk = to.matched?.some((r) => r.meta?.kiosk);
   const fromIsKiosk = from.matched?.some((r) => r.meta?.kiosk);
+  const isAuth = to.meta?.layout === 'auth';
+
+  if (!toIsKiosk) {
+    const user = getStoredUser();
+
+    if (!isAuth) {
+      if (!user) return next({ name: 'login' });
+
+      if (needsDbCheck()) {
+        const valid = await checkAuthInDb(user.id);
+        if (!valid) {
+          localStorage.removeItem('auth-user');
+          localStorage.removeItem('auth-last-check');
+          return next({ name: 'login' });
+        }
+      }
+    }
+
+    if (isAuth && user) {
+      if (needsDbCheck()) {
+        const valid = await checkAuthInDb(user.id);
+        if (!valid) {
+          localStorage.removeItem('auth-user');
+          localStorage.removeItem('auth-last-check');
+          return next();
+        }
+      }
+      return next({ name: 'home' });
+    }
+  }
 
   // Киоск всегда работает как "user" (без админ-режима).
   if (toIsKiosk && currentRole.value !== 'user') {

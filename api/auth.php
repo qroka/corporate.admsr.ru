@@ -84,6 +84,9 @@ if (!(bool)$user['status']) {
     exit;
 }
 
+$pdo->prepare('UPDATE public.authentication SET auth = true WHERE id = :id')
+    ->execute([':id' => $user['id']]);
+
 echo json_encode([
     'success' => true,
     'user' => [

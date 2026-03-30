@@ -19,6 +19,23 @@ function navigate(name) {
 
 const isNewsActive = () =>
   route.name === 'news' || route.name === 'news-details';
+
+async function logout() {
+  try {
+    const user = JSON.parse(localStorage.getItem('auth-user') || 'null');
+    if (user?.id) {
+      await fetch('/api/logout.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: user.id }),
+      });
+    }
+  } finally {
+    localStorage.removeItem('auth-user');
+    localStorage.removeItem('auth-last-check');
+    router.push({ name: 'login' });
+  }
+}
 </script>
 
 <template>
@@ -219,6 +236,7 @@ const isNewsActive = () =>
           size="xl"
           class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50 [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
           icon="i-lucide-log-out"
+          @click="logout"
         />
       </UTooltip>
     </UContainer>
