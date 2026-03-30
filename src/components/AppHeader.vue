@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { currentRole, setRole } from '../stores/role';
 
 defineProps({
   isDark: {
@@ -18,6 +19,13 @@ const emit = defineEmits(['toggle-theme']);
 const route = useRoute();
 const router = useRouter();
 const menuOpen = ref(false);
+
+const isAdminRole = ref(currentRole.value === 'admin');
+
+watch(isAdminRole, (v) => setRole(v ? 'admin' : 'user'));
+watch(currentRole, (r) => {
+  isAdminRole.value = r === 'admin';
+});
 
 function navigate(name) {
   router.push({ name });
@@ -96,22 +104,29 @@ watch(
       </UTooltip>
     </UContainer>
 
-    <UTooltip arrow :content="{ side: 'bottom' }" text="Профиль">
-      <RouterLink :to="{ name: 'profile' }"
-        class="bg-elevated rounded-full py-2.5 pl-3 pr-5">
-        <UUser
-          name="Константин Константинович"
-          size="xl"
-          class="bg-elevated rounded-full"
-          description="Инженер"
-          :avatar="{
-            src: 'https://i.pravatar.cc/150?u=john-doe',
-            loading: 'lazy',
-            icon: 'i-lucide-image',
-          }"
-        />
-      </RouterLink>
-    </UTooltip>
+    <div class="flex items-center gap-2 min-w-0">
+      <UTooltip arrow :content="{ side: 'bottom' }" text="Роль: администратор">
+        <div class="bg-elevated rounded-full p-3 flex items-center gap-2">
+          <USwitch v-model="isAdminRole" size="xl" aria-label="Переключить роль администратора" />
+        </div>
+      </UTooltip>
+
+      <UTooltip arrow :content="{ side: 'bottom' }" text="Профиль">
+        <RouterLink :to="{ name: 'profile' }" class="bg-elevated rounded-full py-2.5 pl-3 pr-5">
+          <UUser
+            name="Константин Константинович"
+            size="xl"
+            class="bg-elevated rounded-full"
+            description="Инженер"
+            :avatar="{
+              src: 'https://i.pravatar.cc/150?u=john-doe',
+              loading: 'lazy',
+              icon: 'i-lucide-image',
+            }"
+          />
+        </RouterLink>
+      </UTooltip>
+    </div>
   </header>
 
 </template>
