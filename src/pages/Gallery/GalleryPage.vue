@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue';
 import type { BlogPostProps } from '@nuxt/ui';
 import { currentRole } from '../../stores/role';
 import { useGalleryData } from '../../composables/useGalleryData';
@@ -7,7 +7,7 @@ import { useAppToast } from '../../composables/useAppToast';
 
 type Album = BlogPostProps & { id: string; date: string };
 
-const coverModules = import.meta.glob('../../img/EventsWebp/*.webp', {
+const coverModules = (import.meta as any).glob('../../img/EventsWebp/*.webp', {
   eager: true,
   import: 'default',
 });
@@ -171,36 +171,126 @@ async function handleCreateSubmit() {
     createSubmitting.value = false;
   }
 }
+
+// ── Floating header on scroll up ──────────────────────────────────────────────
+const mainScrollEl = ref<HTMLElement | null>(null);
+const showFloatingHeader = ref(false);
+let lastScrollTop = 0;
+let rafPending = false;
+
+const FLOATING_SHOW_AT = 180;
+const FLOATING_HIDE_AT = 0;
+
+const floatingRect = reactive({ left: 0, top: 0, width: 0 });
+function updateFloatingRect() {
+  const el = mainScrollEl.value;
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  floatingRect.left = Math.round(r.left);
+  floatingRect.top = Math.round(r.top);
+  floatingRect.width = Math.round(r.width);
+}
+
+function onMainScroll() {
+  const el = mainScrollEl.value;
+  if (!el) return;
+  if (rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(() => {
+    rafPending = false;
+    const top = el.scrollTop;
+    const goingUp = top < lastScrollTop;
+    const goingDown = top > lastScrollTop;
+
+    if (top < FLOATING_HIDE_AT) {
+      showFloatingHeader.value = false;
+    } else if (goingUp && top > FLOATING_SHOW_AT) {
+      showFloatingHeader.value = true;
+    } else if (goingDown) {
+      showFloatingHeader.value = false;
+    }
+
+    lastScrollTop = top;
+    if (showFloatingHeader.value) updateFloatingRect();
+  });
+}
+
+onMounted(() => {
+  const el = mainScrollEl.value;
+  if (!el) return;
+  lastScrollTop = el.scrollTop;
+  el.addEventListener('scroll', onMainScroll, { passive: true });
+  updateFloatingRect();
+  window.addEventListener('resize', updateFloatingRect, { passive: true });
+});
+
+onUnmounted(() => {
+  const el = mainScrollEl.value;
+  if (!el) return;
+  el.removeEventListener('scroll', onMainScroll);
+  window.removeEventListener('resize', updateFloatingRect as any);
+});
 </script>
 
 <template>
-  <UMain class="flex flex-col w-full h-full min-h-0 gap-6">
-    <UContainer class="flex flex-col max-w-full w-full gap-6 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
-      <UPageHeader title="" :links="headerLinks" class="border-none p-0 w-full">
-        <template #title>
-          <h1 class="text-4xl font-normal font-unbounded">Фотогалерея</h1>
-        </template>
-      </UPageHeader>
+  <UMain class="relative w-full h-full min-h-0">
+    <!-- Floating header (rendered only when needed, does not affect layout) -->
+    <transition name="fade">
+      <div
+        v-if="showFloatingHeader"
+        class="fixed z-30"
+        :style="{ left: `${floatingRect.left}px`, top: `${floatingRect.top}px`, width: `${floatingRect.width}px` }"
+      >
+        <div class="bg-default p-0 pb-6 flex flex-col gap-6">
+            <UPageHeader title="" :links="headerLinks" class="border-none p-0 w-full">
+              <template #title>
+                <h1 class="text-4xl font-normal font-unbounded">Фотогалерея</h1>
+              </template>
+            </UPageHeader>
 
-      <UContainer
-        class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
-        <UInput v-model="searchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline"
-          placeholder="Поиск по альбомам" class="flex-1" />
-        <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" />
-      </UContainer>
-    </UContainer>
-
-    <UContainer
-      class="flex-1 min-h-0 overflow-y-auto sm:p-px max-w-full w-full md:p-px lg:p-px xl:p-px scrollbar-hide mx-0">
-      <div v-if="loading" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-        <USkeleton v-for="i in 6" :key="i" class="h-64 rounded-2xl" />
+            <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
+              <UInput
+                v-model="searchQuery"
+                icon="i-lucide-search"
+                size="xl"
+                color="neutral"
+                variant="outline"
+                placeholder="Поиск по альбомам"
+                class="flex-1"
+              />
+              <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" />
+            </UContainer>
+        </div>
       </div>
-      <UContainer
-        v-else
-        class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:p-0 max-w-full w-full md:p-0 lg:p-0 xl:p-0 mx-0">
-        <UBlogPost v-for="album in filteredAlbums" :key="album.id" v-bind="album" class="h-full max-w-full w-full" />
+    </transition>
+
+    <!-- Single scroll container for the whole page -->
+    <div ref="mainScrollEl" class="flex flex-col w-full h-full min-h-0 gap-6 overflow-y-auto scrollbar-hide">
+      <UContainer class="flex flex-col max-w-full w-full gap-6 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0 shrink-0">
+        <UPageHeader title="" :links="headerLinks" class="border-none p-0 w-full">
+          <template #title>
+            <h1 class="text-4xl font-normal font-unbounded">Фотогалерея</h1>
+          </template>
+        </UPageHeader>
+
+        <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
+          <UInput v-model="searchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline" placeholder="Поиск по альбомам" class="flex-1" />
+          <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" />
+        </UContainer>
       </UContainer>
-    </UContainer>
+
+      <UContainer class="sm:p-px max-w-full w-full md:p-px lg:p-px xl:p-px mx-0 flex-1 min-h-0">
+        <div v-if="loading" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          <USkeleton v-for="i in 6" :key="i" class="h-64 rounded-2xl" />
+        </div>
+        <UContainer
+          v-else
+          class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:p-0 max-w-full w-full md:p-0 lg:p-0 xl:p-0 mx-0"
+        >
+          <UBlogPost v-for="album in filteredAlbums" :key="album.id" v-bind="album" class="h-full max-w-full w-full" />
+        </UContainer>
+      </UContainer>
+    </div>
 
     <!-- Slideover создания альбома -->
     <USlideover

@@ -298,6 +298,9 @@ async function onUpdateAccount() {
     if (full) setDisplayName(full);
     if (accountForm.role) setSubtitle(accountForm.role);
     profileSaved();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('ui:user-profile-updated'));
+    }
   } finally {
     profileSaving.value = false;
   }

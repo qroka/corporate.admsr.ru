@@ -1,10 +1,10 @@
 <script setup>
 import { ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useProfileDisplay } from '../composables/useProfileDisplay';
+import { useHeaderUser } from '../composables/useHeaderUser';
 import { currentRole, setRole } from '../stores/role';
 
-const { displayName, subtitle, avatarSrc } = useProfileDisplay();
+const { headerName, subtitle, avatarSrc } = useHeaderUser();
 
 defineProps({
   isDark: {
@@ -117,7 +117,7 @@ watch(
       <UTooltip arrow :content="{ side: 'bottom' }" text="Профиль">
         <RouterLink :to="{ name: 'profile' }" class="bg-elevated rounded-full py-2.5 pl-3 pr-5">
           <UUser
-            :name="displayName"
+            :name="headerName"
             size="xl"
             class="bg-elevated rounded-full"
             :description="subtitle"

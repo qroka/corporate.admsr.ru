@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useGalleryData } from '../../composables/useGalleryData';
 import { useAppToast } from '../../composables/useAppToast';
@@ -71,6 +71,41 @@ const modalOpen = computed({
   set:  (open: boolean) => { if (!open) selected.value = null; },
 });
 function openPhoto(p: Photo) { selected.value = p; }
+
+// Modal size should hug the image (no visible empty edges)
+const selectedNatural = ref<{ w: number; h: number } | null>(null);
+const viewport = ref({ w: typeof window === 'undefined' ? 1280 : window.innerWidth, h: typeof window === 'undefined' ? 720 : window.innerHeight });
+
+function updateViewport() {
+  viewport.value = { w: window.innerWidth, h: window.innerHeight };
+}
+
+watch(
+  selected,
+  (p) => {
+    selectedNatural.value = null;
+    if (!p?.fullSrc) return;
+    const img = new Image();
+    img.onload = () => {
+      selectedNatural.value = { w: img.naturalWidth || 0, h: img.naturalHeight || 0 };
+    };
+    img.src = p.fullSrc;
+  },
+  { immediate: true },
+);
+
+const modalSize = computed(() => {
+  const nat = selectedNatural.value;
+  if (!nat?.w || !nat?.h) {
+    // fallback while loading
+    return { w: Math.round(viewport.value.w * 0.96), h: Math.round(viewport.value.h * 0.92) };
+  }
+  const maxW = viewport.value.w * 0.96;
+  const maxH = viewport.value.h * 0.92;
+  // Allow upscaling small images so they open larger (cap to avoid extreme pixelation).
+  const scale = Math.min(maxW / nat.w, maxH / nat.h, 6);
+  return { w: Math.round(nat.w * scale), h: Math.round(nat.h * scale) };
+});
 
 // ── Добавление фото ───────────────────────────────────────────────────────────
 const addPhotosOpen   = ref(false);
@@ -253,78 +288,164 @@ onBeforeUnmount(() => {
 
 const lanes        = computed(() => (viewportWidth.value < 640 ? 1 : viewportWidth.value < 1280 ? 2 : 3));
 const estimateSize = computed(() => (viewportWidth.value < 640 ? 420 : 480));
+
+// ── Floating header on scroll up (aligned to page container) ──────────────────
+const mainScrollEl = ref<HTMLElement | null>(null);
+const showFloatingHeader = ref(false);
+let lastScrollTop = 0;
+let rafPending = false;
+
+const FLOATING_SHOW_AT = 180;
+const FLOATING_HIDE_AT = 0;
+
+const floatingRect = reactive({ left: 0, top: 0, width: 0 });
+function updateFloatingRect() {
+  const el = mainScrollEl.value;
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  floatingRect.left = Math.round(r.left);
+  floatingRect.top = Math.round(r.top);
+  floatingRect.width = Math.round(r.width);
+}
+
+function onMainScroll() {
+  const el = mainScrollEl.value;
+  if (!el) return;
+  if (rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(() => {
+    rafPending = false;
+    const top = el.scrollTop;
+    const goingUp = top < lastScrollTop;
+    const goingDown = top > lastScrollTop;
+
+    if (top < FLOATING_HIDE_AT) {
+      showFloatingHeader.value = false;
+    } else if (goingUp && top > FLOATING_SHOW_AT) {
+      showFloatingHeader.value = true;
+    } else if (goingDown) {
+      showFloatingHeader.value = false;
+    }
+
+    lastScrollTop = top;
+    if (showFloatingHeader.value) updateFloatingRect();
+  });
+}
+
+onMounted(() => {
+  const el = mainScrollEl.value;
+  if (!el) return;
+  lastScrollTop = el.scrollTop;
+  el.addEventListener('scroll', onMainScroll, { passive: true });
+  updateFloatingRect();
+  window.addEventListener('resize', updateFloatingRect, { passive: true });
+  window.addEventListener('resize', updateViewport, { passive: true });
+});
+
+onUnmounted(() => {
+  const el = mainScrollEl.value;
+  if (el) el.removeEventListener('scroll', onMainScroll);
+  window.removeEventListener('resize', updateFloatingRect as any);
+  window.removeEventListener('resize', updateViewport as any);
+});
 </script>
 
 <template>
-  <UMain class="flex flex-col w-full h-full min-h-0 gap-6">
-    <UContainer class="flex flex-col gap-4 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0 shrink-0 max-w-none">
-      <UPageHeader :links="headerLinks" class="border-none p-0 w-full">
-        <template #title>
-          <h1 class="text-4xl font-normal font-unbounded">
-            {{ albumTitle }}
-          </h1>
-        </template>
-      </UPageHeader>
-      <p v-if="albumDescription" class="text-sm text-muted">{{ albumDescription }}</p>
-    </UContainer>
-
-    <!-- Скелетон загрузки -->
-    <div v-if="photosLoading" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-      <USkeleton v-for="i in 6" :key="i" class="h-48 rounded-xl" />
-    </div>
-
-    <UEmpty
-      v-else-if="!items.length"
-      icon="i-lucide-image-off"
-      title="Нет фотографий"
-      description="В этом альбоме пока нет снимков."
-      class="flex-1 min-h-0 py-12"
-    />
-
-    <UScrollArea
-      v-else
-      v-slot="{ item, index }"
-      :items="items"
-      orientation="vertical"
-      :virtualize="{ gap: 12, lanes, estimateSize, overscan: 6 }"
-      class="flex-1 min-h-0 w-full p-px scrollbar-hide"
-    >
-      <div class="relative rounded-xl overflow-hidden bg-elevated ring ring-transparent hover:ring-accented transition w-full group">
-        <button type="button" class="block w-full" @click="openPhoto(item)">
-          <img
-            :src="item.thumbSrc"
-            alt="Фотография"
-            :loading="index > 8 ? 'lazy' : 'eager'"
-            decoding="async"
-            class="block w-full h-auto"
-          />
-        </button>
-        <!-- Кнопка удаления фото (только для админа) -->
-        <button
-          v-if="isAdmin"
-          type="button"
-          class="absolute top-2 right-2 size-7 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition hover:bg-error"
-          :disabled="deletingPhotoId === item.id"
-          @click.stop="deletePhoto(item.id)"
-          aria-label="Удалить фото"
-        >
-          <UIcon name="i-lucide-x" class="text-sm" />
-        </button>
+  <UMain class="relative w-full h-full min-h-0">
+    <!-- Floating header aligned to page container -->
+    <transition name="fade">
+      <div
+        v-if="showFloatingHeader"
+        class="fixed z-30"
+        :style="{ left: `${floatingRect.left}px`, top: `${floatingRect.top}px`, width: `${floatingRect.width}px` }"
+      >
+        <div class="bg-default p-0 pb-6 flex flex-col gap-6">
+          <UPageHeader :links="headerLinks" class="border-none p-0 w-full">
+            <template #title>
+              <h1 class="text-4xl font-normal font-unbounded">{{ albumTitle }}</h1>
+            </template>
+          </UPageHeader>
+          <p v-if="albumDescription" class="text-sm text-muted">{{ albumDescription }}</p>
+        </div>
       </div>
-    </UScrollArea>
+    </transition>
+
+    <!-- Single scroll container for the whole page -->
+    <div ref="mainScrollEl" class="flex flex-col w-full h-full min-h-0 gap-6 overflow-y-auto scrollbar-hide">
+      <UContainer class="flex flex-col gap-4 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0 shrink-0 max-w-none">
+        <UPageHeader :links="headerLinks" class="border-none p-0 w-full">
+          <template #title>
+            <h1 class="text-4xl font-normal font-unbounded">
+              {{ albumTitle }}
+            </h1>
+          </template>
+        </UPageHeader>
+        <p v-if="albumDescription" class="text-sm text-muted">{{ albumDescription }}</p>
+      </UContainer>
+
+      <UContainer class="sm:p-px max-w-none w-full md:p-px lg:p-px xl:p-px mx-0 flex-1 min-h-0">
+        <!-- Скелетон загрузки -->
+        <div v-if="photosLoading" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          <USkeleton v-for="i in 6" :key="i" class="h-48 rounded-xl" />
+        </div>
+
+        <UEmpty
+          v-else-if="!items.length"
+          icon="i-lucide-image-off"
+          title="Нет фотографий"
+          description="В этом альбоме пока нет снимков."
+          class="py-12"
+        />
+
+        <div v-else class="columns-1 sm:columns-2 xl:columns-3 gap-x-3">
+          <div
+            v-for="(item, index) in items"
+            :key="item.id"
+            class="relative mb-3 break-inside-avoid rounded-xl overflow-hidden bg-elevated ring ring-transparent hover:ring-accented transition w-full group"
+          >
+            <button type="button" class="block w-full" @click="openPhoto(item)">
+              <img
+                :src="item.thumbSrc"
+                alt="Фотография"
+                :loading="index > 8 ? 'lazy' : 'eager'"
+                decoding="async"
+                class="block w-full h-auto"
+              />
+            </button>
+            <!-- Кнопка удаления фото (только для админа) -->
+            <button
+              v-if="isAdmin"
+              type="button"
+              class="absolute top-2 right-2 size-7 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 transition hover:bg-error"
+              :disabled="deletingPhotoId === item.id"
+              @click.stop="deletePhoto(item.id)"
+              aria-label="Удалить фото"
+            >
+              <UIcon name="i-lucide-x" class="text-sm" />
+            </button>
+          </div>
+        </div>
+      </UContainer>
+    </div>
 
     <!-- Лайтбокс -->
     <UModal
       v-model:open="modalOpen"
-      class="w-[96vw] max-w-7xl h-[88vh] p-0"
-      :ui="{ content: 'p-0', header: 'p-0', body: 'p-0', footer: 'p-0' }"
+      class="p-0"
+      :style="{ width: `${modalSize.w}px`, height: `${modalSize.h}px` }"
+      :ui="{
+        content: 'p-0 bg-transparent shadow-none ring-0 max-w-none max-h-none',
+        header: 'p-0',
+        body: 'p-0',
+        footer: 'p-0',
+      }"
     >
       <template #content>
         <img
           v-if="selected"
           :src="selected.fullSrc"
           alt="Фотография"
-          class="block h-[88vh] w-full object-contain"
+          class="block w-full h-full object-contain"
           decoding="async"
         />
       </template>
