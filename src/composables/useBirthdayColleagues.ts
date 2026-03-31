@@ -33,8 +33,12 @@ function resolveUserAvatarSrc(raw: unknown): string {
     .replace(/\\/g, '/')
     .trim();
   if (!p || p.toLowerCase().includes('no-avatar')) return PLACEHOLDER_AVATAR;
-  const abs = resolveNewsImageSrc(p);
-  return abs ?? PLACEHOLDER_AVATAR;
+  // В users.json мы храним локальные аватарки вида "/img/FullPic/avatars/...".
+  // Их нельзя принудительно превращать в https://corporate.admsr.ru/... — иначе в dev/proxy они не загрузятся.
+  if (p.startsWith('/img/')) return p;
+  if (p.startsWith('/')) return p;
+  const resolved = resolveNewsImageSrc(p);
+  return resolved ?? PLACEHOLDER_AVATAR;
 }
 
 type RawUserForBirthday = {

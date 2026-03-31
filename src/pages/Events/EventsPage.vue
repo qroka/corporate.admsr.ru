@@ -26,6 +26,15 @@ const sortOptions = [
   { value: 'title-desc', label: 'По названию (Я‑А)' },
 ];
 
+function isNewBadge(value: unknown) {
+  return String(value ?? '').trim().toLowerCase().includes('нов');
+}
+
+const createBadgeOptions = [
+  { value: 'Новое', label: 'Новое' },
+  { value: 'Архив', label: 'Архив' },
+];
+
 // ─── API ─────────────────────────────────────────────────────────────────────
 function firstSentence(text: string): string {
   if (!text) return text;
@@ -68,22 +77,6 @@ async function fetchEvents() {
 
 onMounted(fetchEvents);
 watch(badgeFilter, fetchEvents);
-
-// ─── Computed ─────────────────────────────────────────────────────────────────
-const uniqueBadges = computed(() => {
-  const set = new Set<string>();
-  posts.value.forEach(p => p.badge && set.add(p.badge));
-  return Array.from(set).sort();
-});
-
-const badgeFilterOptions = computed(() => [
-  { value: '_all', label: 'Все категории' },
-  ...uniqueBadges.value.map(b => ({ value: b, label: b })),
-]);
-
-const badgeOptions = computed(() =>
-  uniqueBadges.value.map(b => ({ value: b, label: b }))
-);
 
 const filteredPosts = computed(() => {
   if (!searchQuery.value.trim()) return posts.value;
@@ -233,6 +226,7 @@ async function handleCreateSubmit() {
 
 <template>
   <UMain class="flex flex-col w-full h-full min-h-0 gap-6">
+    <!-- Верхняя панель как в Gallery (фиксированная) -->
     <UContainer class="flex flex-col max-w-full w-full gap-6 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0 shrink-0">
       <UPageHeader :links="headerLinks" class="border-none p-0 w-full">
         <template #title>
@@ -240,6 +234,7 @@ async function handleCreateSubmit() {
         </template>
       </UPageHeader>
 
+      <!-- Поиск + сортировка -->
       <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
         <UInput
           v-model="searchQuery"
@@ -249,13 +244,6 @@ async function handleCreateSubmit() {
           variant="outline"
           placeholder="Поиск по названию..."
           class="flex-1"
-        />
-        <USelect
-          v-model="badgeFilter"
-          :items="badgeFilterOptions"
-          size="xl"
-          color="neutral"
-          class="min-w-44"
         />
         <USelect
           v-model="sortKey"
@@ -270,6 +258,7 @@ async function handleCreateSubmit() {
       </p>
     </UContainer>
 
+    <!-- Скроллится только список -->
     <UContainer class="flex-1 min-h-0 overflow-y-auto sm:p-px max-w-full w-full md:p-px lg:p-px xl:p-px scrollbar-hide mx-0">
       <UAlert
         v-if="fetchError"
@@ -296,7 +285,17 @@ async function handleCreateSubmit() {
       </div>
 
       <div v-else class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-        <UBlogPost v-for="post in sortedPosts" :key="post.id ?? post.title" v-bind="post" class="h-full" />
+        <UBlogPost v-for="post in sortedPosts" :key="post.id ?? post.title" v-bind="post" class="h-full">
+          <template #badge>
+            <UBadge
+              v-if="post.badge"
+              :color="isNewBadge(post.badge) ? 'primary' : 'neutral'"
+              :variant="isNewBadge(post.badge) ? 'solid' : 'subtle'"
+            >
+              {{ post.badge }}
+            </UBadge>
+          </template>
+        </UBlogPost>
       </div>
     </UContainer>
 
@@ -308,7 +307,7 @@ async function handleCreateSubmit() {
           </UFormField>
 
           <UFormField label="Категория" name="badge">
-            <USelect v-model="createState.badge" :items="badgeOptions" placeholder="Выберите категорию" size="xl" class="w-full" />
+            <USelect v-model="createState.badge" :items="createBadgeOptions" placeholder="Выберите: Новое или Архив" size="xl" class="w-full" />
           </UFormField>
 
           <UFormField label="Описание" name="description">

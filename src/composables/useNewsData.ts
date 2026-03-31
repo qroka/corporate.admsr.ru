@@ -65,14 +65,30 @@ export function formatUnixDate(unixSeconds: number | null): string | undefined {
 
 /**
  * В `news.json` картинки часто лежат как `"/uploads/news/....jpg"`.
- * Здесь намеренно приводим к абсолютному URL, чтобы оно работало в SPA без локальной папки `public/uploads`.
+ * Для главной/ленты используем локальные превью из `public/img/SmallPic`.
+ * Если в данных лежит старый путь `/uploads/news/<name>.<ext>`, мапим его в `/img/SmallPic/<name>.webp`.
  */
-export function resolveNewsImageSrc(path: string | null, baseOrigin = 'https://corporate.admsr.ru'): string | undefined {
-  const p = (path ?? '').trim();
-  if (!p) return undefined;
-  if (p.startsWith('http://') || p.startsWith('https://')) return p;
-  if (p.startsWith('/')) return `${baseOrigin}${p}`;
-  return `${baseOrigin}/${p}`;
+export function resolveNewsImageSrc(path: string | null): string | undefined {
+  const raw = (path ?? '').trim();
+  if (!raw) return undefined;
+
+  // Already local (our uploads endpoint returns /img/SmallPic/... and /img/FullPic/...)
+  if (raw.startsWith('/img/')) return raw;
+
+  // Legacy: phpmyadmin export stored "/uploads/news/<name>.<ext>" (we keep previews in /img/SmallPic/<name>.webp)
+  const legacy = raw.startsWith('/uploads/news/') ? raw : null;
+  if (legacy) {
+    const file = legacy.split('/').pop() ?? '';
+    const base = file.replace(/\.(jpg|jpeg|png|gif|webp)$/i, '').trim();
+    if (base) return `/img/SmallPic/news/${base}.webp`;
+  }
+
+  // Sometimes legacy path can be embedded into absolute URL - still map it.
+  const m = /\/uploads\/news\/([^/?#]+)\.(jpg|jpeg|png|gif|webp)(?:[?#].*)?$/i.exec(raw);
+  if (m?.[1]) return `/img/SmallPic/news/${m[1]}.webp`;
+
+  // Fallback: leave as-is for other cases (can be absolute URL, or a local absolute path).
+  return raw;
 }
 
 export function useNewsData() {

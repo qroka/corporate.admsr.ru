@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, onMounted } from 'vue';
 import type { ButtonProps } from '@nuxt/ui'
 import type { BlogPostProps } from '@nuxt/ui'
 import { useRouter } from 'vue-router';
 import { useNewsData, formatUnixDate, resolveNewsImageSrc, stripHtmlToText } from '../composables/useNewsData';
-import { useEventsData } from '../composables/useEventsData';
 import { useBirthdayColleagues } from '../composables/useBirthdayColleagues';
 
 const eventsLinks = <ButtonProps[]>([
@@ -60,12 +59,73 @@ function eventCoverAt(index: number): string {
   return eventCoverSrcs.length ? eventCoverSrcs[index % eventCoverSrcs.length] : '/src/img/Logo.svg';
 }
 
-const { events, loading: eventsLoading, ensureLoaded: ensureEventsLoaded } = useEventsData();
-ensureEventsLoaded();
+type HomeEventRecord = {
+  id: number;
+  title: string;
+  description: string;
+  date: string;
+  badge?: string;
+  image?: string;
+  image_full?: string;
+  coverIndex?: number;
+};
+
+const homeEvents = ref<HomeEventRecord[]>([]);
+const eventsLoading = ref(false);
+const eventsError = ref<string | null>(null);
+
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function isArchivedBadge(value: unknown) {
+  return String(value ?? '').trim().toLowerCase().includes('архив');
+}
+
+function isNewBadge(value: unknown) {
+  return String(value ?? '').trim().toLowerCase().includes('нов');
+}
+
+function mapHomeEvent(raw: any): HomeEventRecord {
+  return {
+    id: Number(raw?.id),
+    title: String(raw?.title ?? '').trim(),
+    description: String(raw?.description ?? '').trim(),
+    date: String(raw?.date ?? '').trim(),
+    badge: raw?.badge ? String(raw.badge) : undefined,
+    image: raw?.image ? String(raw.image) : undefined,
+    image_full: raw?.image_full ? String(raw.image_full) : undefined,
+    coverIndex: typeof raw?.coverIndex === 'number' ? raw.coverIndex : undefined,
+  };
+}
+
+async function fetchHomeEvents() {
+  eventsLoading.value = true;
+  eventsError.value = null;
+  try {
+    const res = await fetch('/api/events.php');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Ошибка загрузки мероприятий');
+    const arr = Array.isArray(json.data) ? json.data : [];
+    homeEvents.value = arr.map(mapHomeEvent).filter((e) => e.id && e.title && e.date);
+  } catch (e: any) {
+    eventsError.value = e?.message ?? 'Не удалось загрузить мероприятия';
+    homeEvents.value = [];
+  } finally {
+    eventsLoading.value = false;
+  }
+}
+
+onMounted(() => {
+  void fetchHomeEvents();
+});
 
 const actualEvents = computed<ActualEventItem[]>(() =>
-  events.value
-    .filter((e) => String(e.badge ?? '').trim().toLowerCase().includes('нов'))
+  homeEvents.value
+    .filter((e) => !isArchivedBadge(e.badge))
+    .filter((e) => String(e.date ?? '') >= todayIsoDate())
+    .filter((e) => isNewBadge(e.badge))
     .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? ''), 'ru-RU') || (b.id ?? 0) - (a.id ?? 0))
     .map((e, idx) => ({
       id: `evt-${e.id}`,
@@ -73,14 +133,14 @@ const actualEvents = computed<ActualEventItem[]>(() =>
       post: {
         title: e.title,
         description: e.description,
-        image: eventCoverAt(e.coverIndex ?? idx),
+        image: e.image_full || e.image || eventCoverAt(e.coverIndex ?? idx),
         date: e.date,
         badge: e.badge,
       },
     })),
 );
 
-const hasActualEvents = computed(() => !eventsLoading.value && actualEvents.value.length > 0);
+const hasActualEvents = computed(() => !eventsLoading.value && !eventsError.value && actualEvents.value.length > 0);
 
 function openEventDetails(eventId: number) {
   void router.push(`/events/${eventId}`);
@@ -97,7 +157,10 @@ type NewsItem = {
 const { sortedNews, ensureLoaded: ensureNewsLoaded } = useNewsData();
 ensureNewsLoaded();
 
-const newsItems = computed<NewsItem[]>(() =>
+const newsPageSize = 6;
+const visibleNewsCount = ref(newsPageSize);
+
+const allNewsItems = computed<NewsItem[]>(() =>
   sortedNews.value.map((n) => {
     const imageSrc = resolveNewsImageSrc(n.announceImagePath);
     const date = formatUnixDate(n.timestamp);
@@ -117,6 +180,13 @@ const newsItems = computed<NewsItem[]>(() =>
     };
   }),
 );
+
+const newsItems = computed<NewsItem[]>(() => allNewsItems.value.slice(0, visibleNewsCount.value));
+const hasMoreNews = computed(() => newsItems.value.length < allNewsItems.value.length);
+
+function showMoreNews() {
+  visibleNewsCount.value = Math.min(allNewsItems.value.length, visibleNewsCount.value + newsPageSize);
+}
 
 const newsLiked = ref<Record<string, boolean>>({});
 
@@ -160,22 +230,37 @@ ensureBirthdaysLoaded();
 
 <template>
   <UMain class="flex flex-1 flex-row w-full h-full gap-6 min-h-0 max-h-full overflow-hidden">
-    <UContainer v-if="hasActualEvents" class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 max-w-96">
+    <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 max-w-96">
       <UPageHeader title="" :links="eventsLinks" class="border-none p-0">
         <template #title>
           <h1 class="text-2xl font-medium">Актуальные мероприятия</h1>
         </template>
       </UPageHeader>
       <UContainer class="overflow-y-auto sm:p-px md:p-px lg:p-px xl:p-px scrollbar-hide">
-        <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0">
+        <UContainer v-if="eventsLoading" class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0">
+          <USkeleton v-for="n in 3" :key="n" class="h-32 w-full rounded-2xl" />
+        </UContainer>
+        <UContainer v-else-if="hasActualEvents" class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0">
           <UBlogPost
             v-for="item in actualEvents"
             :key="item.id"
             v-bind="item.post"
             class="w-full cursor-pointer"
             @click="openEventDetails(item.eventId)"
-          />
+          >
+            <template #badge>
+              <UBadge v-if="item.post.badge" color="primary" variant="solid">
+                {{ item.post.badge }}
+              </UBadge>
+            </template>
+          </UBlogPost>
         </UContainer>
+        <p v-else-if="eventsError" class="px-1 py-2 text-sm text-error">
+          {{ eventsError }}
+        </p>
+        <p v-else class="px-1 py-2 text-sm text-muted">
+          Сейчас нет актуальных мероприятий.
+        </p>
       </UContainer>
     </UContainer>
     <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 min-h-0">
@@ -225,6 +310,19 @@ ensureBirthdaysLoaded();
               </UContainer>
             </template>
           </UBlogPost>
+
+          <UButton
+            v-if="hasMoreNews"
+            type="button"
+            color="neutral"
+            variant="outline"
+            size="xl"
+            class="w-full justify-center"
+            icon="i-lucide-chevron-down"
+            @click="showMoreNews"
+          >
+            Показать ещё
+          </UButton>
         </UContainer>
       </UScrollArea>
     </UContainer>
