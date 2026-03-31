@@ -231,6 +231,24 @@ watch(
   },
 );
 
+watch(
+  () => [accountForm.role, accountForm.ofoId, officeSeats.value.length] as const,
+  () => {
+    // При загрузке профиля роль уже есть в БД, но positionId — нет.
+    // Если должность ещё не выбрана в форме, пытаемся восстановить её по тексту роли.
+    if (accountForm.positionId) return;
+    const roleLabel = String(accountForm.role ?? '').trim();
+    const ofoId = String(accountForm.ofoId ?? '').trim();
+    if (!roleLabel || !ofoId) return;
+
+    const match = positionItems.value.find((p) => p.label === roleLabel);
+    if (match) {
+      accountForm.positionId = match.value;
+    }
+  },
+  { immediate: true },
+);
+
 const cityItems = [
   { value: 'Москва', label: 'Москва' },
   { value: 'Санкт-Петербург', label: 'Санкт-Петербург' },
