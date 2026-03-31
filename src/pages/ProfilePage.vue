@@ -143,11 +143,15 @@ function onViewPublicProfile() {
   window.alert('Публичный профиль откроется в новой вкладке, когда будет готов маршрут.');
 }
 
+const profileLoading = ref(false);
+const profileSaving = ref(false);
+
 const accountForm = reactive({
-  firstName: 'Иван',
-  lastName: 'Петров',
-  phone: '+7 (900) 000-00-00',
-  email: 'ivan.petrov@example.gov.ru',
+  firstName: '',
+  lastName: '',
+  patronymic: '',
+  phone: '',
+  email: '',
   ofoId: '',
   positionId: '',
   city: 'Москва',
@@ -155,6 +159,33 @@ const accountForm = reactive({
   postcode: '101000',
   country: 'Россия',
 });
+
+async function loadProfile() {
+  const raw = localStorage.getItem('auth-user');
+  if (!raw) return;
+  const user = JSON.parse(raw) as { id: number };
+  if (!user?.id) return;
+
+  profileLoading.value = true;
+  try {
+    const res = await fetch(`/api/profile.php?id=${user.id}`);
+    const data = await res.json();
+    if (!data.success) return;
+
+    const p = data.data;
+    accountForm.firstName  = p.firstname  ?? '';
+    accountForm.lastName   = p.surname    ?? '';
+    accountForm.patronymic = p.lastname   ?? '';
+    accountForm.phone      = p.phone      ?? '';
+    accountForm.email      = p.email      ?? '';
+    accountForm.ofoId      = p.ofo        ?? '';
+
+    const full = [p.surname, p.firstname, p.lastname].filter(Boolean).join(' ');
+    if (full) setDisplayName(full);
+  } finally {
+    profileLoading.value = false;
+  }
+}
 
 const ofoItems = computed(() =>
   ofoStats.value.map((o) => ({
@@ -205,12 +236,39 @@ const countryItems = [
   { value: 'Беларусь', label: 'Беларусь' },
 ];
 
-function onUpdateAccount() {
-  const full = `${accountForm.firstName} ${accountForm.lastName}`.trim();
-  if (full) setDisplayName(full);
-  const pos = positionItems.value.find((p) => p.value === accountForm.positionId);
-  if (pos?.label) setSubtitle(pos.label);
-  profileSaved();
+async function onUpdateAccount() {
+  const raw = localStorage.getItem('auth-user');
+  if (!raw) return;
+  const user = JSON.parse(raw) as { id: number };
+  if (!user?.id) return;
+
+  profileSaving.value = true;
+  try {
+    const res = await fetch('/api/profile.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id:        user.id,
+        firstname: accountForm.firstName,
+        surname:   accountForm.lastName,
+        lastname:  accountForm.patronymic,
+        phone:     accountForm.phone,
+        email:     accountForm.email,
+        ofo:       accountForm.ofoId,
+      }),
+    });
+    const data = await res.json();
+    if (!data.success) return;
+
+    const full = [accountForm.lastName, accountForm.firstName, accountForm.patronymic]
+      .filter(Boolean).join(' ');
+    if (full) setDisplayName(full);
+    const pos = positionItems.value.find((p) => p.value === accountForm.positionId);
+    if (pos?.label) setSubtitle(pos.label);
+    profileSaved();
+  } finally {
+    profileSaving.value = false;
+  }
 }
 
 const roleOptions = [
@@ -230,9 +288,7 @@ watch(currentRole, (val) => {
 });
 
 onMounted(() => {
-  const parts = displayName.value.trim().split(/\s+/);
-  if (parts.length >= 1) accountForm.firstName = parts[0];
-  if (parts.length >= 2) accountForm.lastName = parts.slice(1).join(' ');
+  void loadProfile();
 });
 
 </script>
@@ -322,18 +378,21 @@ onMounted(() => {
                     <UForm :state="accountForm" class="space-y-5" @submit.prevent="onUpdateAccount">
                       <UContainer
                         class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
-                        <UFormField label="Имя" name="firstName">
-                          <UInput v-model="accountForm.firstName" size="xl" class="w-full" autocomplete="given-name" />
-                        </UFormField>
                         <UFormField label="Фамилия" name="lastName">
-                          <UInput v-model="accountForm.lastName" size="xl" class="w-full" autocomplete="family-name" />
+                          <UInput v-model="accountForm.lastName" size="xl" class="w-full" autocomplete="family-name" :disabled="profileLoading" />
+                        </UFormField>
+                        <UFormField label="Имя" name="firstName">
+                          <UInput v-model="accountForm.firstName" size="xl" class="w-full" autocomplete="given-name" :disabled="profileLoading" />
+                        </UFormField>
+                        <UFormField label="Отчество" name="patronymic">
+                          <UInput v-model="accountForm.patronymic" size="xl" class="w-full" autocomplete="additional-name" :disabled="profileLoading" />
                         </UFormField>
                         <UFormField label="Телефон" name="phone">
-                          <UInput v-model="accountForm.phone" size="xl" class="w-full" type="tel" autocomplete="tel" />
+                          <UInput v-model="accountForm.phone" size="xl" class="w-full" type="tel" autocomplete="tel" :disabled="profileLoading" />
                         </UFormField>
                         <UFormField label="Электронная почта" name="email">
                           <UInput v-model="accountForm.email" size="xl" class="w-full" type="email"
-                            autocomplete="email" />
+                            autocomplete="email" :disabled="profileLoading" />
                         </UFormField>
                         <UFormField label="ОФО" name="ofoId" :help="ofoError ? String(ofoError) : undefined">
                           <USelectMenu
@@ -393,7 +452,7 @@ onMounted(() => {
                       <USeparator />
 
                       <UContainer class="flex flex-wrap items-center gap-3 pt-2 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
-                        <UButton type="submit" color="primary" size="xl">Сохранить</UButton>
+                        <UButton type="submit" color="primary" size="xl" :loading="profileSaving" :disabled="profileLoading">Сохранить</UButton>
                       </UContainer>
                     </UForm>
                   </UContainer>
