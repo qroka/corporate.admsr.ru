@@ -120,7 +120,7 @@ try {
 
     jsonOk([
         'image'      => $smallUrl,
-        'image_full' => $smallUrl,
+        'image_full' => $fullUrl,
     ], 'Изображение загружено');
 
 } catch (Throwable $e) {
