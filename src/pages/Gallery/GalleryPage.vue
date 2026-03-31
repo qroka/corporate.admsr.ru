@@ -18,7 +18,7 @@ function coverAt(index: number): string {
   return coverSrcs.length ? coverSrcs[index % coverSrcs.length] : '/src/img/Logo.svg';
 }
 
-const { loading, error, albums: albumRecords, addAlbum, ensureLoaded } = useGalleryData();
+const { loading, error, albums: albumRecords, ensureLoaded, reload } = useGalleryData();
 ensureLoaded();
 
 const { toast } = useAppToast();
@@ -43,7 +43,7 @@ const albums = computed<Album[]>(() =>
     description: a.description,
     date: a.date,
     to: `/gallery/${a.id}`,
-    image: { src: a.image || coverAt(a.coverIndex ?? idx), alt: 'Обложка альбома' },
+    image: { src: a.image || coverAt(idx), alt: 'Обложка альбома' },
   })),
 );
 
@@ -69,52 +69,33 @@ const filteredAlbums = computed(() => {
     });
   }
 
-  const sorted = [...list].sort((a, b) => {
+  return [...list].sort((a, b) => {
     if (sortKey.value === 'newest') return (b.date ?? '').localeCompare(a.date ?? '');
     if (sortKey.value === 'oldest') return (a.date ?? '').localeCompare(b.date ?? '');
     if (sortKey.value === 'title-asc') return (a.title ?? '').localeCompare(b.title ?? '', 'ru');
     if (sortKey.value === 'title-desc') return (b.title ?? '').localeCompare(a.title ?? '', 'ru');
     return 0;
   });
-
-  return sorted;
 });
 
-const createOpen = ref(false);
+// ── Создание альбома ──────────────────────────────────────────────────────────
+const createOpen       = ref(false);
 const createSubmitting = ref(false);
-const createFiles = ref<File[] | undefined>(undefined);
-type SingleDateValue = { value?: any } | any | null;
-const createDateValue = ref<SingleDateValue>(null);
-const createErrors = reactive({
-  title: '',
-  date: '',
-  files: '',
-});
+const createFiles      = ref<File[] | undefined>(undefined);
+type SingleDateValue   = { value?: any } | any | null;
+const createDateValue  = ref<SingleDateValue>(null);
+const createErrors     = reactive({ title: '', general: '' });
 
-const createState = reactive({
-  title: '',
-  description: '',
-  date: '',
-});
-
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ''));
-    reader.onerror = () => reject(new Error('Не удалось прочитать файл'));
-    reader.readAsDataURL(file);
-  });
-}
+const createState = reactive({ title: '', description: '', date: '' });
 
 function resetCreateForm() {
-  createState.title = '';
+  createState.title       = '';
   createState.description = '';
-  createState.date = '';
-  createDateValue.value = null;
-  createFiles.value = undefined;
-  createErrors.title = '';
-  createErrors.date = '';
-  createErrors.files = '';
+  createState.date        = '';
+  createDateValue.value   = null;
+  createFiles.value       = undefined;
+  createErrors.title      = '';
+  createErrors.general    = '';
 }
 
 function openCreate() {
@@ -126,11 +107,11 @@ const headerLinks = computed(() => {
   if (currentRole.value !== 'admin') return [];
   return [
     {
-      label: 'Добавить альбом',
-      icon: 'i-lucide-folder-plus',
-      color: 'neutral',
+      label:   'Добавить альбом',
+      icon:    'i-lucide-folder-plus',
+      color:   'neutral',
       variant: 'outline',
-      size: 'xl',
+      size:    'xl',
       onClick: openCreate,
     },
   ];
@@ -142,51 +123,50 @@ watch(createDateValue, (val) => {
 });
 
 function validateCreate() {
-  createErrors.title = '';
-  createErrors.date = '';
-  createErrors.files = '';
-
-  if (!createState.title.trim()) {
-    createErrors.title = 'Заполните название альбома.';
-  }
-  if (!createState.date) {
-    createErrors.date = 'Укажите дату альбома.';
-  }
-  if (!createFiles.value?.length) {
-    createErrors.files = 'Добавьте хотя бы один файл.';
-  }
-  return !createErrors.title && !createErrors.date && !createErrors.files;
+  createErrors.title   = '';
+  createErrors.general = '';
+  if (!createState.title.trim()) createErrors.title = 'Заполните название альбома.';
+  return !createErrors.title;
 }
 
 async function handleCreateSubmit() {
   if (!validateCreate()) return;
   createSubmitting.value = true;
   try {
-    const files = createFiles.value ?? [];
-    const photoLinks = await Promise.all(files.map((f) => fileToDataUrl(f)));
-    const coverSrc = photoLinks[0];
-
-    addAlbum({
-      id: `local-${Date.now()}`,
-      title: createState.title.trim(),
-      description:
-        createState.description.trim() ||
-        `В альбоме ${createFiles.value?.length ?? 0} ${createFiles.value?.length === 1 ? 'файл' : 'файлов'}.`,
-      date: createState.date,
-      image: coverSrc,
-      photoLinks,
+    // 1. Создаём альбом в БД
+    const res = await fetch('/api/gallery.php', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        name:        createState.title.trim(),
+        description: createState.description.trim() || null,
+        date:        createState.date || null,
+      }),
     });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Ошибка создания альбома');
 
+    const newAlbumId = json.data.id;
+
+    // 2. Загружаем фото если выбраны
+    for (const file of (createFiles.value ?? [])) {
+      const fd = new FormData();
+      fd.append('image',    file);
+      fd.append('album_id', String(newAlbumId));
+      await fetch('/api/gallery_base.php', { method: 'POST', body: fd });
+    }
+
+    // 3. Обновляем список
+    await reload();
     createOpen.value = false;
     resetCreateForm();
     toast.add({
-      title: 'Альбом добавлен',
-      description: 'Локальный альбом сохранён и отображается в списке.',
-      color: 'success',
-      icon: 'i-lucide-check-circle',
+      title:       'Альбом создан',
+      color:       'success',
+      icon:        'i-lucide-check-circle',
     });
   } catch (e: any) {
-    createErrors.title = e?.message ?? 'Ошибка при создании альбома';
+    createErrors.general = e.message ?? 'Ошибка при создании альбома';
   } finally {
     createSubmitting.value = false;
   }
@@ -212,25 +192,28 @@ async function handleCreateSubmit() {
 
     <UContainer
       class="flex-1 min-h-0 overflow-y-auto sm:p-px max-w-full w-full md:p-px lg:p-px xl:p-px scrollbar-hide mx-0">
+      <div v-if="loading" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+        <USkeleton v-for="i in 6" :key="i" class="h-64 rounded-2xl" />
+      </div>
       <UContainer
+        v-else
         class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:p-0 max-w-full w-full md:p-0 lg:p-0 xl:p-0 mx-0">
         <UBlogPost v-for="album in filteredAlbums" :key="album.id" v-bind="album" class="h-full max-w-full w-full" />
       </UContainer>
     </UContainer>
 
-    <!-- Slideover создания альбома (только для администратора) -->
+    <!-- Slideover создания альбома -->
     <USlideover
       v-model:open="createOpen"
       side="right"
       title="Новый альбом"
-      description="Заполните данные и загрузите фотографии альбома"
+      description="Заполните данные альбома"
     >
       <template #body>
         <UForm :state="createState" class="space-y-4" @submit.prevent="handleCreateSubmit">
           <UFormField label="Название альбома" name="title" :error="createErrors.title || undefined" required>
             <UInput v-model="createState.title" size="xl" class="w-full" placeholder="Введите название альбома" />
           </UFormField>
-
 
           <UFormField label="Описание" name="description">
             <UTextarea
@@ -242,18 +225,11 @@ async function handleCreateSubmit() {
             />
           </UFormField>
 
-          <UFormField label="Дата альбома" name="date" :error="createErrors.date || undefined" required>
+          <UFormField label="Дата альбома" name="date">
             <UInputDate v-model="createDateValue" size="xl" class="w-full">
               <template #trailing>
                 <UPopover>
-                  <UButton
-                    color="neutral"
-                    variant="link"
-                    size="sm"
-                    icon="i-lucide-calendar"
-                    aria-label="Выбрать дату"
-                    class="px-0"
-                  />
+                  <UButton color="neutral" variant="link" size="sm" icon="i-lucide-calendar" aria-label="Выбрать дату" class="px-0" />
                   <template #content>
                     <UCalendar v-model="createDateValue" class="p-2" />
                   </template>
@@ -262,19 +238,17 @@ async function handleCreateSubmit() {
             </UInputDate>
           </UFormField>
 
-          <UFormField label="Файлы альбома" name="files" :error="createErrors.files || undefined" required>
+          <UFormField label="Фотографии (необязательно)" name="files">
             <UFileUpload
               v-model="createFiles"
               multiple
               label="Перетащите фото сюда"
-              description="JPG, PNG, WEBP или GIF. Можно выбрать несколько файлов."
-              :class="[
-                'w-full min-h-48 rounded-lg',
-                createErrors.files ? 'ring-1 ring-error border-error' : '',
-              ]"
+              description="JPG, PNG или WEBP. Можно выбрать несколько."
+              class="w-full min-h-48 rounded-lg"
             />
           </UFormField>
 
+          <UAlert v-if="createErrors.general" color="error" variant="subtle" icon="i-lucide-alert-circle" :description="createErrors.general" />
         </UForm>
       </template>
       <template #footer>
