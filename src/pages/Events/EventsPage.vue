@@ -191,7 +191,7 @@ async function handleCreateSubmit() {
     if (createImageFile.value) {
       const formData = new FormData();
       formData.append('image', createImageFile.value);
-      const uploadRes = await fetch('/api/upload.php', { method: 'POST', body: formData });
+      const uploadRes = await fetch('/api/Upload/upload.php', { method: 'POST', body: formData });
       const uploadJson = await uploadRes.json();
       if (!uploadJson.success) throw new Error(uploadJson.message || 'Ошибка загрузки изображения');
       imagePath     = uploadJson.data.image;

@@ -238,7 +238,7 @@ async function handleEditSubmit() {
     if (editImageFile.value) {
       const formData = new FormData();
       formData.append('image', editImageFile.value);
-      const uploadRes = await fetch('/api/upload.php', { method: 'POST', body: formData });
+      const uploadRes = await fetch('/api/Upload/upload.php', { method: 'POST', body: formData });
       const uploadJson = await uploadRes.json();
       if (!uploadJson.success) throw new Error(uploadJson.message || 'Ошибка загрузки изображения');
       imagePatch = { image: uploadJson.data.image, image_full: uploadJson.data.image_full };
