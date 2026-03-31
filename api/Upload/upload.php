@@ -90,33 +90,25 @@ try {
     if ($file['size'] > 20 * 1024 * 1024) jsonError(400, 'Файл превышает 20 МБ');
 
     $mime = detectMime($file['tmp_name']);
-    $ext = match ($mime) {
-        'image/jpeg' => 'jpg',
-        'image/png'  => 'png',
-        'image/webp' => 'webp',
-        'image/gif'  => 'gif',
-        default      => jsonError(400, 'Допустимы только JPEG, PNG, WebP или GIF'),
-    };
-
-    $baseName = bin2hex(random_bytes(12));
-    $origName = $baseName . '.' . $ext;
-    $webpName = $baseName . '.webp';
-
-    // 1. Сохраняем оригинал в FullPic/
-    if (!is_dir(FULL_DIR)) mkdir(FULL_DIR, 0755, true);
-    if (!move_uploaded_file($file['tmp_name'], FULL_DIR . $origName)) {
-        jsonError(500, 'Не удалось сохранить файл');
+    if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp'], true)) {
+        jsonError(400, 'Допустимы только JPEG, PNG или WebP');
     }
 
-    // 2. Конвертируем в WebP и кладём в SmallPic/ (960px, quality 76)
-    try {
-        toWebP(FULL_DIR . $origName, SMALL_DIR . $webpName, $mime, 960, 76);
-    } catch (Throwable) {
-        // Конвертация не критична — продолжаем без WebP
-    }
+    $baseName  = bin2hex(random_bytes(12));
+    $webpName  = $baseName . '.webp';
+    $tmpPath   = $file['tmp_name'];
 
-    $fullUrl  = '/img/FullPic/'  . $origName;
-    $smallUrl = is_file(SMALL_DIR . $webpName) ? '/img/SmallPic/' . $webpName : $fullUrl;
+    if (!is_dir(FULL_DIR))  mkdir(FULL_DIR,  0755, true);
+    if (!is_dir(SMALL_DIR)) mkdir(SMALL_DIR, 0755, true);
+
+    // 1. FullPic — WebP 1920px, quality 100
+    toWebP($tmpPath, FULL_DIR . $webpName, $mime, 1920, 100);
+
+    // 2. SmallPic — WebP 960px, quality 76
+    toWebP($tmpPath, SMALL_DIR . $webpName, $mime, 960, 76);
+
+    $fullUrl  = '/img/FullPic/'  . $webpName;
+    $smallUrl = '/img/SmallPic/' . $webpName;
 
     jsonOk([
         'image'      => $smallUrl,

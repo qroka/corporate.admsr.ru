@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch, onMounted } from 'vue';
+import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { BlogPostProps } from '@nuxt/ui';
 import { currentRole } from '../../stores/role';
@@ -311,11 +311,82 @@ async function handleDelete() {
     deleteSubmitting.value = false;
   }
 }
+
+const mainScrollEl = ref<HTMLElement | null>(null);
+const showFloatingHeader = ref(false);
+let lastScrollTop = 0;
+let rafPending = false;
+const FLOATING_SHOW_AT = 220;
+const FLOATING_HIDE_AT = 140;
+
+function onMainScroll() {
+  const el = mainScrollEl.value;
+  if (!el) return;
+  if (rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(() => {
+    rafPending = false;
+    const top = el.scrollTop;
+    const goingUp = top < lastScrollTop;
+    const goingDown = top > lastScrollTop;
+
+    if (top < FLOATING_HIDE_AT) {
+      showFloatingHeader.value = false;
+    } else if (goingUp && top > FLOATING_SHOW_AT) {
+      showFloatingHeader.value = true;
+    } else if (goingDown) {
+      showFloatingHeader.value = false;
+    }
+
+    lastScrollTop = top;
+  });
+}
+
+onMounted(() => {
+  const el = mainScrollEl.value;
+  if (!el) return;
+  lastScrollTop = el.scrollTop;
+  el.addEventListener('scroll', onMainScroll, { passive: true });
+});
+
+onUnmounted(() => {
+  const el = mainScrollEl.value;
+  if (!el) return;
+  el.removeEventListener('scroll', onMainScroll);
+});
 </script>
 
 <template>
-  <UMain class="flex flex-col w-full h-full min-h-0 gap-0">
-    <UContainer class="flex-1 min-h-0 overflow-y-auto max-w-full w-full sm:p-0 md:p-0 lg:p-0 xl:p-0 scrollbar-hide mx-0 pb-8">
+  <UMain class="relative flex flex-col w-full h-full min-h-0 gap-0">
+    <div ref="mainScrollEl" class="flex-1 min-h-0 overflow-y-auto max-w-full w-full sm:p-0 md:p-0 lg:p-0 xl:p-0 scrollbar-hide mx-0 pb-8">
+      <!-- Floating header overlay -->
+      <div class="sticky top-0 z-30 h-0">
+        <div
+          :class="[
+            'absolute left-0 right-0',
+            'transition duration-200 ease-out will-change-transform',
+            showFloatingHeader ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 -translate-y-2 pointer-events-none',
+          ]"
+        >
+          <UContainer class="max-w-full w-full sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
+            <UContainer class="bg-default/85 backdrop-blur rounded-xl ring ring-default p-3">
+              <UPageHeader title="" class="border-none p-0 w-full">
+                <template #title>
+                  <h1 class="text-xl sm:text-2xl font-semibold text-highlighted truncate">
+                    {{ event?.title ?? 'Мероприятие' }}
+                  </h1>
+                </template>
+                <template #description>
+                  <p v-if="event?.description" class="text-sm text-muted line-clamp-2">
+                    {{ firstSentence(event.description ?? '') }}
+                  </p>
+                </template>
+              </UPageHeader>
+            </UContainer>
+          </UContainer>
+        </div>
+      </div>
+
       <UAlert v-if="fetchError" color="error" variant="subtle" icon="i-lucide-alert-circle" :title="fetchError" class="mb-6">
         <template #footer>
           <UButton size="sm" color="error" variant="ghost" @click="fetchEvent(route.params.id)">Повторить</UButton>
@@ -476,7 +547,7 @@ async function handleDelete() {
           description="Возможно, оно было удалено или вы перешли по неверной ссылке."
         />
       </div>
-    </UContainer>
+    </div>
 
     <!-- Slideover редактирования -->
     <USlideover v-model:open="editOpen" side="right" title="Редактирование мероприятия" description="Измените данные мероприятия">
