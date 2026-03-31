@@ -1,12 +1,18 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import type { DropdownMenuItem, TabsItem } from '@nuxt/ui';
 import { useAppToast } from '../composables/useAppToast';
 import { useAppConfig } from '../composables/useAppConfig';
+import { useOfoData } from '../composables/useOfoData';
+import { useProfileDisplay } from '../composables/useProfileDisplay';
 import { currentRole, setRole } from '../stores/role';
 import { NEUTRAL_COLORS, PRIMARY_COLORS } from '../composables/useUiTheme';
 
 const { profileSaved } = useAppToast();
+
+const { ofoStats, officeSeats, loadDirectory, loadSeats, loading: ofoLoading, error: ofoError } = useOfoData();
+void loadDirectory();
+void loadSeats();
 
 const profileTabItems = [
   { label: 'Настройки аккаунта', value: 'account', slot: 'account' },
@@ -18,9 +24,30 @@ const profileTabItems = [
 
 const profileTab = ref<(typeof profileTabItems)[number]['value']>('account');
 
-const displayName = 'Иван Петров';
-const companyName = 'Администрация муниципального округа';
-const avatarSrc = '/src/img/Logo.svg';
+const { displayName, subtitle, avatarSrc, setAvatarSrc, setDisplayName, setSubtitle } = useProfileDisplay();
+const avatarPickerOpen = ref(false);
+const avatarFilenames = [
+  'Alien.png',
+  'Clown Face.png',
+  'Cold Face.png',
+  'Face With Symbols On Mouth.png',
+  'Face With Thermometer.png',
+  'Nerd Face.png',
+  'Pleading Face.png',
+  'Rolling On The Floor Laughing.png',
+  'Skull.png',
+  'Slightly Smiling Face.png',
+  'Smiling Face With Hearts.png',
+  'Smiling Face With Horns.png',
+  'Star Struck.png',
+  'Winking Face With Tongue.png',
+  'Winking Face.png',
+] as const;
+
+function avatarUrlFromFilename(filename: string): string {
+  return `/img/FullPic/avatars/${encodeURIComponent(filename)}`;
+}
+
 const publicProfileUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/profile/public/demo`;
 
 const copied = ref(false);
@@ -104,7 +131,12 @@ function onChangeCover() {
 }
 
 function onChangeAvatar() {
-  window.alert('Здесь будет загрузка фото профиля.');
+  avatarPickerOpen.value = true;
+}
+
+function selectAvatar(filename: string) {
+  setAvatarSrc(avatarUrlFromFilename(filename));
+  avatarPickerOpen.value = false;
 }
 
 function onViewPublicProfile() {
@@ -116,11 +148,44 @@ const accountForm = reactive({
   lastName: 'Петров',
   phone: '+7 (900) 000-00-00',
   email: 'ivan.petrov@example.gov.ru',
+  ofoId: '',
+  positionId: '',
   city: 'Москва',
   state: 'Москва',
   postcode: '101000',
   country: 'Россия',
 });
+
+const ofoItems = computed(() =>
+  ofoStats.value.map((o) => ({
+    value: o.id,
+    label: o.title,
+  })),
+);
+
+const positionItems = computed(() => {
+  const ofoId = String(accountForm.ofoId ?? '').trim();
+  if (!ofoId) return [];
+
+  const list = officeSeats.value
+    .filter((s) => String((s as any).ofo ?? '').trim() === ofoId)
+    .map((s) => ({ value: (s as any).id, label: (s as any).title }));
+
+  const byLabel = new Map<string, { value: string; label: string }>();
+  for (const it of list) {
+    const key = String(it.label ?? '').trim();
+    if (!key) continue;
+    if (!byLabel.has(key)) byLabel.set(key, { value: String(it.value ?? ''), label: key });
+  }
+  return [...byLabel.values()].sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+});
+
+watch(
+  () => accountForm.ofoId,
+  () => {
+    accountForm.positionId = '';
+  },
+);
 
 const cityItems = [
   { value: 'Москва', label: 'Москва' },
@@ -141,6 +206,10 @@ const countryItems = [
 ];
 
 function onUpdateAccount() {
+  const full = `${accountForm.firstName} ${accountForm.lastName}`.trim();
+  if (full) setDisplayName(full);
+  const pos = positionItems.value.find((p) => p.value === accountForm.positionId);
+  if (pos?.label) setSubtitle(pos.label);
   profileSaved();
 }
 
@@ -158,6 +227,12 @@ watch(currentRole, (val) => {
   if (!roleOptions.some((r) => r.value === val)) {
     setRole('user');
   }
+});
+
+onMounted(() => {
+  const parts = displayName.value.trim().split(/\s+/);
+  if (parts.length >= 1) accountForm.firstName = parts[0];
+  if (parts.length >= 2) accountForm.lastName = parts.slice(1).join(' ');
 });
 
 </script>
@@ -187,16 +262,53 @@ watch(currentRole, (val) => {
             <UCard class="overflow-visible">
               <UContainer class="flex flex-col items-center text-center pt-2 pb-2">
                 <UContainer class="relative -mt-20 sm:-mt-22 mb-4">
-                  <UAvatar :src="avatarSrc" :alt="displayName" size="3xl"
-                    class="ring-4 ring-default size-28 sm:size-32" />
+                  <UAvatar
+                    :src="avatarSrc"
+                    :alt="displayName"
+                    size="3xl"
+                    class="size-28 sm:size-32"
+                    :ui="{ root: '!bg-elevated' }"
+                  />
                 </UContainer>
                 <h2 class="text-lg sm:text-xl font-semibold text-highlighted">
                   {{ displayName }}
                 </h2>
                 <p class="text-sm text-muted mt-0.5">
-                  {{ companyName }}
+                  {{ subtitle }}
                 </p>
               </UContainer>
+              <UPopover v-model:open="avatarPickerOpen"  >
+                    <UButton
+                      type="button"
+                      color="neutral"
+                      label="Изменить аватар"
+                      variant="outline"
+                      size="xl"
+                      class="w-full items-center justify-center"
+                      icon="i-lucide-smile"
+                      aria-label="Изменить аватар"
+                    />
+
+                    <template #content>
+                      <UContainer class="sm:p-3 md:p-3 lg:p-3 xl:p-3 mx-0">
+                        <UContainer class="grid grid-cols-3 gap-2 w-full sm:p-0 md:p-0 lg:p-0 xl:p-0">
+                          <UButton
+                            v-for="name in avatarFilenames"
+                            :key="name"
+                            size="xl"
+                            variant="subtle"
+                            color="neutral"
+                            @click="selectAvatar(name)">
+                              <img
+                                :src="avatarUrlFromFilename(name)"
+                                alt=""
+                                class="w-12 h-auto p-0"
+                              />
+                          </UButton>
+                        </UContainer>
+                      </UContainer>
+                    </template>
+                  </UPopover>
             </UCard>
           </UContainer>
 
@@ -204,7 +316,7 @@ watch(currentRole, (val) => {
           <UContainer class="xl:col-span-8 min-w-0 p-px">
             <UCard class="overflow-visible">
 
-              <UTabs v-model="profileTab" :items="profileTabItems" size="md" variant="link" class="w-full">
+              <UTabs v-model="profileTab" :items="profileTabItems" size="xl" variant="link" class="w-full">
                 <template #account>
                   <UContainer class="p-4 sm:p-6 pt-6 space-y-6">
                     <UForm :state="accountForm" class="space-y-5" @submit.prevent="onUpdateAccount">
@@ -222,6 +334,34 @@ watch(currentRole, (val) => {
                         <UFormField label="Электронная почта" name="email">
                           <UInput v-model="accountForm.email" size="xl" class="w-full" type="email"
                             autocomplete="email" />
+                        </UFormField>
+                        <UFormField label="ОФО" name="ofoId" :help="ofoError ? String(ofoError) : undefined">
+                          <USelectMenu
+                            v-model="accountForm.ofoId"
+                            :items="ofoItems"
+                            value-key="value"
+                            label-key="label"
+                            placeholder="Выберите ОФО"
+                            size="xl"
+                            color="neutral"
+                            class="w-full"
+                            :disabled="ofoLoading"
+                            :content="{ align: 'start', sideOffset: 8 }"
+                          />
+                        </UFormField>
+                        <UFormField label="Должность" name="positionId">
+                          <USelectMenu
+                            v-model="accountForm.positionId"
+                            :items="positionItems"
+                            value-key="value"
+                            label-key="label"
+                            placeholder="Выберите должность"
+                            size="xl"
+                            color="neutral"
+                            class="w-full"
+                            :disabled="!accountForm.ofoId || ofoLoading"
+                            :content="{ align: 'start', sideOffset: 8 }"
+                          />
                         </UFormField>
                       </UContainer>
 
@@ -288,5 +428,6 @@ watch(currentRole, (val) => {
         </UContainer>
       </UContainer>
     </UContainer>
+
   </UMain>
 </template>

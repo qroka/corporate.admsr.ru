@@ -1,7 +1,10 @@
 <script setup>
 import { ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useProfileDisplay } from '../composables/useProfileDisplay';
 import { currentRole, setRole } from '../stores/role';
+
+const { displayName, subtitle, avatarSrc } = useProfileDisplay();
 
 defineProps({
   isDark: {
@@ -114,14 +117,15 @@ watch(
       <UTooltip arrow :content="{ side: 'bottom' }" text="Профиль">
         <RouterLink :to="{ name: 'profile' }" class="bg-elevated rounded-full py-2.5 pl-3 pr-5">
           <UUser
-            name="Константин Константинович"
+            :name="displayName"
             size="xl"
             class="bg-elevated rounded-full"
-            description="Инженер"
+            :description="subtitle"
             :avatar="{
-              src: 'https://i.pravatar.cc/150?u=john-doe',
+              src: avatarSrc,
               loading: 'lazy',
               icon: 'i-lucide-image',
+              ui: { root: '!bg-accented' },
             }"
           />
         </RouterLink>
