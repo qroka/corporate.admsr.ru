@@ -58,7 +58,7 @@ try {
 }
 
 $stmt = $pdo->prepare(
-    'SELECT id, status, password, fio, ofo, user_group FROM public.authentication WHERE login = :login LIMIT 1'
+    'SELECT id, status, password, firstname, surname, lastname, ofo, user_group FROM public.user_info WHERE login = :login LIMIT 1'
 );
 $stmt->execute([':login' => $login]);
 $user = $stmt->fetch();
@@ -84,14 +84,20 @@ if (!(bool)$user['status']) {
     exit;
 }
 
-$pdo->prepare('UPDATE public.authentication SET auth = true WHERE id = :id')
+$pdo->prepare('UPDATE public.user_info SET auth = true WHERE id = :id')
     ->execute([':id' => $user['id']]);
+
+$fio = implode(' ', array_filter([
+    $user['surname'],
+    $user['firstname'],
+    $user['lastname'],
+]));
 
 echo json_encode([
     'success' => true,
     'user' => [
         'id'         => (int)$user['id'],
-        'fio'        => $user['fio'],
+        'fio'        => $fio,
         'ofo'        => $user['ofo'],
         'user_group' => $user['user_group'],
     ],

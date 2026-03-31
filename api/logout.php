@@ -55,7 +55,7 @@ try {
     exit;
 }
 
-$pdo->prepare('UPDATE public.authentication SET auth = false WHERE id = :id')
+$pdo->prepare('UPDATE public.user_info SET auth = false WHERE id = :id')
     ->execute([':id' => $id]);
 
 echo json_encode(['success' => true]);

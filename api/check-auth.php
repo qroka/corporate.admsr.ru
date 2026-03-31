@@ -56,7 +56,7 @@ try {
     exit;
 }
 
-$stmt = $pdo->prepare('SELECT auth FROM public.authentication WHERE id = :id AND status = true LIMIT 1');
+$stmt = $pdo->prepare('SELECT auth FROM public.user_info WHERE id = :id AND status = true LIMIT 1');
 $stmt->execute([':id' => $id]);
 $row = $stmt->fetch();
 
