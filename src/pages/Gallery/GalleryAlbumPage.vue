@@ -245,8 +245,8 @@ async function handleDelete() {
 </script>
 
 <template>
-  <UMain class="flex flex-col w-full h-full min-h-0 gap-6 overflow-y-auto scrollbar-hide">
-    <UContainer class="flex flex-col gap-4 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0 shrink-0 max-w-none scrollbar-hide">
+  <UMain class="flex flex-col w-full h-full min-h-0 gap-6">
+    <UContainer class="flex flex-col gap-4 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0 shrink-0 max-w-none">
       <UPageHeader :links="headerLinks" class="border-none p-0 w-full">
         <template #title>
           <div class="flex items-center gap-3 min-w-0">
@@ -264,27 +264,33 @@ async function handleDelete() {
       icon="i-lucide-image-off"
       title="Нет фотографий"
       description="В этом альбоме пока нет снимков."
-      class="py-12"
+      class="flex-1 min-h-0 py-12"
     />
-    <UContainer v-else class="w-full sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0 max-w-none scrollbar-hide">
-      <UContainer class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 max-w-none scrollbar-hide">
-        <div
-          v-for="(item, index) in items"
-          :key="item.id"
-          class="rounded-xl overflow-hidden bg-elevated ring ring-transparent hover:ring-accented transition w-full"
-        >
-          <button type="button" class="block w-full" @click="openPhoto(item)">
-            <img
-              :src="item.thumbSrc"
-              alt="Фотография"
-              :loading="index > 8 ? 'lazy' : 'eager'"
-              decoding="async"
-              class="block w-full h-auto"
-            />
-          </button>
-        </div>
-      </UContainer>
-    </UContainer>
+    <UScrollArea
+      v-else
+      v-slot="{ item, index }"
+      :items="items"
+      orientation="vertical"
+      :virtualize="{
+        gap: 12,
+        lanes,
+        estimateSize,
+        overscan: 6,
+      }"
+      class="flex-1 min-h-0 w-full p-px scrollbar-hide"
+    >
+      <div class="rounded-xl overflow-hidden bg-elevated ring ring-transparent hover:ring-accented transition w-full">
+        <button type="button" class="block w-full" @click="openPhoto(item)">
+          <img
+            :src="item.thumbSrc"
+            alt="Фотография"
+            :loading="index > 8 ? 'lazy' : 'eager'"
+            decoding="async"
+            class="block w-full h-auto"
+          />
+        </button>
+      </div>
+    </UScrollArea>
 
     <UModal
       v-model:open="modalOpen"
@@ -355,7 +361,7 @@ async function handleDelete() {
         <p v-if="deleteError" class="mt-2 text-sm text-error">{{ deleteError }}</p>
       </template>
       <template #footer>
-        <div class="flex  gap-3 justify-end w-full">
+        <div class="flex gap-3 justify-end w-full">
           <UButton color="neutral" variant="outline" size="lg" @click="deleteConfirmOpen = false">
             Отмена
           </UButton>
