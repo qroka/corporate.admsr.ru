@@ -185,7 +185,7 @@ async function loadProfile() {
     if (p.avatar_url) setAvatarSrc(p.avatar_url);
     if (p.role)       setSubtitle(p.role);
 
-    const full = [p.surname, p.firstname, p.lastname].filter(Boolean).join(' ');
+    const full = [p.surname, p.firstname].filter(Boolean).join(' ');
     if (full) setDisplayName(full);
   } finally {
     profileLoading.value = false;
@@ -293,7 +293,7 @@ async function onUpdateAccount() {
     const data = await res.json();
     if (!data.success) return;
 
-    const full = [accountForm.lastName, accountForm.firstName, accountForm.patronymic]
+    const full = [accountForm.lastName, accountForm.firstName]
       .filter(Boolean).join(' ');
     if (full) setDisplayName(full);
     if (accountForm.role) setSubtitle(accountForm.role);

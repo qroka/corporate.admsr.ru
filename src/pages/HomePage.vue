@@ -230,7 +230,10 @@ ensureBirthdaysLoaded();
 
 <template>
   <UMain class="flex flex-1 flex-row w-full h-full gap-6 min-h-0 max-h-full overflow-hidden">
-    <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 max-w-96">
+    <UContainer
+      v-if="eventsLoading || hasActualEvents"
+      class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 max-w-96"
+    >
       <UPageHeader title="" :links="eventsLinks" class="border-none p-0">
         <template #title>
           <h1 class="text-2xl font-medium">Актуальные мероприятия</h1>
@@ -257,9 +260,6 @@ ensureBirthdaysLoaded();
         </UContainer>
         <p v-else-if="eventsError" class="px-1 py-2 text-sm text-error">
           {{ eventsError }}
-        </p>
-        <p v-else class="px-1 py-2 text-sm text-muted">
-          Сейчас нет актуальных мероприятий.
         </p>
       </UContainer>
     </UContainer>
