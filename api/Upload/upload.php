@@ -13,7 +13,7 @@ header('Access-Control-Max-Age: 86400');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 
-define('PROJECT_PUBLIC', '/var/www/corporate.admsr.ru/');
+define('PROJECT_PUBLIC', '/var/www/corporate.admsr.ru/public/');
 define('FULL_DIR',  PROJECT_PUBLIC . 'img/FullPic/');
 define('SMALL_DIR', PROJECT_PUBLIC . 'img/SmallPic/');
 
