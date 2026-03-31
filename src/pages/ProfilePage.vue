@@ -154,6 +154,7 @@ const accountForm = reactive({
   email: '',
   ofoId: '',
   positionId: '',
+  role: '',
   city: 'Москва',
   state: 'Москва',
   postcode: '101000',
@@ -173,12 +174,16 @@ async function loadProfile() {
     if (!data.success) return;
 
     const p = data.data;
-    accountForm.firstName  = p.firstname  ?? '';
-    accountForm.lastName   = p.surname    ?? '';
-    accountForm.patronymic = p.lastname   ?? '';
-    accountForm.phone      = p.phone      ?? '';
-    accountForm.email      = p.email      ?? '';
-    accountForm.ofoId      = p.ofo        ?? '';
+    accountForm.firstName  = p.firstname ?? '';
+    accountForm.lastName   = p.surname   ?? '';
+    accountForm.patronymic = p.lastname  ?? '';
+    accountForm.phone      = p.phone     ?? '';
+    accountForm.email      = p.email     ?? '';
+    accountForm.ofoId      = p.ofo       ?? '';
+    accountForm.role       = p.role      ?? '';
+
+    if (p.avatar_url) setAvatarSrc(p.avatar_url);
+    if (p.role)       setSubtitle(p.role);
 
     const full = [p.surname, p.firstname, p.lastname].filter(Boolean).join(' ');
     if (full) setDisplayName(full);
@@ -218,6 +223,14 @@ watch(
   },
 );
 
+watch(
+  () => accountForm.positionId,
+  (val) => {
+    const pos = positionItems.value.find((p) => p.value === val);
+    if (pos?.label) accountForm.role = pos.label;
+  },
+);
+
 const cityItems = [
   { value: 'Москва', label: 'Москва' },
   { value: 'Санкт-Петербург', label: 'Санкт-Петербург' },
@@ -248,13 +261,15 @@ async function onUpdateAccount() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        id:        user.id,
-        firstname: accountForm.firstName,
-        surname:   accountForm.lastName,
-        lastname:  accountForm.patronymic,
-        phone:     accountForm.phone,
-        email:     accountForm.email,
-        ofo:       accountForm.ofoId,
+        id:         user.id,
+        firstname:  accountForm.firstName,
+        surname:    accountForm.lastName,
+        lastname:   accountForm.patronymic,
+        phone:      accountForm.phone,
+        email:      accountForm.email,
+        ofo:        accountForm.ofoId,
+        role:       accountForm.role,
+        avatar_url: avatarSrc.value,
       }),
     });
     const data = await res.json();
@@ -263,8 +278,7 @@ async function onUpdateAccount() {
     const full = [accountForm.lastName, accountForm.firstName, accountForm.patronymic]
       .filter(Boolean).join(' ');
     if (full) setDisplayName(full);
-    const pos = positionItems.value.find((p) => p.value === accountForm.positionId);
-    if (pos?.label) setSubtitle(pos.label);
+    if (accountForm.role) setSubtitle(accountForm.role);
     profileSaved();
   } finally {
     profileSaving.value = false;

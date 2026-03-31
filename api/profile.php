@@ -3,7 +3,7 @@
  * API: /api/profile.php
  *
  * GET  ?id=N      — получить данные профиля
- * POST { id, firstname, surname, lastname, phone, email, ofo }
+ * POST { id, firstname, surname, lastname, phone, email, ofo, role, avatar_url }
  *                 — сохранить данные профиля
  */
 
@@ -61,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     if ($id <= 0) jsonError(400, 'Некорректный id');
 
     $stmt = $pdo->prepare(
-        'SELECT id, firstname, surname, lastname, ofo, user_group, phone, email
+        'SELECT id, firstname, surname, lastname, ofo, user_group, phone, email, role, avatar_url
          FROM public.user_info WHERE id = :id LIMIT 1'
     );
     $stmt->execute([':id' => $id]);
@@ -78,6 +78,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'user_group' => $row['user_group'] ?? '',
         'phone'      => $row['phone']      ?? '',
         'email'      => $row['email']      ?? '',
+        'role'       => $row['role']       ?? '',
+        'avatar_url' => $row['avatar_url'] ?? '',
     ]);
 }
 
@@ -85,34 +87,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $body = json_decode(file_get_contents('php://input'), true);
 
-    $id        = isset($body['id'])        ? (int)$body['id']              : 0;
-    $firstname = isset($body['firstname']) ? trim((string)$body['firstname']) : null;
-    $surname   = isset($body['surname'])   ? trim((string)$body['surname'])   : null;
-    $lastname  = isset($body['lastname'])  ? trim((string)$body['lastname'])  : null;
-    $phone     = isset($body['phone'])     ? trim((string)$body['phone'])     : null;
-    $email     = isset($body['email'])     ? trim((string)$body['email'])     : null;
-    $ofo       = isset($body['ofo'])       ? trim((string)$body['ofo'])       : null;
+    $id         = isset($body['id'])         ? (int)$body['id']               : 0;
+    $firstname  = isset($body['firstname'])  ? trim((string)$body['firstname'])  : null;
+    $surname    = isset($body['surname'])    ? trim((string)$body['surname'])    : null;
+    $lastname   = isset($body['lastname'])   ? trim((string)$body['lastname'])   : null;
+    $phone      = isset($body['phone'])      ? trim((string)$body['phone'])      : null;
+    $email      = isset($body['email'])      ? trim((string)$body['email'])      : null;
+    $ofo        = isset($body['ofo'])        ? trim((string)$body['ofo'])        : null;
+    $role       = isset($body['role'])       ? trim((string)$body['role'])       : null;
+    $avatar_url = isset($body['avatar_url']) ? trim((string)$body['avatar_url']) : null;
 
     if ($id <= 0) jsonError(400, 'Некорректный id');
 
     $stmt = $pdo->prepare(
         'UPDATE public.user_info
-         SET firstname = :firstname,
-             surname   = :surname,
-             lastname  = :lastname,
-             phone     = :phone,
-             email     = :email,
-             ofo       = :ofo
+         SET firstname  = :firstname,
+             surname    = :surname,
+             lastname   = :lastname,
+             phone      = :phone,
+             email      = :email,
+             ofo        = :ofo,
+             role       = :role,
+             avatar_url = :avatar_url
          WHERE id = :id'
     );
     $stmt->execute([
-        ':id'        => $id,
-        ':firstname' => $firstname,
-        ':surname'   => $surname,
-        ':lastname'  => $lastname,
-        ':phone'     => $phone,
-        ':email'     => $email,
-        ':ofo'       => $ofo,
+        ':id'         => $id,
+        ':firstname'  => $firstname,
+        ':surname'    => $surname,
+        ':lastname'   => $lastname,
+        ':phone'      => $phone,
+        ':email'      => $email,
+        ':ofo'        => $ofo,
+        ':role'       => $role,
+        ':avatar_url' => $avatar_url,
     ]);
 
     jsonOk(null);
