@@ -124,7 +124,6 @@ onMounted(() => {
 const actualEvents = computed<ActualEventItem[]>(() =>
   homeEvents.value
     .filter((e) => !isArchivedBadge(e.badge))
-    .filter((e) => String(e.date ?? '') >= todayIsoDate())
     .filter((e) => isNewBadge(e.badge))
     .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? ''), 'ru-RU') || (b.id ?? 0) - (a.id ?? 0))
     .map((e, idx) => ({
