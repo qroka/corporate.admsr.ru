@@ -4,6 +4,7 @@ import type { BlogPostProps } from '@nuxt/ui';
 import type { ButtonProps } from '@nuxt/ui';
 import { useRouter } from 'vue-router';
 import { useNewsData, formatUnixDate, resolveNewsImageSrc, stripHtmlToText } from '../../composables/useNewsData';
+import { formatCountRu, useNewsStats } from '../../composables/useNewsStats';
 
 type NewsPost = BlogPostProps & { id: string; likes: number; views: number };
 
@@ -11,6 +12,7 @@ const router = useRouter();
 
 const { loading, error, sortedNews, ensureLoaded } = useNewsData();
 ensureLoaded();
+const { ensure: ensureStats, isLiked, likesCount, viewsCount, toggleLike } = useNewsStats();
 
 const links = <ButtonProps[]>([
   {
@@ -28,6 +30,7 @@ const posts = computed<NewsPost[]>(() =>
     const imageSrc = resolveNewsImageSrc(n.announceImagePath);
     const date = formatUnixDate(n.timestamp);
     const description = stripHtmlToText(n.shortHtml || n.html).slice(0, 260);
+    ensureStats(n.id);
     return {
       id: n.id,
       title: n.title || `Новость #${n.id}`,
@@ -118,37 +121,8 @@ onUnmounted(() => {
   window.removeEventListener('kiosk-idle', handleKioskIdle);
 });
 
-const newsLiked = ref<Record<string, boolean>>({});
-const newsLikeCounts = ref<Record<string, number>>({});
-
-watch(
-  posts,
-  (items) => {
-    const liked = { ...newsLiked.value };
-    const counts = { ...newsLikeCounts.value };
-    for (const item of items) {
-      if (!(item.id in liked)) liked[item.id] = false;
-      if (!(item.id in counts)) counts[item.id] = item.likes ?? 0;
-    }
-    newsLiked.value = liked;
-    newsLikeCounts.value = counts;
-  },
-  { immediate: true },
-);
-
 function toggleNewsLike(newsId: string) {
-  const wasLiked = !!newsLiked.value[newsId];
-  const currentCount = newsLikeCounts.value[newsId] ?? 0;
-
-  newsLiked.value = { ...newsLiked.value, [newsId]: !wasLiked };
-  newsLikeCounts.value = {
-    ...newsLikeCounts.value,
-    [newsId]: wasLiked ? Math.max(0, currentCount - 1) : currentCount + 1,
-  };
-}
-
-function formatViews(n: number) {
-  return n.toLocaleString('ru-RU');
+  toggleLike(newsId);
 }
 
 const items = [
@@ -193,16 +167,16 @@ const items = [
                 <UContainer
                   class="relative z-10 flex justify-between items-center gap-3 w-full sm:p-0 md:p-0 lg:p-0 xl:p-0"
                   @click.stop>
-                  <UBadge as="button" type="button" :color="newsLiked[post.id] ? 'primary' : 'neutral'" variant="soft"
-                    size="lg" leading icon="i-lucide-heart" :label="formatViews(newsLikeCounts[post.id] ?? post.likes)"
+                  <UBadge as="button" type="button" :color="isLiked(post.id) ? 'primary' : 'neutral'" variant="soft"
+                    size="lg" leading icon="i-lucide-heart" :label="formatCountRu(likesCount(post.id))"
                     :class="[
                       'relative z-10 cursor-pointer shrink-0 [&_svg]:stroke-[1.75]',
-                      newsLiked[post.id]
+                      isLiked(post.id)
                         ? '[&_svg]:stroke-primary [&_svg_path]:fill-primary [&_svg_path]:stroke-primary'
                         : '[&_svg]:stroke-current [&_svg_path]:fill-none [&_svg_path]:stroke-current',
                     ]" @click.stop.prevent="toggleNewsLike(post.id)" />
                   <span class="shrink-0 text-sm text-muted">
-                    {{ formatViews(post.views) }} просмотров
+                    {{ formatCountRu(viewsCount(post.id)) }} просмотров
                   </span>
                 </UContainer>
               </UContainer>

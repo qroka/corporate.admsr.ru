@@ -4,8 +4,9 @@ import type { BlogPostProps } from '@nuxt/ui';
 import { currentRole } from '../../stores/role';
 import { useGalleryData } from '../../composables/useGalleryData';
 import { useAppToast } from '../../composables/useAppToast';
+import { formatDateRuLong } from '../../utils/date';
 
-type Album = BlogPostProps & { id: string; date: string };
+type Album = BlogPostProps & { id: string; date: string; rawDate: string };
 
 const coverModules = (import.meta as any).glob('../../img/EventsWebp/*.webp', {
   eager: true,
@@ -41,7 +42,8 @@ const albums = computed<Album[]>(() =>
     id: a.id,
     title: a.title,
     description: a.description,
-    date: a.date,
+    rawDate: a.date,
+    date: formatDateRuLong(a.date) || a.date,
     to: `/gallery/${a.id}`,
     image: { src: a.image || coverAt(idx), alt: 'Обложка альбома' },
   })),
@@ -70,8 +72,8 @@ const filteredAlbums = computed(() => {
   }
 
   return [...list].sort((a, b) => {
-    if (sortKey.value === 'newest') return (b.date ?? '').localeCompare(a.date ?? '');
-    if (sortKey.value === 'oldest') return (a.date ?? '').localeCompare(b.date ?? '');
+    if (sortKey.value === 'newest') return (b.rawDate ?? '').localeCompare(a.rawDate ?? '');
+    if (sortKey.value === 'oldest') return (a.rawDate ?? '').localeCompare(b.rawDate ?? '');
     if (sortKey.value === 'title-asc') return (a.title ?? '').localeCompare(b.title ?? '', 'ru');
     if (sortKey.value === 'title-desc') return (b.title ?? '').localeCompare(a.title ?? '', 'ru');
     return 0;
@@ -287,7 +289,18 @@ onUnmounted(() => {
           v-else
           class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:p-0 max-w-full w-full md:p-0 lg:p-0 xl:p-0 mx-0"
         >
-          <UBlogPost v-for="album in filteredAlbums" :key="album.id" v-bind="album" class="h-full max-w-full w-full" />
+          <UBlogPost v-for="album in filteredAlbums" :key="album.id" v-bind="album" class="h-full max-w-full w-full">
+            <template #title>
+              <span class="overflow-hidden text-ellipsis [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]">
+                {{ album.title }}
+              </span>
+            </template>
+            <template #description>
+              <span class="overflow-hidden text-ellipsis [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]">
+                {{ album.description }}
+              </span>
+            </template>
+          </UBlogPost>
         </UContainer>
       </UContainer>
     </div>

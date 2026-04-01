@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useGalleryData } from '../../composables/useGalleryData';
 import { useAppToast } from '../../composables/useAppToast';
@@ -50,7 +50,12 @@ async function loadPhotos() {
   try {
     const res  = await fetch(`/api/gallery_base.php?album_id=${albumId.value}`);
     const json = await res.json();
-    if (json.success) photos.value = json.data ?? [];
+    if (json.success) {
+      photos.value = json.data ?? [];
+      const n = photos.value.length;
+      visibleCount.value = Math.min(BATCH, Math.max(n, 0));
+      await fillVisibleUntilScrollable();
+    }
   } catch {} finally {
     photosLoading.value = false;
   }
@@ -64,6 +69,47 @@ const items = computed<Photo[]>(() =>
   })),
 );
 
+/** Постепенная отрисовка: не вешаем тысячи <img> сразу — порциями по скроллу */
+const BATCH = 36;
+const visibleCount = ref(BATCH);
+const visibleItems = computed(() => items.value.slice(0, visibleCount.value));
+
+const thumbLoaded = reactive<Record<string, boolean>>({});
+function onThumbLoad(id: string) {
+  thumbLoaded[id] = true;
+}
+
+watch(albumId, () => {
+  visibleCount.value = BATCH;
+  for (const k of Object.keys(thumbLoaded)) delete thumbLoaded[k];
+});
+
+function tryAppendVisible(el: HTMLElement) {
+  const total = items.value.length;
+  if (total === 0 || visibleCount.value >= total) return;
+  const { scrollTop, scrollHeight, clientHeight } = el;
+  const nearBottom = scrollHeight - scrollTop - clientHeight < Math.max(480, clientHeight * 0.35);
+  if (nearBottom) {
+    visibleCount.value = Math.min(visibleCount.value + BATCH, total);
+  }
+}
+
+/** Если экран высокий и контента мало, подгружаем порции без прокрутки */
+async function fillVisibleUntilScrollable() {
+  await nextTick();
+  const el = mainScrollEl.value;
+  if (!el || items.value.length === 0) return;
+  let guard = 0;
+  while (guard++ < 50 && visibleCount.value < items.value.length) {
+    const { scrollHeight, clientHeight } = el;
+    if (scrollHeight > clientHeight + 32) break;
+    const next = Math.min(visibleCount.value + BATCH, items.value.length);
+    if (next === visibleCount.value) break;
+    visibleCount.value = next;
+    await nextTick();
+  }
+}
+
 // ── Лайтбокс ─────────────────────────────────────────────────────────────────
 const selected  = ref<Photo | null>(null);
 const modalOpen = computed({
@@ -71,41 +117,6 @@ const modalOpen = computed({
   set:  (open: boolean) => { if (!open) selected.value = null; },
 });
 function openPhoto(p: Photo) { selected.value = p; }
-
-// Modal size should hug the image (no visible empty edges)
-const selectedNatural = ref<{ w: number; h: number } | null>(null);
-const viewport = ref({ w: typeof window === 'undefined' ? 1280 : window.innerWidth, h: typeof window === 'undefined' ? 720 : window.innerHeight });
-
-function updateViewport() {
-  viewport.value = { w: window.innerWidth, h: window.innerHeight };
-}
-
-watch(
-  selected,
-  (p) => {
-    selectedNatural.value = null;
-    if (!p?.fullSrc) return;
-    const img = new Image();
-    img.onload = () => {
-      selectedNatural.value = { w: img.naturalWidth || 0, h: img.naturalHeight || 0 };
-    };
-    img.src = p.fullSrc;
-  },
-  { immediate: true },
-);
-
-const modalSize = computed(() => {
-  const nat = selectedNatural.value;
-  if (!nat?.w || !nat?.h) {
-    // fallback while loading
-    return { w: Math.round(viewport.value.w * 0.96), h: Math.round(viewport.value.h * 0.92) };
-  }
-  const maxW = viewport.value.w * 0.96;
-  const maxH = viewport.value.h * 0.92;
-  // Allow upscaling small images so they open larger (cap to avoid extreme pixelation).
-  const scale = Math.min(maxW / nat.w, maxH / nat.h, 6);
-  return { w: Math.round(nat.w * scale), h: Math.round(nat.h * scale) };
-});
 
 // ── Добавление фото ───────────────────────────────────────────────────────────
 const addPhotosOpen   = ref(false);
@@ -145,6 +156,10 @@ async function deletePhoto(photoId: string) {
   try {
     await fetch(`/api/gallery_base.php?id=${photoId}`, { method: 'DELETE' });
     photos.value = photos.value.filter((p) => String(p.id) !== photoId);
+    delete thumbLoaded[photoId];
+    if (visibleCount.value > items.value.length) {
+      visibleCount.value = items.value.length;
+    }
     if (selected.value?.id === photoId) selected.value = null;
   } finally {
     deletingPhotoId.value = null;
@@ -329,6 +344,7 @@ function onMainScroll() {
 
     lastScrollTop = top;
     if (showFloatingHeader.value) updateFloatingRect();
+    tryAppendVisible(el);
   });
 }
 
@@ -339,15 +355,15 @@ onMounted(() => {
   el.addEventListener('scroll', onMainScroll, { passive: true });
   updateFloatingRect();
   window.addEventListener('resize', updateFloatingRect, { passive: true });
-  window.addEventListener('resize', updateViewport, { passive: true });
 });
 
 onUnmounted(() => {
   const el = mainScrollEl.value;
   if (el) el.removeEventListener('scroll', onMainScroll);
   window.removeEventListener('resize', updateFloatingRect as any);
-  window.removeEventListener('resize', updateViewport as any);
 });
+
+// (lightbox uses natural image size, constrained only by viewport)
 </script>
 
 <template>
@@ -399,17 +415,24 @@ onUnmounted(() => {
 
         <div v-else class="columns-1 sm:columns-2 xl:columns-3 gap-x-3">
           <div
-            v-for="(item, index) in items"
+            v-for="item in visibleItems"
             :key="item.id"
             class="relative mb-3 break-inside-avoid rounded-xl overflow-hidden bg-elevated ring ring-transparent hover:ring-accented transition w-full group"
           >
-            <button type="button" class="block w-full" @click="openPhoto(item)">
+            <button type="button" class="relative block w-full min-h-48 text-left" @click="openPhoto(item)">
+              <div
+                v-if="!thumbLoaded[item.id]"
+                class="absolute inset-0 rounded-xl animate-pulse bg-accented/50"
+                aria-hidden="true"
+              />
               <img
                 :src="item.thumbSrc"
                 alt="Фотография"
-                :loading="index > 8 ? 'lazy' : 'eager'"
+                loading="lazy"
                 decoding="async"
-                class="block w-full h-auto"
+                class="relative z-1 block w-full h-auto rounded-xl transition-opacity duration-300"
+                :class="thumbLoaded[item.id] ? 'opacity-100' : 'opacity-0'"
+                @load="onThumbLoad(item.id)"
               />
             </button>
             <!-- Кнопка удаления фото (только для админа) -->
@@ -432,22 +455,17 @@ onUnmounted(() => {
     <UModal
       v-model:open="modalOpen"
       class="p-0"
-      :style="{ width: `${modalSize.w}px`, height: `${modalSize.h}px` }"
-      :ui="{
-        content: 'p-0 bg-transparent shadow-none ring-0 max-w-none max-h-none',
-        header: 'p-0',
-        body: 'p-0',
-        footer: 'p-0',
-      }"
+      :ui="{ content: 'bg-transparent shadow-none', header: 'hidden' }"
     >
       <template #content>
-        <img
-          v-if="selected"
-          :src="selected.fullSrc"
-          alt="Фотография"
-          class="block w-full h-full object-contain"
-          decoding="async"
-        />
+        <div v-if="selected" class="grid place-items-center  p-0">
+          <img
+            :src="selected.fullSrc"
+            alt="Фотография"
+            decoding="async"
+            class="block w-auto h-auto max-h-[1920px]"
+          />
+        </div>
       </template>
     </UModal>
 

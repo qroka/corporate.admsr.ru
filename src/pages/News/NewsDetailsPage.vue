@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useNewsData, formatUnixDate, resolveNewsImageSrc, stripHtmlToText } from '../../composables/useNewsData';
 import { useAppToast } from '../../composables/useAppToast';
 import UContentSurround from '../../components/UContentSurround.vue';
+import { formatCountRu, useNewsStats } from '../../composables/useNewsStats';
 
 const route = useRoute();
 const router = useRouter();
@@ -33,6 +34,17 @@ const date = computed(() => formatUnixDate(item.value?.timestamp ?? null));
 const imageSrc = computed(() => resolveNewsImageSrc(item.value?.announceImagePath ?? null));
 const html = computed(() => item.value?.html || item.value?.shortHtml || '');
 const summary = computed(() => (item.value ? stripHtmlToText(item.value.shortHtml || item.value.html).slice(0, 180) : ''));
+
+const { ensure: ensureStats, isLiked, likesCount, viewsCount, toggleLike, incrementView } = useNewsStats();
+watch(
+  () => item.value?.id,
+  (id) => {
+    if (!id) return;
+    ensureStats(id);
+    incrementView(id);
+  },
+  { immediate: true },
+);
 
 async function copyNewsLink() {
   if (typeof window === 'undefined') return;
@@ -92,14 +104,14 @@ const surround = computed(() => {
       class="flex-1 min-h-0 overflow-y-auto max-w-full w-full sm:p-0 md:p-0 lg:p-0 xl:p-0 scrollbar-hide mx-0">
       <!-- Loading skeleton -->
       <div v-if="loading" class="space-y-6">
-        <USkeleton class="h-96 rounded-3xl" />
-        <USkeleton class="h-64 rounded-3xl" />
+        <USkeleton class="h-96 rounded-lg" />
+        <USkeleton class="h-64 rounded-lg" />
       </div>
 
       <!-- Content -->
       <div v-else-if="item" class="flex flex-col gap-6 p-px">
         <!-- Hero -->
-        <div class="relative overflow-hidden rounded-3xl ring ring-default bg-default">
+        <div class="relative overflow-hidden rounded-lg ring ring-default bg-default ">
           <div class="relative h-96">
             <img v-if="imageSrc" :src="imageSrc" :alt="title" class="absolute inset-0 h-full w-full object-cover"
               loading="lazy" />
@@ -111,6 +123,27 @@ const surround = computed(() => {
                 <UBadge v-if="date" color="neutral" variant="soft" size="md" class="backdrop-blur">
                   {{ date }}
                 </UBadge>
+                <UBadge
+                  v-if="item?.id"
+                  as="button"
+                  type="button"
+                  :color="isLiked(item.id) ? 'primary' : 'neutral'"
+                  variant="soft"
+                  size="md"
+                  leading
+                  icon="i-lucide-heart"
+                  :label="formatCountRu(likesCount(item.id))"
+                  :class="[
+                    'backdrop-blur cursor-pointer [&_svg]:stroke-[1.75]',
+                    isLiked(item.id)
+                      ? '[&_svg]:stroke-primary [&_svg_path]:fill-primary [&_svg_path]:stroke-primary'
+                      : '[&_svg]:stroke-current [&_svg_path]:fill-none [&_svg_path]:stroke-current',
+                  ]"
+                  @click.stop.prevent="toggleLike(item.id)"
+                />
+                <UBadge v-if="item?.id" color="neutral" variant="soft" size="md" class="backdrop-blur">
+                  {{ formatCountRu(viewsCount(item.id)) }} просмотров
+                </UBadge>
               </div>
               <h1 class="text-2xl sm:text-4xl font-semibold tracking-tight"
                 :class="imageSrc ? 'text-white' : 'text-highlighted'">
@@ -121,7 +154,7 @@ const surround = computed(() => {
         </div>
 
         <!-- Body -->
-        <UCard class="rounded-3xl">
+        <UCard class="rounded-lg">
           <template #header>
             <div class="flex items-center gap-2">
               <UIcon name="i-lucide-file-text" class="size-5 text-primary" />

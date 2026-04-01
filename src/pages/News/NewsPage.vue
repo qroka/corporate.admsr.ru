@@ -3,11 +3,13 @@ import { computed, ref, watch } from 'vue';
 import type { BlogPostProps } from '@nuxt/ui';
 import { useNewsData, formatUnixDate, resolveNewsImageSrc, stripHtmlToText } from '../../composables/useNewsData';
 import { useAppToast } from '../../composables/useAppToast';
+import { formatCountRu, useNewsStats } from '../../composables/useNewsStats';
 
-type NewsPost = BlogPostProps & { id: string };
+type NewsPost = BlogPostProps & { id: string; ts: number };
 
 const { loading, error, sortedNews, ensureLoaded } = useNewsData();
 ensureLoaded();
+const { ensure: ensureStats, isLiked, likesCount, viewsCount, toggleLike } = useNewsStats();
 
 const { toast } = useAppToast();
 watch(
@@ -38,8 +40,10 @@ const postsBase = computed<NewsPost[]>(() =>
     const imageSrc = resolveNewsImageSrc(n.announceImagePath);
     const date = formatUnixDate(n.timestamp);
     const description = stripHtmlToText(n.shortHtml || n.html).slice(0, 240);
+    ensureStats(n.id);
     return {
       id: n.id,
+      ts: Number(n.timestamp ?? 0) || 0,
       title: n.title || `Новость #${n.id}`,
       description,
       date,
@@ -62,8 +66,8 @@ const filtered = computed(() => {
     : base.slice();
 
   items.sort((a, b) => {
-    if (sortKey.value === 'newest') return String(b.date ?? '').localeCompare(String(a.date ?? ''), 'ru-RU');
-    if (sortKey.value === 'oldest') return String(a.date ?? '').localeCompare(String(b.date ?? ''), 'ru-RU');
+    if (sortKey.value === 'newest') return (b.ts ?? 0) - (a.ts ?? 0) || b.id.localeCompare(a.id, 'ru-RU');
+    if (sortKey.value === 'oldest') return (a.ts ?? 0) - (b.ts ?? 0) || a.id.localeCompare(b.id, 'ru-RU');
     if (sortKey.value === 'title-asc') return String(a.title ?? '').localeCompare(String(b.title ?? ''), 'ru-RU');
     return String(b.title ?? '').localeCompare(String(a.title ?? ''), 'ru-RU');
   });
@@ -122,11 +126,35 @@ const filtered = computed(() => {
             </h3>
           </template>
           <template #description>
-            <p
-              class="text-sm text-muted text-pretty overflow-hidden [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]"
-            >
-              {{ post.description }}
-            </p>
+            <div class="flex flex-col gap-3">
+              <p
+                class="text-sm text-muted text-pretty overflow-hidden [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]"
+              >
+                {{ post.description }}
+              </p>
+              <div class="relative z-10 flex justify-between items-center gap-3 w-full" @click.stop>
+                <UBadge
+                  as="button"
+                  type="button"
+                  :color="isLiked(post.id) ? 'primary' : 'neutral'"
+                  variant="soft"
+                  size="lg"
+                  leading
+                  icon="i-lucide-heart"
+                  :label="formatCountRu(likesCount(post.id))"
+                  :class="[
+                    'relative z-10 cursor-pointer shrink-0 [&_svg]:stroke-[1.75]',
+                    isLiked(post.id)
+                      ? '[&_svg]:stroke-primary [&_svg_path]:fill-primary [&_svg_path]:stroke-primary'
+                      : '[&_svg]:stroke-current [&_svg_path]:fill-none [&_svg_path]:stroke-current',
+                  ]"
+                  @click.stop.prevent="toggleLike(post.id)"
+                />
+                <span class="shrink-0 text-sm text-muted">
+                  {{ formatCountRu(viewsCount(post.id)) }} просмотров
+                </span>
+              </div>
+            </div>
           </template>
         </UBlogPost>
       </UContainer>

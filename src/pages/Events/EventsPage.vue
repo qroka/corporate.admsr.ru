@@ -3,10 +3,12 @@
 import { computed, ref, watch, reactive, onMounted, onUnmounted } from 'vue';
 import type { BlogPostProps } from '@nuxt/ui';
 import { currentRole } from '../../stores/role';
+import { formatDateRuLong } from '../../utils/date';
 
 type EventPost = BlogPostProps & {
   id?: number;
   badge?: string;
+  rawDate?: string;
 };
 
 // ─── State ───────────────────────────────────────────────────────────────────
@@ -42,12 +44,14 @@ function firstSentence(text: string): string {
 }
 
 function mapEvent(raw: any): EventPost {
+  const rawDate = String(raw?.date ?? '').trim();
   return {
     id:          raw.id,
     title:       raw.title,
     description: firstSentence(raw.description ?? ''),
     badge:       raw.badge ?? undefined,
-    date:        raw.date,
+    rawDate,
+    date:        formatDateRuLong(rawDate) || rawDate,
     to:          `/events/${raw.id}`,
     image:       raw.image ? { src: raw.image, alt: raw.title } : undefined,
   };
@@ -90,8 +94,8 @@ const filteredPosts = computed(() => {
 const sortedPosts = computed(() => {
   const list = [...filteredPosts.value];
   list.sort((a, b) => {
-    if (sortKey.value === 'newest')     return String(b.date ?? '').localeCompare(String(a.date ?? ''));
-    if (sortKey.value === 'oldest')     return String(a.date ?? '').localeCompare(String(b.date ?? ''));
+    if (sortKey.value === 'newest')     return String(b.rawDate ?? '').localeCompare(String(a.rawDate ?? ''));
+    if (sortKey.value === 'oldest')     return String(a.rawDate ?? '').localeCompare(String(b.rawDate ?? ''));
     if (sortKey.value === 'title-asc')  return (a.title ?? '').localeCompare(b.title ?? '', 'ru');
     if (sortKey.value === 'title-desc') return (b.title ?? '').localeCompare(a.title ?? '', 'ru');
     return 0;
@@ -364,6 +368,16 @@ onUnmounted(() => {
 
         <div v-else class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
           <UBlogPost v-for="post in sortedPosts" :key="post.id ?? post.title" v-bind="post" class="h-full">
+            <template #title>
+              <span class="overflow-hidden text-ellipsis [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]">
+                {{ post.title }}
+              </span>
+            </template>
+            <template #description>
+              <span class="overflow-hidden text-ellipsis [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]">
+                {{ post.description }}
+              </span>
+            </template>
             <template #badge>
               <UBadge
                 v-if="post.badge"

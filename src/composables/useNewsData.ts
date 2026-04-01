@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue';
+import { formatUnixSecondsRuDate } from '../utils/date';
 
 type NewsExportRow = {
   id: string;
@@ -57,10 +58,7 @@ export function stripHtmlToText(html: string): string {
 }
 
 export function formatUnixDate(unixSeconds: number | null): string | undefined {
-  if (!unixSeconds || !Number.isFinite(unixSeconds)) return undefined;
-  const dt = new Date(unixSeconds * 1000);
-  if (Number.isNaN(dt.getTime())) return undefined;
-  return dt.toISOString().slice(0, 10);
+  return formatUnixSecondsRuDate(unixSeconds);
 }
 
 /**

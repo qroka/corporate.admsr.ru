@@ -11,12 +11,12 @@ defineProps<{
 </script>
 
 <template>
-  <div class="p-px grid grid-cols-1 sm:grid-cols-2 gap-3 select-none">
+  <div class="p-px grid grid-cols-1 sm:grid-cols-2 gap-6 select-none">
     <UPageCard
       v-if="prev"
       :to="prev.to"
       variant="outline"
-      class="rounded-2xl"
+      class="rounded-lg"
       :ui="{ container: 'p-4 sm:p-5' }"
       :title="prev.title"
     >
@@ -33,7 +33,7 @@ defineProps<{
       v-if="next"
       :to="next.to"
       variant="outline"
-      class="rounded-2xl"
+      class="rounded-lg"
       :ui="{
         container: 'p-4 sm:p-5',
         wrapper: 'flex flex-col flex-1 items-end justify-start select-none',

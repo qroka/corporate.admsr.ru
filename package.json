@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "images:webp": "node scripts/generate-events-webp.mjs",
     "gallery:json": "node scripts/build-gallery-json.mjs",
+    "formdata:excel": "node scripts/formdata-to-excel.mjs",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -27,6 +28,7 @@
     "@tailwindcss/postcss": "^4.2.1",
     "@vitejs/plugin-vue": "^6.0.4",
     "autoprefixer": "^10.4.27",
+    "php-serialize": "^5.1.3",
     "postcss": "^8.5.6",
     "sharp": "^0.34.5",
     "tailwindcss": "^4.2.1",

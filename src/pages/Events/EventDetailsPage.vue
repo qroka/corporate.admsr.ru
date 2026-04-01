@@ -44,6 +44,31 @@ function firstSentence(text: string): string {
   return text.match(/^[^.!?]*[.!?]/)?.[0].trim() ?? text;
 }
 
+/** Дата для отображения: «1 апреля 2025 г.» (ru-RU) */
+function formatDateRu(raw: string | Date | undefined): string {
+  if (raw == null) return '';
+  if (raw instanceof Date) {
+    if (Number.isNaN(raw.getTime())) return '';
+    return new Intl.DateTimeFormat('ru-RU', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }).format(raw);
+  }
+  const s = raw.trim();
+  if (!s) return '';
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  const d = iso
+    ? new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]))
+    : new Date(s);
+  if (Number.isNaN(d.getTime())) return s;
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(d);
+}
+
 function mapEvent(raw: any): EventPost {
   return {
     id:          raw.id,
@@ -395,17 +420,17 @@ onUnmounted(() => {
 
       <!-- Скелетон -->
       <div v-if="loading" class="space-y-6">
-        <USkeleton class="h-56 sm:h-72 rounded-3xl" />
+        <USkeleton class="h-56 sm:h-72 rounded-lg" />
         <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-6 items-start">
-          <USkeleton class="h-64 rounded-3xl" />
-          <USkeleton class="h-64 rounded-3xl" />
+          <USkeleton class="h-64 rounded-lg" />
+          <USkeleton class="h-64 rounded-lg" />
         </div>
       </div>
 
       <!-- Контент -->
-      <div v-else-if="event" class="flex flex-col gap-6">
+      <div v-else-if="event" class="flex flex-col gap-6 p-px">
         <!-- Hero -->
-        <div class="relative overflow-hidden rounded-3xl ring ring-default bg-default">
+        <div class="relative overflow-hidden rounded-lg ring ring-default bg-default">
           <div class="relative h-96">
             <img
               v-if="event.image_full || (event.image as any)?.src"
@@ -421,18 +446,8 @@ onUnmounted(() => {
                   {{ event.badge }}
                 </UBadge>
                 <UBadge color="neutral" variant="soft" size="md" class="backdrop-blur">
-                  {{ event.date }}
+                  {{ formatDateRu(event.date) }}
                 </UBadge>
-                <UButton
-                  class="ml-auto"
-                  color="neutral"
-                  variant="soft"
-                  size="md"
-                  icon="i-lucide-arrow-left"
-                  @click="router.push({ name: isKiosk ? 'kioskEvents' : 'events' } as any)"
-                >
-                  К списку
-                </UButton>
               </div>
 
               <div class="flex items-end justify-between gap-4 flex-wrap">
@@ -449,7 +464,7 @@ onUnmounted(() => {
                   <UButton color="neutral" variant="outline" size="lg" icon="i-lucide-pencil" @click="openEdit">
                     Изменить
                   </UButton>
-                  <UButton color="red" variant="soft" size="lg" icon="i-lucide-trash-2" @click="deleteConfirmOpen = true">
+                  <UButton color="error" variant="subtle" size="lg" icon="i-lucide-trash-2" @click="deleteConfirmOpen = true">
                     Удалить
                   </UButton>
                 </div>
@@ -459,8 +474,8 @@ onUnmounted(() => {
         </div>
 
         <!-- Body -->
-        <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-6 items-start p-px">
-          <UCard class="rounded-3xl">
+        <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-6 items-start">
+          <UCard class="rounded-lg">
             <template #header>
               <div class="flex items-center justify-between gap-3">
                 <div class="flex items-center gap-2">
@@ -498,7 +513,7 @@ onUnmounted(() => {
           </UCard>
 
           <div class="space-y-4">
-            <UCard class="rounded-3xl">
+            <UCard class="rounded-lg">
               <template #header>
                 <div class="flex items-center gap-2">
                   <UIcon name="i-lucide-calendar-days" class="size-5 text-primary" />
@@ -510,14 +525,7 @@ onUnmounted(() => {
                 <div class="flex items-start justify-between gap-3">
                   <dt class="text-sm text-muted">Дата</dt>
                   <dd class="text-sm font-medium text-highlighted text-right">
-                    {{ event.date }}
-                  </dd>
-                </div>
-
-                <div v-if="event.badge" class="flex items-start justify-between gap-3">
-                  <dt class="text-sm text-muted">Категория</dt>
-                  <dd class="text-sm font-medium text-highlighted text-right">
-                    {{ event.badge }}
+                    {{ formatDateRu(event.date) }}
                   </dd>
                 </div>
 
