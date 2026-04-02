@@ -52,8 +52,8 @@ watch(
     <UTooltip arrow :content="{ side: 'bottom' }" text="На главную">
       <RouterLink :to="{ name: 'home' }"
         class="group bg-elevated flex p-3 pr-5 rounded-full">
-      <UContainer class="header-logo flex items-center gap-1.5 sm:p-0 md:p-0 lg:p-0 xl:p-0">
-        <UContainer class="relative w-10 h-10 sm:p-0 md:p-0 lg:p-0 xl:p-0">
+      <UContainer class="header-logo flex items-center gap-1.5">
+        <UContainer class="relative w-10 h-10">
           <svg :class="[
             'absolute w-10 h-10 transition-all duration-300 ease-out fill-current text-dimmed',
             'opacity-100 group-hover:opacity-0'

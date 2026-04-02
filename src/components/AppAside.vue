@@ -1,6 +1,8 @@
 <script setup>
+import { onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { currentRole } from '../stores/role';
+import { attachAbsenceStorageSync, hasActiveAbsence } from '../stores/absenceJournal';
 
 defineProps({
   isDark: {
@@ -36,27 +38,41 @@ async function logout() {
     router.push({ name: 'login' });
   }
 }
+
+onMounted(() => {
+  attachAbsenceStorageSync();
+});
 </script>
 
 <template>
-  <UContainer as="aside" class="flex flex-col justify-between w-fit gap-0 sm:p-0 md:p-0 lg:p-0 xl:p-0 z-0 mx-0">
+  <UContainer as="aside" class="flex flex-col justify-between w-fit gap-0 z-0 mx-0">
     <!-- Верхняя группа: функциональные сервисы для сотрудников -->
-    <UContainer class="flex flex-col w-fit gap-6 sm:p-0 md:p-0 lg:p-0 xl:p-0 z-0 mx-0">
+    <UContainer class="flex flex-col w-fit gap-6 z-0 mx-0">
       <!-- Блок быстрых ссылок на основные сервисы -->
       <UContainer class="flex flex-col bg-elevated relative rounded-full w-fit gap-0 sm:p-3 md:p-3 lg:p-3 xl:p-3 z-0 mx-0">
         <UTooltip arrow :content="{side: 'right'}" text="Журнал отсутствия">
-          <UButton
-            type="button"
-            color="neutral"
-            square
-            class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
-            :class="route.name === 'absence-journal'
-              ? 'z-10 bg-primary text-neutral-50 shadow-none dark:shadow-brand [&_svg]:text-neutral-50 hover:bg-primary hover:text-neutral-50 active:bg-primary active:text-neutral-50 active:[&_svg]:text-neutral-50'
-              : ''"
-            size="xl"
-            icon="i-lucide-calendar"
-            @click="navigate('absence-journal')"
-          />
+          <div class="relative">
+            <UButton
+              type="button"
+              color="neutral"
+              square
+              class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
+              :class="route.name === 'absence-journal'
+                ? 'z-10 bg-primary text-neutral-50 shadow-none dark:shadow-brand [&_svg]:text-neutral-50 hover:bg-primary hover:text-neutral-50 active:bg-primary active:text-neutral-50 active:[&_svg]:text-neutral-50'
+                : ''"
+              size="xl"
+              icon="i-lucide-calendar"
+              @click="navigate('absence-journal')"
+            />
+
+            <UChip
+              v-if="hasActiveAbsence"
+              color="error"
+              inset
+              size="3xl"
+              class="absolute -top-0.5 -right-0.5 z-30"
+            />
+          </div>
         </UTooltip>
 
         <UTooltip arrow :content="{side: 'right'}" text="Новости">

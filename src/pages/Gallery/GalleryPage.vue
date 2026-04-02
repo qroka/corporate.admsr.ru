@@ -110,7 +110,6 @@ const headerLinks = computed(() => {
   return [
     {
       label:   'Добавить альбом',
-      icon:    'i-lucide-folder-plus',
       color:   'neutral',
       variant: 'outline',
       size:    'xl',

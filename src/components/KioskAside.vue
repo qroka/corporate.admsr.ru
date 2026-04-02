@@ -21,7 +21,7 @@ function navigate(name) {
 </script>
 
 <template>
-   <UContainer class="header-nav relative grid grid-cols-2 gap-3 rounded-3xl h-[350px] w-full sm:p-0 md:p-0 lg:p-0 xl:p-0 z-0 mx-0">
+   <UContainer class="header-nav relative grid grid-cols-2 gap-3 rounded-3xl h-[350px] w-full z-0 mx-0">
       <UButton type="button" color="neutral"  class="relative z-0 shadow-none p-6 text-3xl font-unbounded transition-all text-start cursor-pointer duration-300 ease-out rounded-3xl bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50 [&_svg]:size-12 [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted" :class="activeNav === 'events' ? 'z-10 bg-primary text-zinc-50 shadow-none dark:shadow-brand [&_svg]:text-zinc-50 hover:bg-primary hover:text-zinc-50 active:bg-primary active:text-zinc-50 active:[&_svg]:text-zinc-50' : ''" size="xl" icon="i-lucide-calendar"
         @click="navigate('events')">
         Мероприятия
