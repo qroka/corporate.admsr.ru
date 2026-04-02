@@ -67,7 +67,7 @@ onMounted(() => {
 
             <UChip
               v-if="hasActiveAbsence"
-              color="error"
+              color="primary"
               inset
               size="3xl"
               class="absolute -top-0.5 -right-0.5 z-30"

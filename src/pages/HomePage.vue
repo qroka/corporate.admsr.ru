@@ -5,6 +5,7 @@ import type { BlogPostProps } from '@nuxt/ui'
 import { useRouter } from 'vue-router';
 import { useNewsData, formatNewsDate, resolveNewsImageSrc } from '../composables/useNewsData';
 import { useBirthdayColleagues } from '../composables/useBirthdayColleagues';
+import { attachAbsenceStorageSync, hasActiveAbsence } from '../stores/absenceJournal';
 
 const eventsLinks = <ButtonProps[]>([
   {
@@ -118,6 +119,7 @@ async function fetchHomeEvents() {
 }
 
 onMounted(() => {
+  attachAbsenceStorageSync();
   void fetchHomeEvents();
 });
 
@@ -193,7 +195,27 @@ ensureBirthdaysLoaded();
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-row w-full h-full gap-6 min-h-0 max-h-full overflow-hidden">
+  <UMain class="flex flex-1 flex-col w-full h-full gap-4 min-h-0 max-h-full overflow-hidden">
+    <UAlert
+      v-if="hasActiveAbsence"
+      color="primary"
+      variant="solid"
+      icon="i-lucide-timer"
+      title="Есть незавершённое отсутствие"
+      orientation="horizontal"
+      description="Завершите запись в журнале отсутствия, чтобы убрать индикатор."
+      :actions="[
+        {
+          label: 'Открыть журнал',
+          color: 'neutral',
+          variant: 'solid',
+          size: 'md',
+          onClick: () => router.push({ name: 'absence-journal' }),
+        },
+      ]"
+    />
+
+    <UContainer class="flex flex-1 flex-row w-full gap-6 min-h-0 max-h-full overflow-hidden max-w-none">
     <UContainer
       v-if="eventsLoading || hasActualEvents"
       class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 max-w-96"
@@ -233,6 +255,7 @@ ensureBirthdaysLoaded();
           <h1 class="text-2xl font-medium">Лента новостей</h1>
         </template>
       </UPageHeader>
+
       <UScrollArea class="flex-1 min-h-0 sm:p-px md:p-px lg:p-px xl:p-px scrollbar-hide">
         <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0">
           <UBlogPost
@@ -314,5 +337,6 @@ ensureBirthdaysLoaded();
         </UContainer>
       </UContainer>
     </UContainer>
+  </UContainer>
   </UMain>
 </template>
