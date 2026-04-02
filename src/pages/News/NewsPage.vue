@@ -270,7 +270,7 @@ async function handleCreateSubmit() {
       />
     </div>
 
-    <USlideover v-model:open="createOpen" side="right" title="Новое мероприятие" description="">
+    <USlideover v-model:open="createOpen" side="right" title="Новое мероприятие">
       <template #body>
         <UForm :state="createState" class="space-y-4" @submit.prevent="handleCreateSubmit">
           <UFormField label="Название мероприятия" name="title" required>

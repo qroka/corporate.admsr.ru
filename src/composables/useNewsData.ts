@@ -103,6 +103,12 @@ export function useNewsData() {
     void load();
   }
 
+  /** Обновляет один элемент в сторе по id (для мгновенного обновления UI после PUT) */
+  function patchItem(updated: NewsRecord) {
+    const idx = sharedRows.value.findIndex((x) => x.id === updated.id);
+    if (idx !== -1) sharedRows.value[idx] = updated;
+  }
+
   const sortedNews = computed(() => {
     const items = news.value.slice();
     items.sort((a, b) => {
@@ -118,5 +124,5 @@ export function useNewsData() {
     return news.value.find((x) => x.id === key);
   }
 
-  return { loading, error, news, sortedNews, getById, load, reload, ensureLoaded };
+  return { loading, error, news, sortedNews, getById, load, reload, ensureLoaded, patchItem };
 }
