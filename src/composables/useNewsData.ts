@@ -19,6 +19,9 @@ export type NewsRecord = {
   authorId: string | null;
   timestamp: number | null;
   announceImagePath: string | null;
+  /** из БД (для PUT /api/news.php) */
+  likes?: number;
+  views?: number;
 };
 
 const sharedLoading = ref(false);
@@ -26,6 +29,65 @@ const sharedError = ref<string | null>(null);
 const sharedRows = ref<NewsRecord[]>([]);
 const sharedLoaded = ref(false);
 let sharedLoadPromise: Promise<void> | null = null;
+
+function mapApiRow(r: Record<string, unknown>): NewsRecord | null {
+  const id = String(r?.id ?? '').trim();
+  if (!id) return null;
+  const ts = Number(r?.timestamp);
+  const aid = r?.author_id;
+  const authorNum = aid != null && aid !== '' ? Number(aid) : NaN;
+  return {
+    id,
+    title: String(r?.title ?? '').trim(),
+    html: String(r?.html ?? ''),
+    shortHtml: String(r?.short_html ?? ''),
+    authorId: Number.isFinite(authorNum) && authorNum > 0 ? String(authorNum) : null,
+    timestamp: Number.isFinite(ts) ? ts : null,
+    announceImagePath: asNonEmptyString(r?.announce_image_path),
+    likes: typeof r?.likes === 'number' ? r.likes : Number(r?.likes ?? 0) || 0,
+    views: typeof r?.views === 'number' ? r.views : Number(r?.views ?? 0) || 0,
+  };
+}
+
+async function tryLoadFromApi(): Promise<boolean> {
+  try {
+    const res = await fetch('/api/news.php', { cache: 'no-store' });
+    if (!res.ok) return false;
+    const json = (await res.json()) as { success?: boolean; data?: unknown };
+    if (!json?.success || !Array.isArray(json.data)) return false;
+    const rows = json.data
+      .map((x) => mapApiRow(x as Record<string, unknown>))
+      .filter(Boolean) as NewsRecord[];
+    sharedRows.value = rows;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function loadFromJsonExport(): Promise<void> {
+  const res = await fetch('/data/news.json', { cache: 'force-cache' });
+  if (!res.ok) throw new Error(`Не удалось загрузить news.json (${res.status})`);
+  const raw = await res.json();
+
+  const rows = extractTableData<NewsExportRow>(raw, 'news');
+  sharedRows.value = rows
+    .map((r) => {
+      const id = String(r?.id ?? '').trim();
+      if (!id) return null;
+      const ts = Number(String(r?.timestamp ?? '').trim());
+      return {
+        id,
+        title: String(r?.title ?? '').trim(),
+        html: String(r?.html ?? ''),
+        shortHtml: String(r?.short_html ?? ''),
+        authorId: asNonEmptyString(r?.author),
+        timestamp: Number.isFinite(ts) ? ts : null,
+        announceImagePath: asNonEmptyString(r?.anounce),
+      } satisfies NewsRecord;
+    })
+    .filter(Boolean) as NewsRecord[];
+}
 
 function extractTableData<T = unknown>(raw: unknown, tableName: string): T[] {
   if (!Array.isArray(raw)) return [];
@@ -94,45 +156,36 @@ export function useNewsData() {
   const error = sharedError;
   const news = sharedRows;
 
-  async function load() {
-    if (sharedLoaded.value) return;
-    if (sharedLoadPromise) return sharedLoadPromise;
+  async function load(opts?: { force?: boolean }) {
+    if (!opts?.force) {
+      if (sharedLoaded.value) return;
+      if (sharedLoadPromise) return sharedLoadPromise;
+    } else {
+      sharedLoadPromise = null;
+      sharedLoaded.value = false;
+    }
 
     sharedLoadPromise = (async () => {
       sharedLoading.value = true;
       sharedError.value = null;
       try {
-        const res = await fetch('/data/news.json', { cache: 'force-cache' });
-        if (!res.ok) throw new Error(`Не удалось загрузить news.json (${res.status})`);
-        const raw = await res.json();
-
-        const rows = extractTableData<NewsExportRow>(raw, 'news');
-        sharedRows.value = rows
-          .map((r) => {
-            const id = String(r?.id ?? '').trim();
-            if (!id) return null;
-            const ts = Number(String(r?.timestamp ?? '').trim());
-            return {
-              id,
-              title: String(r?.title ?? '').trim(),
-              html: String(r?.html ?? ''),
-              shortHtml: String(r?.short_html ?? ''),
-              authorId: asNonEmptyString(r?.author),
-              timestamp: Number.isFinite(ts) ? ts : null,
-              announceImagePath: asNonEmptyString(r?.anounce),
-            } satisfies NewsRecord;
-          })
-          .filter(Boolean) as NewsRecord[];
-
+        const apiOk = await tryLoadFromApi();
+        if (!apiOk) {
+          await loadFromJsonExport();
+        }
         sharedLoaded.value = true;
-      } catch (e: any) {
-        sharedError.value = e?.message ? String(e.message) : 'Ошибка загрузки новостей';
+      } catch (e: unknown) {
+        sharedError.value = e instanceof Error ? e.message : 'Ошибка загрузки новостей';
       } finally {
         sharedLoading.value = false;
       }
     })();
 
     return sharedLoadPromise;
+  }
+
+  async function reload() {
+    await load({ force: true });
   }
 
   function ensureLoaded() {
@@ -151,5 +204,5 @@ export function useNewsData() {
     return news.value.find((x) => x.id === key);
   }
 
-  return { loading, error, news, sortedNews, getById, load, ensureLoaded };
+  return { loading, error, news, sortedNews, getById, load, reload, ensureLoaded };
 }
