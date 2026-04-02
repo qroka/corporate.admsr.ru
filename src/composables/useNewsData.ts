@@ -1,27 +1,14 @@
 import { computed, ref } from 'vue';
-import { formatUnixSecondsRuDate } from '../utils/date';
-
-type NewsExportRow = {
-  id: string;
-  title: string;
-  html: string;
-  short_html: string;
-  author: string;
-  timestamp: string;
-  anounce: string;
-};
+import { formatDateRuLong } from '../utils/date';
 
 export type NewsRecord = {
   id: string;
   title: string;
-  html: string;
-  shortHtml: string;
-  authorId: string | null;
-  timestamp: number | null;
-  announceImagePath: string | null;
-  /** из БД (для PUT /api/news.php) */
-  likes?: number;
-  views?: number;
+  category: string;
+  description: string;
+  date: string; // YYYY-MM-DD
+  imagePath: string | null;
+  createdAt: string | null;
 };
 
 const sharedLoading = ref(false);
@@ -33,19 +20,14 @@ let sharedLoadPromise: Promise<void> | null = null;
 function mapApiRow(r: Record<string, unknown>): NewsRecord | null {
   const id = String(r?.id ?? '').trim();
   if (!id) return null;
-  const ts = Number(r?.timestamp);
-  const aid = r?.author_id;
-  const authorNum = aid != null && aid !== '' ? Number(aid) : NaN;
   return {
     id,
-    title: String(r?.title ?? '').trim(),
-    html: String(r?.html ?? ''),
-    shortHtml: String(r?.short_html ?? ''),
-    authorId: Number.isFinite(authorNum) && authorNum > 0 ? String(authorNum) : null,
-    timestamp: Number.isFinite(ts) ? ts : null,
-    announceImagePath: asNonEmptyString(r?.announce_image_path),
-    likes: typeof r?.likes === 'number' ? r.likes : Number(r?.likes ?? 0) || 0,
-    views: typeof r?.views === 'number' ? r.views : Number(r?.views ?? 0) || 0,
+    title:       String(r?.title       ?? '').trim(),
+    category:    String(r?.category    ?? '').trim(),
+    description: String(r?.description ?? ''),
+    date:        String(r?.date        ?? '').trim(),
+    imagePath:   asNonEmptyString(r?.image_path),
+    createdAt:   asNonEmptyString(r?.created_at),
   };
 }
 
@@ -55,48 +37,13 @@ async function tryLoadFromApi(): Promise<boolean> {
     if (!res.ok) return false;
     const json = (await res.json()) as { success?: boolean; data?: unknown };
     if (!json?.success || !Array.isArray(json.data)) return false;
-    const rows = json.data
+    sharedRows.value = json.data
       .map((x) => mapApiRow(x as Record<string, unknown>))
       .filter(Boolean) as NewsRecord[];
-    sharedRows.value = rows;
     return true;
   } catch {
     return false;
   }
-}
-
-async function loadFromJsonExport(): Promise<void> {
-  const res = await fetch('/data/news.json', { cache: 'force-cache' });
-  if (!res.ok) throw new Error(`Не удалось загрузить news.json (${res.status})`);
-  const raw = await res.json();
-
-  const rows = extractTableData<NewsExportRow>(raw, 'news');
-  sharedRows.value = rows
-    .map((r) => {
-      const id = String(r?.id ?? '').trim();
-      if (!id) return null;
-      const ts = Number(String(r?.timestamp ?? '').trim());
-      return {
-        id,
-        title: String(r?.title ?? '').trim(),
-        html: String(r?.html ?? ''),
-        shortHtml: String(r?.short_html ?? ''),
-        authorId: asNonEmptyString(r?.author),
-        timestamp: Number.isFinite(ts) ? ts : null,
-        announceImagePath: asNonEmptyString(r?.anounce),
-      } satisfies NewsRecord;
-    })
-    .filter(Boolean) as NewsRecord[];
-}
-
-function extractTableData<T = unknown>(raw: unknown, tableName: string): T[] {
-  if (!Array.isArray(raw)) return [];
-  for (const item of raw) {
-    if (!item || typeof item !== 'object') continue;
-    const rec = item as any;
-    if (rec.type === 'table' && rec.name === tableName && Array.isArray(rec.data)) return rec.data as T[];
-  }
-  return [];
 }
 
 function asNonEmptyString(v: unknown): string | null {
@@ -104,75 +51,39 @@ function asNonEmptyString(v: unknown): string | null {
   return s.length ? s : null;
 }
 
-export function stripHtmlToText(html: string): string {
-  return String(html ?? '')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/\s+/g, ' ')
-    .trim();
+/** Форматирует дату YYYY-MM-DD в русский формат «12 апреля 2025» */
+export function formatNewsDate(date: string | null | undefined): string | undefined {
+  if (!date) return undefined;
+  return formatDateRuLong(date) || date;
 }
 
-export function formatUnixDate(unixSeconds: number | null): string | undefined {
-  return formatUnixSecondsRuDate(unixSeconds);
-}
-
-/**
- * В `news.json` картинки часто лежат как `"/uploads/news/....jpg"`.
- * Для главной/ленты используем локальные превью из `public/img/SmallPic`.
- * Если в данных лежит старый путь `/uploads/news/<name>.<ext>`, мапим его в `/img/SmallPic/<name>.webp`.
- */
+/** Возвращает src для изображения новости */
 export function resolveNewsImageSrc(path: string | null): string | undefined {
   const raw = (path ?? '').trim();
   if (!raw) return undefined;
-
-  // Already local (our uploads endpoint returns /img/SmallPic/... and /img/FullPic/...)
-  if (raw.startsWith('/img/')) return raw;
-
-  // Legacy: phpmyadmin export stored "/uploads/news/<name>.<ext>" (we keep previews in /img/SmallPic/<name>.webp)
-  const legacy = raw.startsWith('/uploads/news/') ? raw : null;
-  if (legacy) {
-    const file = legacy.split('/').pop() ?? '';
-    const base = file.replace(/\.(jpg|jpeg|png|gif|webp)$/i, '').trim();
-    if (base) return `/img/SmallPic/news/${base}.webp`;
-  }
-
-  // Sometimes legacy path can be embedded into absolute URL - still map it.
-  const m = /\/uploads\/news\/([^/?#]+)\.(jpg|jpeg|png|gif|webp)(?:[?#].*)?$/i.exec(raw);
-  if (m?.[1]) return `/img/SmallPic/news/${m[1]}.webp`;
-
-  // Fallback: leave as-is for other cases (can be absolute URL, or a local absolute path).
   return raw;
 }
 
 export function useNewsData() {
   const loading = sharedLoading;
-  const error = sharedError;
-  const news = sharedRows;
+  const error   = sharedError;
+  const news    = sharedRows;
 
   async function load(opts?: { force?: boolean }) {
     if (!opts?.force) {
       if (sharedLoaded.value) return;
       if (sharedLoadPromise) return sharedLoadPromise;
     } else {
-      sharedLoadPromise = null;
+      sharedLoadPromise  = null;
       sharedLoaded.value = false;
     }
 
     sharedLoadPromise = (async () => {
       sharedLoading.value = true;
-      sharedError.value = null;
+      sharedError.value   = null;
       try {
-        const apiOk = await tryLoadFromApi();
-        if (!apiOk) {
-          await loadFromJsonExport();
-        }
+        const ok = await tryLoadFromApi();
+        if (!ok) throw new Error('Не удалось загрузить новости');
         sharedLoaded.value = true;
       } catch (e: unknown) {
         sharedError.value = e instanceof Error ? e.message : 'Ошибка загрузки новостей';
@@ -194,7 +105,10 @@ export function useNewsData() {
 
   const sortedNews = computed(() => {
     const items = news.value.slice();
-    items.sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0) || b.id.localeCompare(a.id, 'ru-RU'));
+    items.sort((a, b) => {
+      const dc = String(b.date ?? '').localeCompare(String(a.date ?? ''));
+      return dc !== 0 ? dc : b.id.localeCompare(a.id, 'ru-RU');
+    });
     return items;
   });
 

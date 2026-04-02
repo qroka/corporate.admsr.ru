@@ -3,9 +3,8 @@ import { computed, ref, watch, onMounted } from 'vue';
 import type { ButtonProps } from '@nuxt/ui'
 import type { BlogPostProps } from '@nuxt/ui'
 import { useRouter } from 'vue-router';
-import { useNewsData, formatUnixDate, resolveNewsImageSrc, stripHtmlToText } from '../composables/useNewsData';
+import { useNewsData, formatNewsDate, resolveNewsImageSrc } from '../composables/useNewsData';
 import { useBirthdayColleagues } from '../composables/useBirthdayColleagues';
-import { formatCountRu, useNewsStats } from '../composables/useNewsStats';
 
 const eventsLinks = <ButtonProps[]>([
   {
@@ -156,28 +155,25 @@ type NewsItem = {
 
 const { sortedNews, ensureLoaded: ensureNewsLoaded } = useNewsData();
 ensureNewsLoaded();
-const { ensure: ensureStats, isLiked, likesCount, viewsCount, toggleLike } = useNewsStats();
 
 const newsPageSize = 6;
 const visibleNewsCount = ref(newsPageSize);
 
 const allNewsItems = computed<NewsItem[]>(() =>
   sortedNews.value.map((n) => {
-    const imageSrc = resolveNewsImageSrc(n.announceImagePath);
-    const date = formatUnixDate(n.timestamp);
-    const description = stripHtmlToText(n.shortHtml || n.html).slice(0, 220);
-    ensureStats(n.id);
+    const imageSrc = resolveNewsImageSrc(n.imagePath);
+    const date = formatNewsDate(n.date);
     return {
       id: n.id,
       likes: 0,
       views: 0,
       post: {
         title: n.title || `Новость #${n.id}`,
-        description,
+        description: n.description.slice(0, 220),
         image: imageSrc ?? '/src/img/Logo.svg',
         to: `/news/${n.id}`,
         date,
-        badge: 'Новости',
+        badge: n.category || 'Новости',
       },
     };
   }),
@@ -188,10 +184,6 @@ const hasMoreNews = computed(() => newsItems.value.length < allNewsItems.value.l
 
 function showMoreNews() {
   visibleNewsCount.value = Math.min(allNewsItems.value.length, visibleNewsCount.value + newsPageSize);
-}
-
-function toggleNewsLike(newsId: string) {
-  toggleLike(newsId);
 }
 
 const { birthdayGroups, loading: birthdaysLoading, error: birthdaysError, ensureLoaded: ensureBirthdaysLoaded } =
@@ -250,36 +242,9 @@ ensureBirthdaysLoaded();
             class="w-full"
           >
             <template #description>
-              <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0">
-                <p class="text-base text-pretty text-muted">
-                  {{ item.post.description }}
-                </p>
-                <UContainer
-                  class="relative z-10 flex justify-between items-center gap-3 w-full sm:p-0 md:p-0 lg:p-0 xl:p-0"
-                  @click.stop
-                >
-                  <UBadge
-                    as="button"
-                    type="button"
-                    :color="isLiked(item.id) ? 'primary' : 'neutral'"
-                    variant="soft"
-                    size="lg"
-                    leading
-                    icon="i-lucide-heart"
-                    :label="formatCountRu(likesCount(item.id))"
-                    :class="[
-                      'relative z-10 cursor-pointer shrink-0 [&_svg]:stroke-[1.75]',
-                      isLiked(item.id)
-                        ? '[&_svg]:stroke-primary [&_svg_path]:fill-primary [&_svg_path]:stroke-primary'
-                        : '[&_svg]:stroke-current [&_svg_path]:fill-none [&_svg_path]:stroke-current',
-                    ]"
-                    @click.stop.prevent="toggleNewsLike(item.id)"
-                  />
-                  <span class="shrink-0 text-sm text-muted">
-                    {{ formatCountRu(viewsCount(item.id)) }} просмотров
-                  </span>
-                </UContainer>
-              </UContainer>
+              <p class="text-base text-pretty text-muted">
+                {{ item.post.description }}
+              </p>
             </template>
           </UBlogPost>
 

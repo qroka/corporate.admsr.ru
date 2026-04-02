@@ -2,12 +2,11 @@
 import { computed, reactive, ref, watch } from 'vue';
 import type { BlogPostProps } from '@nuxt/ui';
 import { useRoute, useRouter } from 'vue-router';
-import { useNewsData, formatUnixDate, resolveNewsImageSrc, stripHtmlToText } from '../../composables/useNewsData';
+import { useNewsData, formatNewsDate, resolveNewsImageSrc } from '../../composables/useNewsData';
 import { useAppToast } from '../../composables/useAppToast';
-import { formatCountRu, useNewsStats } from '../../composables/useNewsStats';
 import { currentRole } from '../../stores/role';
 
-type NewsPost = BlogPostProps & { id: string; ts: number };
+type NewsPost = BlogPostProps & { id: string; rawDate: string };
 
 const route = useRoute();
 const router = useRouter();
@@ -17,7 +16,6 @@ const newsDetailPrefix = computed(() =>
 
 const { loading, error, sortedNews, ensureLoaded, reload } = useNewsData();
 ensureLoaded();
-const { ensure: ensureStats, isLiked, likesCount, viewsCount, toggleLike } = useNewsStats();
 
 const { toast } = useAppToast();
 watch(
@@ -39,27 +37,24 @@ const isAdmin = computed(() => currentRole.value === 'admin');
 const searchQuery = ref('');
 const sortKey = ref<'newest' | 'oldest' | 'title-asc' | 'title-desc'>('newest');
 const sortOptions = [
-  { value: 'newest', label: 'Сначала новые' },
-  { value: 'oldest', label: 'Сначала старые' },
-  { value: 'title-asc', label: 'По названию (А‑Я)' },
+  { value: 'newest',     label: 'Сначала новые' },
+  { value: 'oldest',     label: 'Сначала старые' },
+  { value: 'title-asc',  label: 'По названию (А‑Я)' },
   { value: 'title-desc', label: 'По названию (Я‑А)' },
 ];
 
 const postsBase = computed<NewsPost[]>(() =>
   sortedNews.value.map((n) => {
-    const imageSrc = resolveNewsImageSrc(n.announceImagePath);
-    const date = formatUnixDate(n.timestamp);
-    const description = stripHtmlToText(n.shortHtml || n.html).slice(0, 240);
-    ensureStats(n.id);
+    const imageSrc = resolveNewsImageSrc(n.imagePath);
     return {
-      id: n.id,
-      ts: Number(n.timestamp ?? 0) || 0,
-      title: n.title || `Новость #${n.id}`,
-      description,
-      date,
-      badge: 'Новости',
-      to: `${newsDetailPrefix.value}${n.id}`,
-      image: imageSrc ? { src: imageSrc, alt: n.title } : { src: '/src/img/Logo.svg', alt: n.title },
+      id:          n.id,
+      rawDate:     n.date,
+      title:       n.title || `Новость #${n.id}`,
+      description: n.description.slice(0, 240),
+      date:        formatNewsDate(n.date),
+      badge:       n.category || undefined,
+      to:          `${newsDetailPrefix.value}${n.id}`,
+      image:       imageSrc ? { src: imageSrc, alt: n.title } : { src: '/src/img/Logo.svg', alt: n.title },
     };
   }),
 );
@@ -76,9 +71,9 @@ const filtered = computed(() => {
     : base.slice();
 
   items.sort((a, b) => {
-    if (sortKey.value === 'newest') return (b.ts ?? 0) - (a.ts ?? 0) || b.id.localeCompare(a.id, 'ru-RU');
-    if (sortKey.value === 'oldest') return (a.ts ?? 0) - (b.ts ?? 0) || a.id.localeCompare(b.id, 'ru-RU');
-    if (sortKey.value === 'title-asc') return String(a.title ?? '').localeCompare(String(b.title ?? ''), 'ru-RU');
+    if (sortKey.value === 'newest')     return String(b.rawDate ?? '').localeCompare(String(a.rawDate ?? ''));
+    if (sortKey.value === 'oldest')     return String(a.rawDate ?? '').localeCompare(String(b.rawDate ?? ''));
+    if (sortKey.value === 'title-asc')  return String(a.title ?? '').localeCompare(String(b.title ?? ''), 'ru-RU');
     return String(b.title ?? '').localeCompare(String(a.title ?? ''), 'ru-RU');
   });
 
@@ -86,23 +81,30 @@ const filtered = computed(() => {
 });
 
 // ─── Create form ──────────────────────────────────────────────────────────────
+const createBadgeOptions = [
+  { value: 'Новости',      label: 'Новости' },
+  { value: 'Мероприятия',  label: 'Мероприятия' },
+  { value: 'Объявления',   label: 'Объявления' },
+  { value: 'Архив',        label: 'Архив' },
+];
+
 const createOpen = ref(false);
 
 type CreateFormState = {
-  title: string;
+  title:       string;
+  category:    string | null;
   description: string;
-  badge: string | null;
-  date: string;
+  date:        string;
 };
 
 const createState = reactive<CreateFormState>({
-  title: '',
+  title:       '',
+  category:    null,
   description: '',
-  badge: null,
-  date: '',
+  date:        '',
 });
 
-const createImageFile = ref<File | null>(null);
+const createImageFile    = ref<File | null>(null);
 const createImagePreview = ref('');
 
 function onCreateImageSelected(e: Event) {
@@ -113,22 +115,9 @@ function onCreateImageSelected(e: Event) {
 }
 
 type SingleDateValue = { value?: any } | any | null;
-const createDateValue = ref<SingleDateValue>(null);
+const createDateValue  = ref<SingleDateValue>(null);
 const createSubmitting = ref(false);
-const createError = ref<string | null>(null);
-
-const headerLinks = computed(() => {
-  if (currentRole.value !== 'admin') return [];
-  return [
-    {
-      label: 'Добавить мероприятие',
-      color: 'neutral',
-      variant: 'outline',
-      size: 'xl',
-      onClick: openCreate,
-    },
-  ];
-});
+const createError      = ref<string | null>(null);
 
 watch(createDateValue, (val) => {
   const d = val?.value ?? val;
@@ -136,15 +125,15 @@ watch(createDateValue, (val) => {
 });
 
 function resetCreateForm() {
-  createState.title = '';
+  createState.title       = '';
+  createState.category    = null;
   createState.description = '';
-  createState.badge = null;
-  createState.date = '';
-  createImageFile.value = null;
+  createState.date        = '';
+  createImageFile.value   = null;
   if (createImagePreview.value) URL.revokeObjectURL(createImagePreview.value);
   createImagePreview.value = '';
-  createDateValue.value = null;
-  createError.value = null;
+  createDateValue.value    = null;
+  createError.value        = null;
 }
 
 function openCreate() {
@@ -168,42 +157,39 @@ function validateCreate(): boolean {
 async function handleCreateSubmit() {
   if (!validateCreate()) return;
   createSubmitting.value = true;
-  createError.value = null;
+  createError.value      = null;
   try {
-    const defaultImg = '/favicon.svg';
-    let imagePath     = defaultImg;
-    let imageFullPath = defaultImg;
+    let imagePath: string | null = null;
 
     if (createImageFile.value) {
       const formData = new FormData();
       formData.append('image', createImageFile.value);
-      const uploadRes = await fetch('/api/Upload/upload.php', { method: 'POST', body: formData });
+      const uploadRes  = await fetch('/api/Upload/upload.php', { method: 'POST', body: formData });
       const uploadJson = await uploadRes.json();
       if (!uploadJson.success) throw new Error(uploadJson.message || 'Ошибка загрузки изображения');
-      imagePath     = uploadJson.data.image;
-      imageFullPath = uploadJson.data.image_full;
+      imagePath = uploadJson.data.image as string;
     }
 
-    const res = await fetch('/api/events.php', {
+    const res = await fetch('/api/news.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title:       createState.title.trim(),
-        description: createState.description.trim() || null,
-        badge:       createState.badge || null,
+        category:    createState.category || '',
+        description: createState.description.trim(),
         date:        createState.date,
-        image:       imagePath,
-        image_full:  imageFullPath,
+        image_path:  imagePath,
       }),
     });
     const json = await res.json();
     if (!json.success) throw new Error(json.message || 'Ошибка создания');
 
+    toast.add({ title: 'Новость создана', color: 'success', icon: 'i-lucide-check-circle' });
     createOpen.value = false;
     resetCreateForm();
-    await fetchEvents();
+    await reload();
   } catch (e: any) {
-    createError.value = e.message ?? 'Ошибка при создании мероприятия';
+    createError.value = e.message ?? 'Ошибка при создании новости';
   } finally {
     createSubmitting.value = false;
   }
@@ -266,35 +252,11 @@ async function handleCreateSubmit() {
             </h3>
           </template>
           <template #description>
-            <div class="flex flex-col gap-3">
-              <p
-                class="text-sm text-muted text-pretty overflow-hidden [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]"
-              >
-                {{ post.description }}
-              </p>
-              <div class="relative z-10 flex justify-between items-center gap-3 w-full" @click.stop>
-                <UBadge
-                  as="button"
-                  type="button"
-                  :color="isLiked(post.id) ? 'primary' : 'neutral'"
-                  variant="soft"
-                  size="lg"
-                  leading
-                  icon="i-lucide-heart"
-                  :label="formatCountRu(likesCount(post.id))"
-                  :class="[
-                    'relative z-10 cursor-pointer shrink-0 [&_svg]:stroke-[1.75]',
-                    isLiked(post.id)
-                      ? '[&_svg]:stroke-primary [&_svg_path]:fill-primary [&_svg_path]:stroke-primary'
-                      : '[&_svg]:stroke-current [&_svg_path]:fill-none [&_svg_path]:stroke-current',
-                  ]"
-                  @click.stop.prevent="toggleLike(post.id)"
-                />
-                <span class="shrink-0 text-sm text-muted">
-                  {{ formatCountRu(viewsCount(post.id)) }} просмотров
-                </span>
-              </div>
-            </div>
+            <p
+              class="text-sm text-muted text-pretty overflow-hidden [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]"
+            >
+              {{ post.description }}
+            </p>
           </template>
         </UBlogPost>
       </UContainer>
@@ -315,8 +277,8 @@ async function handleCreateSubmit() {
             <UInput v-model="createState.title" size="xl" class="w-full" placeholder="Введите название мероприятия" />
           </UFormField>
 
-          <UFormField label="Категория" name="badge">
-            <USelect v-model="createState.badge" :items="createBadgeOptions" placeholder="Выберите: Новое или Архив" size="xl" class="w-full" />
+          <UFormField label="Категория" name="category">
+            <USelect v-model="createState.category" :items="createBadgeOptions" placeholder="Выберите категорию" size="xl" class="w-full" />
           </UFormField>
 
           <UFormField label="Описание" name="description">

@@ -3,33 +3,15 @@
  * API: /api/news.php
  *
  * GET    /api/news.php              — список новостей
- * GET    /api/news.php?id=123       — одна новость по ID
+ * GET    /api/news.php?id=N         — одна новость
  * POST   /api/news.php              — создать новость
- * PUT    /api/news.php?id=123       — обновить новость
- * DELETE /api/news.php?id=123       — удалить новость
+ * PUT    /api/news.php?id=N         — обновить новость
+ * DELETE /api/news.php?id=N         — удалить новость
  *
- * Примечание по времени:
- * - В ответе поле `timestamp` возвращается как UNIX секунды (int).
- * - В БД хранится `published_at` как TIMESTAMPTZ.
- *
- * SQL для создания таблицы (PostgreSQL):
- * -------------------------------------------------------
- * CREATE TABLE public.news (
- *   id                 SERIAL        PRIMARY KEY,
- *   title              VARCHAR(255)  NOT NULL,
- *   html               TEXT          NOT NULL DEFAULT '',
- *   short_html         TEXT          NOT NULL DEFAULT '',
- *   author_id          INTEGER       NULL,
- *   announce_image_path VARCHAR(500) NULL,
- *   likes              INTEGER       NOT NULL DEFAULT 0,
- *   views              INTEGER       NOT NULL DEFAULT 0,
- *   published_at       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
- *   created_at         TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
- *   updated_at         TIMESTAMPTZ   NOT NULL DEFAULT NOW()
- * );
- *
- * CREATE INDEX news_published_at_idx ON public.news (published_at DESC);
- * -------------------------------------------------------
+ * Table: public.news
+ *   id SERIAL PK, title VARCHAR(255), category VARCHAR(100),
+ *   description TEXT, date DATE, image_path VARCHAR(500),
+ *   created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ
  */
 
 error_reporting(0);
@@ -61,9 +43,9 @@ try {
     DB_USER,
     DB_PASS,
     [
-      PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+      PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
       PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-      PDO::ATTR_EMULATE_PREPARES => false,
+      PDO::ATTR_EMULATE_PREPARES   => false,
     ]
   );
   $pdo->exec("SET client_encoding = 'UTF8'");
@@ -72,114 +54,76 @@ try {
 }
 
 $method = $_SERVER['REQUEST_METHOD'];
-$id = isset($_GET['id']) ? (int)$_GET['id'] : null;
-$incView = isset($_GET['inc_view']) && (string)$_GET['inc_view'] !== '0';
+$id     = isset($_GET['id']) ? (int)$_GET['id'] : null;
 
 switch ($method) {
 
   case 'GET':
     if ($id !== null) {
-      if ($incView) {
-        $pdo->prepare('UPDATE public.news SET views = views + 1, updated_at = NOW() WHERE id = :id')
-          ->execute([':id' => $id]);
-      }
-      $stmt = $pdo->prepare(
-        "SELECT id, title, html, short_html, author_id, announce_image_path, likes, views,
-                EXTRACT(EPOCH FROM published_at)::bigint AS timestamp,
-                created_at, updated_at
-         FROM public.news
-         WHERE id = :id"
-      );
+      $stmt = $pdo->prepare('SELECT * FROM public.news WHERE id = :id');
       $stmt->execute([':id' => $id]);
       $row = $stmt->fetch();
       if (!$row) jsonError(404, 'Новость не найдена');
-      jsonOk(fmtNews($row));
+      jsonOk(fmt($row));
     } else {
       [$sql, $params] = buildQuery($_GET);
       $stmt = $pdo->prepare($sql);
       $stmt->execute($params);
-      jsonOk(array_map('fmtNews', $stmt->fetchAll()));
+      jsonOk(array_map('fmt', $stmt->fetchAll()));
     }
     break;
 
   case 'POST':
     $d = jsonBody();
-    required($d, ['title']);
+    required($d, ['title', 'date']);
 
-    $publishedAt = parsePublishedAt($d);
     $stmt = $pdo->prepare(
-      "INSERT INTO public.news (title, html, short_html, author_id, announce_image_path, likes, views, published_at)
-       VALUES (:title, :html, :short_html, :author_id, :announce_image_path, :likes, :views, :published_at)
+      "INSERT INTO public.news (title, category, description, date, image_path)
+       VALUES (:title, :category, :description, :date, :image_path)
        RETURNING id"
     );
     $stmt->execute([
-      ':title' => trim($d['title']),
-      ':html' => isset($d['html']) ? (string)$d['html'] : '',
-      ':short_html' => isset($d['short_html']) ? (string)$d['short_html'] : '',
-      ':author_id' => isset($d['author_id']) && (int)$d['author_id'] > 0 ? (int)$d['author_id'] : null,
-      ':announce_image_path' => !empty($d['announce_image_path']) ? trim((string)$d['announce_image_path']) : null,
-      ':likes' => isset($d['likes']) ? max(0, (int)$d['likes']) : 0,
-      ':views' => isset($d['views']) ? max(0, (int)$d['views']) : 0,
-      ':published_at' => $publishedAt,
+      ':title'       => trim($d['title']),
+      ':category'    => isset($d['category'])    ? trim($d['category'])    : '',
+      ':description' => isset($d['description']) ? trim($d['description']) : '',
+      ':date'        => $d['date'],
+      ':image_path'  => !empty($d['image_path']) ? trim($d['image_path'])  : null,
     ]);
 
     $newId = (int)$stmt->fetchColumn();
-    $stmt2 = $pdo->prepare(
-      "SELECT id, title, html, short_html, author_id, announce_image_path, likes, views,
-              EXTRACT(EPOCH FROM published_at)::bigint AS timestamp,
-              created_at, updated_at
-       FROM public.news
-       WHERE id = :id"
-    );
+    $stmt2 = $pdo->prepare('SELECT * FROM public.news WHERE id = :id');
     $stmt2->execute([':id' => $newId]);
     http_response_code(201);
-    jsonOk(fmtNews($stmt2->fetch()), 'Новость создана');
+    jsonOk(fmt($stmt2->fetch()), 'Новость создана');
     break;
 
   case 'PUT':
     if (!$id) jsonError(400, 'Укажите ?id=...');
     $d = jsonBody();
-    required($d, ['title']);
+    required($d, ['title', 'date']);
 
     $check = $pdo->prepare('SELECT id FROM public.news WHERE id = :id');
     $check->execute([':id' => $id]);
     if (!$check->fetch()) jsonError(404, 'Новость не найдена');
 
-    $publishedAt = parsePublishedAt($d);
     $stmt = $pdo->prepare(
       "UPDATE public.news
-       SET title = :title,
-           html = :html,
-           short_html = :short_html,
-           author_id = :author_id,
-           announce_image_path = :announce_image_path,
-           likes = :likes,
-           views = :views,
-           published_at = :published_at,
-           updated_at = NOW()
+       SET title = :title, category = :category, description = :description,
+           date = :date, image_path = :image_path, updated_at = NOW()
        WHERE id = :id"
     );
     $stmt->execute([
-      ':title' => trim($d['title']),
-      ':html' => isset($d['html']) ? (string)$d['html'] : '',
-      ':short_html' => isset($d['short_html']) ? (string)$d['short_html'] : '',
-      ':author_id' => isset($d['author_id']) && (int)$d['author_id'] > 0 ? (int)$d['author_id'] : null,
-      ':announce_image_path' => !empty($d['announce_image_path']) ? trim((string)$d['announce_image_path']) : null,
-      ':likes' => isset($d['likes']) ? max(0, (int)$d['likes']) : 0,
-      ':views' => isset($d['views']) ? max(0, (int)$d['views']) : 0,
-      ':published_at' => $publishedAt,
-      ':id' => $id,
+      ':title'       => trim($d['title']),
+      ':category'    => isset($d['category'])    ? trim($d['category'])    : '',
+      ':description' => isset($d['description']) ? trim($d['description']) : '',
+      ':date'        => $d['date'],
+      ':image_path'  => !empty($d['image_path']) ? trim($d['image_path'])  : null,
+      ':id'          => $id,
     ]);
 
-    $stmt2 = $pdo->prepare(
-      "SELECT id, title, html, short_html, author_id, announce_image_path, likes, views,
-              EXTRACT(EPOCH FROM published_at)::bigint AS timestamp,
-              created_at, updated_at
-       FROM public.news
-       WHERE id = :id"
-    );
+    $stmt2 = $pdo->prepare('SELECT * FROM public.news WHERE id = :id');
     $stmt2->execute([':id' => $id]);
-    jsonOk(fmtNews($stmt2->fetch()), 'Новость обновлена');
+    jsonOk(fmt($stmt2->fetch()), 'Новость обновлена');
     break;
 
   case 'DELETE':
@@ -199,66 +143,43 @@ switch ($method) {
 
 function buildQuery(array $get): array
 {
-  $cond = [];
+  $cond   = [];
   $params = [];
 
   if (!empty($get['search'])) {
-    $cond[] = '(title ILIKE :search OR html ILIKE :search OR short_html ILIKE :search)';
+    $cond[]            = '(title ILIKE :search OR description ILIKE :search OR category ILIKE :search)';
     $params[':search'] = '%' . trim($get['search']) . '%';
   }
 
-  if (!empty($get['author_id'])) {
-    $cond[] = 'author_id = :author_id';
-    $params[':author_id'] = (int)$get['author_id'];
+  if (!empty($get['category'])) {
+    $cond[]              = 'category ILIKE :category';
+    $params[':category'] = trim($get['category']);
   }
 
-  $allowed = ['published_at', 'created_at', 'id', 'title'];
-  $order = in_array($get['order'] ?? '', $allowed, true) ? $get['order'] : 'published_at';
-  $dir = strtolower($get['dir'] ?? '') === 'asc' ? 'ASC' : 'DESC';
+  $allowed = ['date', 'created_at', 'id', 'title'];
+  $order   = in_array($get['order'] ?? '', $allowed, true) ? $get['order'] : 'date';
+  $dir     = strtolower($get['dir'] ?? '') === 'asc' ? 'ASC' : 'DESC';
 
   $sql =
-    "SELECT id, title, html, short_html, author_id, announce_image_path, likes, views,
-            EXTRACT(EPOCH FROM published_at)::bigint AS timestamp,
-            created_at, updated_at
-     FROM public.news" .
+    "SELECT * FROM public.news" .
     ($cond ? ' WHERE ' . implode(' AND ', $cond) : '') .
     " ORDER BY $order $dir, id DESC";
 
   return [$sql, $params];
 }
 
-function fmtNews(array $r): array
+function fmt(array $r): array
 {
   return [
-    'id' => (int)$r['id'],
-    'title' => $r['title'] ?? '',
-    'html' => $r['html'] ?? '',
-    'short_html' => $r['short_html'] ?? '',
-    'author_id' => isset($r['author_id']) ? (int)$r['author_id'] : null,
-    'announce_image_path' => $r['announce_image_path'] ?? null,
-    'likes' => isset($r['likes']) ? (int)$r['likes'] : 0,
-    'views' => isset($r['views']) ? (int)$r['views'] : 0,
-    'timestamp' => isset($r['timestamp']) ? (int)$r['timestamp'] : null,
-    'created_at' => $r['created_at'] ?? null,
-    'updated_at' => $r['updated_at'] ?? null,
+    'id'          => (int)$r['id'],
+    'title'       => $r['title']       ?? '',
+    'category'    => $r['category']    ?? '',
+    'description' => $r['description'] ?? '',
+    'date'        => $r['date']        ?? null,
+    'image_path'  => $r['image_path']  ?? null,
+    'created_at'  => $r['created_at']  ?? null,
+    'updated_at'  => $r['updated_at']  ?? null,
   ];
-}
-
-function parsePublishedAt(array $data): string
-{
-  // Priority:
-  // 1) data.published_at ISO/string
-  // 2) data.timestamp unix seconds
-  // 3) NOW()
-  if (!empty($data['published_at'])) {
-    $s = trim((string)$data['published_at']);
-    if ($s) return $s;
-  }
-  if (isset($data['timestamp'])) {
-    $n = (int)$data['timestamp'];
-    if ($n > 0) return gmdate('c', $n); // ISO UTC
-  }
-  return gmdate('c');
 }
 
 function jsonBody(): array
@@ -273,7 +194,7 @@ function jsonBody(): array
 function required(array $data, array $fields): void
 {
   foreach ($fields as $f) {
-    if (!isset($data[$f]) || trim((string)$data[$f]) === '') jsonError(422, 'Поле обязательно');
+    if (!isset($data[$f]) || trim((string)$data[$f]) === '') jsonError(422, "Поле «$f» обязательно");
   }
 }
 
@@ -289,4 +210,3 @@ function jsonError(int $code, string $msg): never
   echo json_encode(['success' => false, 'message' => $msg, 'data' => null], JSON_UNESCAPED_UNICODE);
   exit;
 }
-

@@ -3,8 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { BlogPostProps } from '@nuxt/ui';
 import type { ButtonProps } from '@nuxt/ui';
 import { useRouter } from 'vue-router';
-import { useNewsData, formatUnixDate, resolveNewsImageSrc, stripHtmlToText } from '../../composables/useNewsData';
-import { formatCountRu, useNewsStats } from '../../composables/useNewsStats';
+import { useNewsData, formatNewsDate, resolveNewsImageSrc } from '../../composables/useNewsData';
 
 type NewsPost = BlogPostProps & { id: string; likes: number; views: number };
 
@@ -12,7 +11,6 @@ const router = useRouter();
 
 const { loading, error, sortedNews, ensureLoaded } = useNewsData();
 ensureLoaded();
-const { ensure: ensureStats, isLiked, likesCount, viewsCount, toggleLike } = useNewsStats();
 
 const links = <ButtonProps[]>([
   {
@@ -26,21 +24,18 @@ const links = <ButtonProps[]>([
 ])
 
 const posts = computed<NewsPost[]>(() =>
-  sortedNews.value.map((n, idx) => {
-    const imageSrc = resolveNewsImageSrc(n.announceImagePath);
-    const date = formatUnixDate(n.timestamp);
-    const description = stripHtmlToText(n.shortHtml || n.html).slice(0, 260);
-    ensureStats(n.id);
+  sortedNews.value.map((n) => {
+    const imageSrc = resolveNewsImageSrc(n.imagePath);
     return {
       id: n.id,
       title: n.title || `Новость #${n.id}`,
-      description,
-      date,
-      badge: 'Новости',
+      description: n.description.slice(0, 260),
+      date: formatNewsDate(n.date),
+      badge: n.category || 'Новости',
       to: `/news/${n.id}`,
       image: imageSrc ? { src: imageSrc, alt: n.title } : { src: '/src/img/Logo.svg', alt: n.title },
-      likes: 24 + (idx % 7) * 13,
-      views: 120 + (idx % 11) * 97,
+      likes: 0,
+      views: 0,
     };
   }),
 );
@@ -57,7 +52,7 @@ const sliderItems = computed<SliderItem[]>(() =>
     .map((n) => ({
       id: n.id,
       title: n.title || `Новость #${n.id}`,
-      imageSrc: resolveNewsImageSrc(n.announceImagePath) ?? '',
+      imageSrc: resolveNewsImageSrc(n.imagePath) ?? '',
       to: `/news/${n.id}`,
     }))
     .filter((x) => x.imageSrc.length)
@@ -121,10 +116,6 @@ onUnmounted(() => {
   window.removeEventListener('kiosk-idle', handleKioskIdle);
 });
 
-function toggleNewsLike(newsId: string) {
-  toggleLike(newsId);
-}
-
 const items = [
   'src/img/EventsWebpFull/event_110_1.webp',
   'src/img/EventsWebpFull/event_110_50.webp',
@@ -160,26 +151,9 @@ const items = [
             }"
           >
             <template #description>
-              <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0">
-                <p class="text-base text-pretty text-muted">
-                  {{ post.description }}
-                </p>
-                <UContainer
-                  class="relative z-10 flex justify-between items-center gap-3 w-full sm:p-0 md:p-0 lg:p-0 xl:p-0"
-                  @click.stop>
-                  <UBadge as="button" type="button" :color="isLiked(post.id) ? 'primary' : 'neutral'" variant="soft"
-                    size="lg" leading icon="i-lucide-heart" :label="formatCountRu(likesCount(post.id))"
-                    :class="[
-                      'relative z-10 cursor-pointer shrink-0 [&_svg]:stroke-[1.75]',
-                      isLiked(post.id)
-                        ? '[&_svg]:stroke-primary [&_svg_path]:fill-primary [&_svg_path]:stroke-primary'
-                        : '[&_svg]:stroke-current [&_svg_path]:fill-none [&_svg_path]:stroke-current',
-                    ]" @click.stop.prevent="toggleNewsLike(post.id)" />
-                  <span class="shrink-0 text-sm text-muted">
-                    {{ formatCountRu(viewsCount(post.id)) }} просмотров
-                  </span>
-                </UContainer>
-              </UContainer>
+              <p class="text-base text-pretty text-muted">
+                {{ post.description }}
+              </p>
             </template>
           </UBlogPost>
           <UEmpty v-if="!loading && !posts.length" icon="i-lucide-newspaper" title="Новостей пока нет"
