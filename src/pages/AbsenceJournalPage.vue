@@ -803,7 +803,7 @@ watch(
               <UContainer class="space-y-1">
                 <h2 class="text-xl font-semibold">Старт отсутствия</h2>
                 <p class="text-sm text-muted">
-                  {{ activeRecord ? 'Есть незавершённая запись — завершите её.' : 'Выберите дату и время начала, затем нажмите «Начать отсутствие»' }}
+                  {{ activeRecord ? 'Есть незавершённая запись — завершите её.' : 'Выберите дату и время начала, затем нажмите «Отметить отсутствие»' }}
                 </p>
               </UContainer>
             </UContainer>
@@ -822,7 +822,7 @@ watch(
 
             <UButton v-else color="primary" variant="solid" size="xl" class="w-full justify-center"
               :disabled="!canStartAbsence || loading" icon="i-lucide-play-circle" @click="startAbsence">
-              Начать отсутствие
+              Отметить отсутствие
             </UButton>
           </UContainer>
         </UCard>
