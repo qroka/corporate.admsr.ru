@@ -3,6 +3,9 @@ import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue';
 import type { BlogPostProps } from '@nuxt/ui';
 import { useRoute, useRouter } from 'vue-router';
 import { useNewsData, formatNewsDate, resolveNewsImageSrc } from '../../composables/useNewsData';
+import { newsEditorToolbarItems } from '../../composables/newsEditorToolbar';
+import { newsEditorExtensions, newsEditorEmojiMenuItems } from '../../composables/newsEditorExtensions';
+import { newsEditorHandlers } from '../../composables/newsEditorHandlers';
 import { useAppToast } from '../../composables/useAppToast';
 import { currentRole } from '../../stores/role';
 
@@ -33,6 +36,9 @@ watch(
 );
 
 const isAdmin = computed(() => currentRole.value === 'admin');
+
+/** Меню эмодзи поверх slideover / z-index */
+const appendEditorEmojiTo = () => document.body;
 
 const headerLinks = computed(() => {
   if (!isAdmin.value) return [];
@@ -100,14 +106,22 @@ const sortOptions = [
   { value: 'title-desc', label: 'По названию (Я‑А)' },
 ];
 
+function newsPlainText(html: string): string {
+  return String(html || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 const postsBase = computed<NewsPost[]>(() =>
   sortedNews.value.map((n) => {
     const imageSrc = resolveNewsImageSrc(n.imagePath);
+    const plain = newsPlainText(n.description);
     return {
       id:          n.id,
       rawDate:     n.date,
       title:       n.title || `Новость #${n.id}`,
-      description: n.description.slice(0, 240),
+      description: plain.length > 240 ? `${plain.slice(0, 240)}…` : plain,
       date:        formatNewsDate(n.date),
       badge:       n.category || undefined,
       to:          `${newsDetailPrefix.value}${n.id}`,
@@ -149,14 +163,14 @@ const createOpen = ref(false);
 
 type CreateFormState = {
   title:       string;
-  category:    string | null;
+  category:    string | undefined;
   description: string;
   date:        string;
 };
 
 const createState = reactive<CreateFormState>({
   title:       '',
-  category:    null,
+  category:    undefined,
   description: '',
   date:        '',
 });
@@ -183,7 +197,7 @@ watch(createDateValue, (val) => {
 
 function resetCreateForm() {
   createState.title       = '';
-  createState.category    = null;
+  createState.category    = undefined;
   createState.description = '';
   createState.date        = '';
   createImageFile.value   = null;
@@ -345,7 +359,15 @@ async function handleCreateSubmit() {
       </UContainer>
     </div>
 
-    <USlideover v-model:open="createOpen" side="right" title="Новое мероприятие">
+    <USlideover
+      v-model:open="createOpen"
+      side="right"
+      title="Новое мероприятие"
+      :ui="{
+        content:
+          '!max-w-full sm:!max-w-2xl lg:!max-w-4xl xl:!max-w-5xl',
+      }"
+    >
       <template #body>
         <UForm :state="createState" class="space-y-4" @submit.prevent="handleCreateSubmit">
           <UFormField label="Название мероприятия" name="title" required>
@@ -353,12 +375,36 @@ async function handleCreateSubmit() {
           </UFormField>
 
           <UFormField label="Категория" name="category">
-            <USelect v-model="createState.category" :items="createBadgeOptions" placeholder="Выберите категорию" size="xl" class="w-full" />
+            <USelect
+              v-model="createState.category"
+              :items="createBadgeOptions"
+              :placeholder="undefined"
+              size="xl"
+              class="w-full"
+            />
           </UFormField>
 
           <UFormField label="Описание" name="description">
-            <UTextarea v-model="createState.description" size="xl" class="w-full" :rows="3"
-              placeholder="Кратко опишите цель и формат мероприятия..." />
+            <UEditor
+              v-slot="{ editor }"
+              v-model="createState.description"
+              content-type="html"
+              :extensions="newsEditorExtensions"
+              :handlers="newsEditorHandlers"
+              placeholder="Текст новости…"
+              class="w-full min-h-56 rounded-lg border border-default overflow-hidden"
+            >
+              <UEditorEmojiMenu
+                :editor="editor"
+                :items="newsEditorEmojiMenuItems"
+                :append-to="appendEditorEmojiTo"
+              />
+              <UEditorToolbar
+                :editor="editor"
+                :items="newsEditorToolbarItems"
+                class="sticky top-0 z-10 border-b border-default bg-default/95 backdrop-blur-sm px-2 py-1.5 overflow-x-auto"
+              />
+            </UEditor>
           </UFormField>
 
           <UFormField label="Дата проведения" name="date" required>

@@ -2,6 +2,10 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useNewsData, formatNewsDate, resolveNewsImageSrc } from '../../composables/useNewsData';
+import { newsEditorToolbarItems } from '../../composables/newsEditorToolbar';
+import { newsEditorExtensions, newsEditorEmojiMenuItems } from '../../composables/newsEditorExtensions';
+import { newsEditorHandlers } from '../../composables/newsEditorHandlers';
+import { newsEditorHtmlClass } from '../../composables/newsEditorHtmlClass';
 import { useAppToast } from '../../composables/useAppToast';
 import { currentRole } from '../../stores/role';
 
@@ -26,6 +30,8 @@ const imageSrc = computed(() => resolveNewsImageSrc(item.value?.imagePath ?? nul
 const isKiosk      = computed(() => route.matched?.some((r) => r.meta?.kiosk));
 const newsListPath = computed(() => (isKiosk.value ? '/kiosk/news' : '/news'));
 const isAdmin      = computed(() => currentRole.value === 'admin');
+
+const appendEditorEmojiTo = () => document.body;
 
 const surround = computed(() => {
   const id = item.value?.id;
@@ -53,7 +59,7 @@ const categoryOptions = [
 
 type EditFormState = {
   title:       string;
-  category:    string | null;
+  category:    string | undefined;
   description: string;
   date:        string;
 };
@@ -61,7 +67,7 @@ type EditFormState = {
 const editOpen  = ref(false);
 const editState = reactive<EditFormState>({
   title:       '',
-  category:    null,
+  category:    undefined,
   description: '',
   date:        '',
 });
@@ -84,8 +90,8 @@ const editError      = ref<string | null>(null);
 function fillEditState() {
   if (!item.value) return;
   editState.title       = item.value.title       ?? '';
-  editState.category    = item.value.category    || null;
-  editState.description = item.value.description ?? '';
+  editState.category    = item.value.category    || undefined;
+  editState.description = String(item.value.description ?? '');
   editState.date        = item.value.date        ?? '';
   editImageFile.value   = null;
   editImagePreview.value = '';
@@ -244,7 +250,7 @@ async function handleDelete() {
               <span class="text-sm font-semibold text-highlighted">Описание</span>
             </div>
           </template>
-          <p class="text-default whitespace-pre-wrap">{{ item.description }}</p>
+          <div :class="['text-default', newsEditorHtmlClass]" v-html="item.description" />
         </UCard>
 
         <!-- Навигация между новостями -->
@@ -273,7 +279,16 @@ async function handleDelete() {
     </div>
 
     <!-- Slideover редактирования -->
-    <USlideover v-model:open="editOpen" side="right" title="Редактирование новости" description="Измените данные новости">
+    <USlideover
+      v-model:open="editOpen"
+      side="right"
+      title="Редактирование новости"
+      description="Измените данные новости"
+      :ui="{
+        content:
+          '!max-w-full sm:!max-w-2xl lg:!max-w-4xl xl:!max-w-5xl',
+      }"
+    >
       <template #body>
         <div class="flex flex-col gap-4 py-2">
           <UForm :state="editState" class="space-y-4" @submit.prevent="handleEditSubmit">
@@ -282,13 +297,36 @@ async function handleDelete() {
             </UFormField>
 
             <UFormField label="Категория" name="category">
-              <USelect v-model="editState.category" :items="categoryOptions"
-                placeholder="Выберите категорию" size="lg" class="w-full" />
+              <USelect
+                v-model="editState.category"
+                :items="categoryOptions"
+                :placeholder="undefined"
+                size="lg"
+                class="w-full"
+              />
             </UFormField>
 
             <UFormField label="Описание" name="description">
-              <UTextarea v-model="editState.description" size="lg" :rows="5"
-                placeholder="Текст новости..." class="w-full" />
+              <UEditor
+                v-slot="{ editor }"
+                v-model="editState.description"
+                content-type="html"
+                :extensions="newsEditorExtensions"
+                :handlers="newsEditorHandlers"
+                placeholder="Текст новости…"
+                class="w-full min-h-56 rounded-lg border border-default overflow-hidden"
+              >
+                <UEditorEmojiMenu
+                  :editor="editor"
+                  :items="newsEditorEmojiMenuItems"
+                  :append-to="appendEditorEmojiTo"
+                />
+                <UEditorToolbar
+                  :editor="editor"
+                  :items="newsEditorToolbarItems"
+                  class="sticky top-0 z-10 border-b border-default bg-default/95 backdrop-blur-sm px-2 py-1.5 overflow-x-auto"
+                />
+              </UEditor>
             </UFormField>
 
             <UFormField label="Дата" name="date" required>
