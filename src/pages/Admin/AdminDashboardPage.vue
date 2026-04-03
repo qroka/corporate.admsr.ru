@@ -868,17 +868,6 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
 
 <template>
   <UMain class="flex flex-col w-full h-full min-h-0 gap-6">
-    <UContainer class="flex flex-col max-w-full w-full gap-4 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0 shrink-0">
-      <UPageHeader
-        title=""
-        class="border-none p-0 w-full"
-        :description="isAdmin ? 'Админ‑панель управления пользователями и структурами.' : 'Доступ только для администратора.'"
-      >
-        <template #title>
-          <h1 class="text-4xl font-normal font-unbounded">Дэшборд администратора</h1>
-        </template>
-      </UPageHeader>
-    </UContainer>
 
     <UContainer class="flex-1 min-h-0 overflow-y-auto sm:p-px max-w-full w-full md:p-px lg:p-px xl:p-px scrollbar-hide mx-0">
       <UAlert
@@ -893,13 +882,7 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
       <div v-else class="flex flex-col gap-4">
         <UTabs v-model="tab" :items="tabItems" size="xl" />
 
-        <UCard v-if="tab === 'users'" class="w-full overflow-visible">
-          <template #header>
-            <div class="min-w-0">
-              <h2 class="text-lg font-semibold text-highlighted truncate">Пользователи</h2>
-              <p class="text-sm text-muted">Данные из <code class="text-xs">public/data/users.json</code>.</p>
-            </div>
-          </template>
+        <div v-if="tab === 'users'" class="flex flex-col gap-4 overflow-visible">
 
           <div class="flex flex-col gap-4 p-0 sm:p-0 md:p-0 lg:p-0 xl:p-0 overflow-visible">
             <UContainer class="flex flex-col w-full gap-3 sm:flex-row sm:flex-wrap sm:items-end p-0 sm:p-0 md:p-0 lg:p-0 xl:p-0 max-w-full mx-0 overflow-visible">
@@ -974,20 +957,14 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
               </div>
             </UScrollArea>
           </div>
-        </UCard>
+        </div>
 
-        <UCard v-else-if="tab === 'groups'" class="w-full">
-          <template #header>
-            <div class="flex items-center justify-between gap-3">
-              <div class="min-w-0">
-                <h2 class="text-lg font-semibold text-highlighted truncate">Группы пользователей</h2>
-                <p class="text-sm text-muted">Данные из <code class="text-xs">public/data/groups.json</code>.</p>
-              </div>
-              <UButton color="neutral" variant="outline" size="lg" icon="i-lucide-users">
-                Создать группу
-              </UButton>
-            </div>
-          </template>
+        <div v-else-if="tab === 'groups'" class="flex flex-col gap-4">
+          <div class="flex items-center justify-between gap-3 mb-2">
+            <UButton color="neutral" variant="outline" size="lg" icon="i-lucide-users">
+              Создать группу
+            </UButton>
+          </div>
 
           <UAlert
             v-if="groupsError"
@@ -1012,43 +989,21 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
               </div>
             </UCard>
           </div>
-        </UCard>
+        </div>
 
-        <UCard v-else class="w-full">
-          <template #header>
-            <div class="flex items-center justify-between gap-3">
-              <div class="min-w-0">
-                <h2 class="text-lg font-semibold text-highlighted truncate">ОФО</h2>
-                <p class="text-sm text-muted">Структура ОФО и посадочные места (из JSON).</p>
-              </div>
-              <UButton color="neutral" variant="outline" size="lg" icon="i-lucide-plus">
-                Добавить ОФО
-              </UButton>
-            </div>
-          </template>
+        <div v-else class="flex flex-col gap-4">
+
 
           <div class="flex flex-col gap-4">
+            
             <div class="flex flex-col gap-3">
+              
               <div class="flex items-center justify-between gap-3 flex-wrap">
+                <UButton color="neutral" variant="outline" size="lg" icon="i-lucide-plus">
+              Добавить ОФО
+            </UButton>
                 <UTabs v-model="ofoViewMode" :items="ofoViewItems" size="sm" />
-                <div class="flex flex-wrap items-center gap-2">
-                  <div v-if="ofoViewMode === 'table'" class="flex flex-wrap gap-1">
-                    <UButton color="neutral" variant="outline" size="xs" @click="ofoExpandAll">
-                      Развернуть всё
-                    </UButton>
-                    <UButton color="neutral" variant="outline" size="xs" @click="ofoCollapseAll">
-                      Свернуть всё
-                    </UButton>
-                  </div>
-                  <div class="text-sm text-muted">
-                    <template v-if="ofoViewMode === 'cards'">
-                      Уровень: {{ ofoCardCurrentLevel.length }} · всего {{ ofoStats.length }}
-                    </template>
-                    <template v-else>
-                      В таблице: {{ ofoTableRows.length }} · всего {{ ofoStats.length }}
-                    </template>
-                  </div>
-                </div>
+
               </div>
 
               <div class="flex flex-col sm:flex-row gap-3 sm:items-end">
@@ -1177,7 +1132,7 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
               <UTable :columns="ofoColumns" :data="ofoTableRows" sticky class="min-w-[1040px]" />
             </div>
           </div>
-        </UCard>
+        </div>
       </div>
     </UContainer>
 

@@ -3,7 +3,7 @@ import { computed, ref, watch, onMounted } from 'vue';
 import type { ButtonProps } from '@nuxt/ui'
 import type { BlogPostProps } from '@nuxt/ui'
 import { useRouter } from 'vue-router';
-import { useNewsData, formatNewsDate, resolveNewsImageSrc } from '../composables/useNewsData';
+import { useNewsData, resolveNewsImageSrc } from '../composables/useNewsData';
 import { useBirthdayColleagues } from '../composables/useBirthdayColleagues';
 import { attachAbsenceStorageSync, hasActiveAbsence } from '../stores/absenceJournal';
 
@@ -161,20 +161,29 @@ ensureNewsLoaded();
 const newsPageSize = 6;
 const visibleNewsCount = ref(newsPageSize);
 
+/** Превью без HTML: иначе обрезка по 220 символов рвёт теги и даёт мусор в тексте */
+function newsPreviewText(html: string, maxLen: number): string {
+  const plain = String(html ?? '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return plain.length > maxLen ? `${plain.slice(0, maxLen)}…` : plain;
+}
+
 const allNewsItems = computed<NewsItem[]>(() =>
   sortedNews.value.map((n) => {
     const imageSrc = resolveNewsImageSrc(n.imagePath);
-    const date = formatNewsDate(n.date);
     return {
       id: n.id,
       likes: 0,
       views: 0,
       post: {
         title: n.title || `Новость #${n.id}`,
-        description: n.description.slice(0, 220),
-        image: imageSrc ?? '/src/img/Logo.svg',
+        description: newsPreviewText(n.description, 220),
+        image: imageSrc ? { src: imageSrc, alt: n.title || 'Новость' } : { src: '/src/img/Logo.svg', alt: n.title || 'Новость' },
         to: `/news/${n.id}`,
-        date,
+        // ISO YYYY-MM-DD — UBlogPost сам форматирует дату; русская строка даёт Invalid Date и ломает рендер
+        date: n.date || undefined,
         badge: n.category || 'Новости',
       },
     };
@@ -182,7 +191,7 @@ const allNewsItems = computed<NewsItem[]>(() =>
 );
 
 const newsItems = computed<NewsItem[]>(() => allNewsItems.value.slice(0, visibleNewsCount.value));
-const hasMoreNews = computed(() => newsItems.value.length < allNewsItems.value.length);
+const hasMoreNews = computed(() => visibleNewsCount.value < allNewsItems.value.length);
 
 function showMoreNews() {
   visibleNewsCount.value = Math.min(allNewsItems.value.length, visibleNewsCount.value + newsPageSize);
@@ -249,14 +258,14 @@ ensureBirthdaysLoaded();
         </p>
       </UContainer>
     </UContainer>
-    <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 min-h-0">
+    <UContainer class="flex flex-1 flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 min-h-0 min-w-0">
       <UPageHeader title="" :links="newsLinks" class="border-none p-0">
         <template #title>
           <h1 class="text-2xl font-medium">Лента новостей</h1>
         </template>
       </UPageHeader>
 
-      <UScrollArea class="flex-1 min-h-0 sm:p-px md:p-px lg:p-px xl:p-px scrollbar-hide">
+      <UScrollArea class="flex-1 min-h-0 min-w-0 sm:p-px md:p-px lg:p-px xl:p-px scrollbar-hide">
         <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0">
           <UBlogPost
             v-for="item in newsItems"
@@ -277,7 +286,7 @@ ensureBirthdaysLoaded();
             color="neutral"
             variant="outline"
             size="xl"
-            class="w-full justify-center"
+            class="relative z-10 w-full shrink-0 justify-center"
             icon="i-lucide-chevron-down"
             @click="showMoreNews"
           >
