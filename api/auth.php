@@ -16,6 +16,91 @@ define('DB_PASS', 'VZAIMno4753');
 
 header('Content-Type: application/json; charset=utf-8');
 
+/**
+ * Проверяет логин+пароль в ASU (MySQL).
+ * Если найден — создаёт пользователя в PostgreSQL и возвращает его данные.
+ * Если не найден — возвращает null.
+ */
+function asu_lookup_and_create(string $login, string $password, PDO $pdo): ?array
+{
+    $asuUrl    = 'https://172.17.30.42/asu_lookup.php';
+    $asuSecret = 'asu_corporate_sync_key';
+
+    $ch = curl_init($asuUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => json_encode(['login' => $login, 'password' => $password]),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 5,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => false,
+        CURLOPT_HTTPHEADER     => [
+            'Content-Type: application/json',
+            'Host: asu.admsr.ru',
+            'X-Sync-Secret: ' . $asuSecret,
+        ],
+    ]);
+    $response  = curl_exec($ch);
+    $curlError = curl_error($ch);
+    $httpCode  = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    // Лог для отладки — удалить после проверки
+    file_put_contents(
+        '/tmp/asu_sync_debug.log',
+        date('Y-m-d H:i:s') . " login={$login} http={$httpCode} curl_err={$curlError} response={$response}" . PHP_EOL,
+        FILE_APPEND
+    );
+
+    if (!$response) {
+        return null;
+    }
+
+    $data = json_decode($response, true);
+    if (empty($data['success']) || empty($data['user'])) {
+        return null;
+    }
+
+    $u = $data['user'];
+
+    // Разбиваем ФИО: "Фамилия Имя Отчество"
+    $parts     = explode(' ', trim($u['name'] ?? ''), 3);
+    $surname   = $parts[0] ?? '';
+    $firstname = $parts[1] ?? '';
+    $lastname  = $parts[2] ?? '';
+
+    // Создаём пользователя в PostgreSQL
+    $stmt = $pdo->prepare("
+        INSERT INTO public.user_info
+            (id, status, login, password, firstname, surname, lastname, phone, email, ofo, user_group, role, auth)
+        VALUES
+            (:id, true, :login, :password, :firstname, :surname, :lastname, :phone, :email, -1, 'user', '', false)
+        ON CONFLICT (id) DO NOTHING
+    ");
+    $stmt->execute([
+        ':id'        => (int)$u['id'],
+        ':login'     => $u['login']    ?? '',
+        ':password'  => $u['password'] ?? '',
+        ':firstname' => $firstname,
+        ':surname'   => $surname,
+        ':lastname'  => $lastname,
+        ':phone'     => $u['phone']    ?? '',
+        ':email'     => $u['email']    ?? '',
+    ]);
+
+    // Возвращаем данные в формате, совместимом с основным потоком
+    return [
+        'id'         => (int)$u['id'],
+        'password'   => $u['password'] ?? '',
+        'firstname'  => $firstname,
+        'surname'    => $surname,
+        'lastname'   => $lastname,
+        'ofo'        => -1,
+        'user_group' => 'user',
+        'status'     => true,
+    ];
+}
+
 $allowedOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173'];
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 header('Access-Control-Allow-Origin: ' . (in_array($origin, $allowedOrigins, true) ? $origin : $allowedOrigins[0]));
@@ -64,9 +149,14 @@ $stmt->execute([':login' => $login]);
 $user = $stmt->fetch();
 
 if (!$user) {
-    http_response_code(401);
-    echo json_encode(['success' => false, 'message' => 'Неверный логин или пароль']);
-    exit;
+    // Пользователь не найден в PostgreSQL — проверяем в ASU
+    $user = asu_lookup_and_create($login, $password, $pdo);
+
+    if (!$user) {
+        http_response_code(401);
+        echo json_encode(['success' => false, 'message' => 'Неверный логин или пароль']);
+        exit;
+    }
 }
 
 // Поддержка как password_hash(), так и открытого текста
