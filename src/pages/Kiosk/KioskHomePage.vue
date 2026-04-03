@@ -34,11 +34,16 @@ const posts = computed<NewsPost[]>(() =>
       badge: n.category || 'Новости',
       to: `/news/${n.id}`,
       image: imageSrc ? { src: imageSrc, alt: n.title } : { src: '/src/img/Logo.svg', alt: n.title },
-      likes: 0,
-      views: 0,
+      likes: n.likes ?? 0,
+      views: n.views ?? 0,
     };
   }),
 );
+
+function formatCountRu(n: number): string {
+  const v = Number.isFinite(Number(n)) ? Number(n) : 0;
+  return Math.max(0, Math.round(v)).toLocaleString('ru-RU');
+}
 
 type SliderItem = {
   id: string;

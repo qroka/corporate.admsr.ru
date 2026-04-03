@@ -3,13 +3,15 @@ import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue';
 import type { BlogPostProps } from '@nuxt/ui';
 import { useRoute, useRouter } from 'vue-router';
 import { useNewsData, formatNewsDate, resolveNewsImageSrc } from '../../composables/useNewsData';
+import { useNewsReactions } from '../../composables/useNewsReactions'; 
 import { newsEditorToolbarItems } from '../../composables/newsEditorToolbar';
 import { newsEditorExtensions, newsEditorEmojiMenuItems } from '../../composables/newsEditorExtensions';
 import { newsEditorHandlers } from '../../composables/newsEditorHandlers';
+import { newsEditorSlideoverUi } from '../../composables/newsEditorSlideoverUi';
 import { useAppToast } from '../../composables/useAppToast';
 import { currentRole } from '../../stores/role';
 
-type NewsPost = BlogPostProps & { id: string; rawDate: string };
+type NewsPost = BlogPostProps & { id: string; rawDate: string; likes: number; views: number };
 
 const route = useRoute();
 const router = useRouter();
@@ -113,6 +115,11 @@ function newsPlainText(html: string): string {
     .trim();
 }
 
+function formatCountRu(n: number): string {
+  const v = Number.isFinite(Number(n)) ? Number(n) : 0;
+  return Math.max(0, Math.round(v)).toLocaleString('ru-RU');
+}
+
 const postsBase = computed<NewsPost[]>(() =>
   sortedNews.value.map((n) => {
     const imageSrc = resolveNewsImageSrc(n.imagePath);
@@ -125,6 +132,8 @@ const postsBase = computed<NewsPost[]>(() =>
       date:        formatNewsDate(n.date),
       badge:       n.category || undefined,
       to:          `${newsDetailPrefix.value}${n.id}`,
+      likes:       n.likes ?? 0,
+      views:       n.views ?? 0,
       image:       imageSrc ? { src: imageSrc, alt: n.title } : { src: '/src/img/Logo.svg', alt: n.title },
     };
   }),
@@ -151,6 +160,7 @@ const filtered = computed(() => {
   return items;
 });
 
+const { isLiked: isNewsLiked, toggleLike: toggleNewsLike } = useNewsReactions();
 // ─── Create form ──────────────────────────────────────────────────────────────
 const createBadgeOptions = [
   { value: 'Новости',      label: 'Новости' },
@@ -345,6 +355,31 @@ async function handleCreateSubmit() {
               <p class="text-sm text-muted text-pretty overflow-hidden [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]">
                 {{ post.description }}
               </p>
+              <UContainer
+                class="relative z-10 flex justify-between items-center gap-3 w-full mt-2"
+                @click.stop
+              >
+                <UBadge
+                  as="button"
+                  type="button"
+                  :color="isNewsLiked(post.id) ? 'primary' : 'neutral'"
+                  variant="soft"
+                  size="lg"
+                  leading
+                  icon="i-lucide-heart"
+                  :label="formatCountRu(post.likes)"
+                  :class="[
+                    'relative z-10 cursor-pointer shrink-0 [&_svg]:stroke-[1.75]',
+                    isNewsLiked(post.id)
+                      ? '[&_svg]:stroke-primary [&_svg_path]:fill-primary [&_svg_path]:stroke-primary'
+                      : '[&_svg]:stroke-current [&_svg_path]:fill-none [&_svg_path]:stroke-current',
+                  ]"
+                  @click.stop.prevent="toggleNewsLike(post.id)"
+                />
+                <span class="shrink-0 text-sm text-muted">
+                  {{ formatCountRu(post.views) }} просмотров
+                </span>
+              </UContainer>
             </template>
           </UBlogPost>
         </UContainer>
@@ -391,6 +426,7 @@ async function handleCreateSubmit() {
               content-type="html"
               :extensions="newsEditorExtensions"
               :handlers="newsEditorHandlers"
+              :ui="newsEditorSlideoverUi"
               placeholder="Текст новости…"
               class="w-full min-h-56 rounded-lg border border-default overflow-hidden"
             >
