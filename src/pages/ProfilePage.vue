@@ -346,7 +346,7 @@ onMounted(() => {
       </UContainer>
 
       <!-- Контент -->
-      <UContainer class="sm:p-0 md:p-0 lg:p-0 xl:p-0 relative z-10 -mt-14 sm:-mt-16">
+      <UContainer class="sm:p-0 md:p-0 lg:p-0 xl:p-0 relative z-10 -mt-14 sm:-mt-16 mx-auto">
         <UContainer class="grid grid-cols-1 xl:grid-cols-12 gap-4 xl:gap-6 sm:p-0 md:p-0 lg:p-0 xl:p-0">
           <!-- Левая колонка: карточка профиля -->
           <UContainer class="xl:col-span-4 p-px ">

@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useHeaderUser } from '../composables/useHeaderUser';
 import { currentRole, setRole } from '../stores/role';
 
-const { headerName, subtitle, avatarSrc } = useHeaderUser();
+const { headerName, subtitle, avatarSrc, loading } = useHeaderUser();
 
 defineProps({
   isDark: {
@@ -116,7 +116,15 @@ watch(
 
       <UTooltip arrow :content="{ side: 'bottom' }" text="Профиль">
         <RouterLink :to="{ name: 'profile' }" class="bg-elevated rounded-full py-2.5 pl-3 pr-5">
+          <div v-if="loading" class="flex items-center gap-3">
+            <USkeleton class="h-10 w-10 rounded-full" />
+            <div class="space-y-2">
+              <USkeleton class="h-4 w-32" />
+              <USkeleton class="h-3 w-20" />
+            </div>
+          </div>
           <UUser
+            v-else
             :name="headerName"
             size="xl"
             class="bg-elevated rounded-full"

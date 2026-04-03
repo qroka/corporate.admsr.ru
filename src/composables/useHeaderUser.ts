@@ -13,7 +13,7 @@ type DbProfile = {
   avatar_url?: string;
 };
 
-const DEFAULT_NAME = 'Константин Константинов';
+const DEFAULT_NAME = '';
 const DEFAULT_SUBTITLE = 'Инженер';
 const DEFAULT_AVATAR = `/img/FullPic/avatars/${encodeURIComponent('Alien.png')}`;
 

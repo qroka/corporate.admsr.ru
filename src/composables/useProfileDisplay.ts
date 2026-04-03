@@ -4,8 +4,8 @@ const KEY_NAME = 'ui-profile-display-name:v1';
 const KEY_SUBTITLE = 'ui-profile-subtitle:v1';
 const KEY_AVATAR = 'ui-profile-avatar-src:v1';
 
-const DEFAULT_NAME = 'Константин Константинов';
-const DEFAULT_SUBTITLE = 'Инженер';
+const DEFAULT_NAME = '';
+const DEFAULT_SUBTITLE = '';
 const DEFAULT_AVATAR = `/img/FullPic/avatars/${encodeURIComponent('Alien.png')}`;
 
 function readStored(key: string, fallback: string): string {
