@@ -107,7 +107,7 @@ switch ($method) {
            updated_at = NOW()
            WHERE id = :id'
         )->execute([
-          ':id' => $id,
+          ':id'    => $id,
           ':liked' => $liked ? 1 : 0,
         ]);
 

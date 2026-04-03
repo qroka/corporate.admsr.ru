@@ -2,6 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useNewsData, formatNewsDate, resolveNewsImageSrc } from '../../composables/useNewsData';
+import { useNewsReactions } from '../../composables/useNewsReactions';
 import { newsEditorToolbarItems } from '../../composables/newsEditorToolbar';
 import { newsEditorExtensions, newsEditorEmojiMenuItems } from '../../composables/newsEditorExtensions';
 import { newsEditorHandlers } from '../../composables/newsEditorHandlers';
@@ -51,17 +52,13 @@ const surround = computed(() => {
 
 // ─── Likes / Views (в БД) ────────────────────────────────────────────────────
 
+const { isLiked: isLikedFn, toggleLike: toggleLikeAction } = useNewsReactions();
+
 const viewSessionKey = 'news-viewed:v1';
-const isLiked = ref(false);
-const likeSubmitting = ref(false);
 
 function safeParseJson(raw: string | null): any {
   if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(raw); } catch { return null; }
 }
 
 function formatCountRu(n: number): string {
@@ -81,7 +78,7 @@ function writeViewedMap(map: Record<string, boolean>) {
 
 function mapApiToNewsRecord(d: any) {
   return {
-    id: String(d?.id ?? ''),
+    id:          String(d?.id ?? ''),
     title:       String(d?.title ?? ''),
     category:    String(d?.category ?? ''),
     description: String(d?.description ?? ''),
@@ -93,63 +90,31 @@ function mapApiToNewsRecord(d: any) {
   };
 }
 
-async function incrementViewOnce(newsId: string) {
+const isLiked = computed(() => item.value ? isLikedFn(item.value.id) : false);
+
+function toggleLike() {
+  if (item.value?.id) void toggleLikeAction(item.value.id);
+}
+
+async function incrementViewOnce(id: string) {
   if (typeof window === 'undefined') return;
 
   const viewed = readViewedMap();
-  if (viewed?.[newsId]) return;
+  if (viewed?.[id]) return;
 
   const before = item.value && { ...item.value };
-  if (before) {
-    patchItem({
-      ...before,
-      views: (before.views ?? 0) + 1,
-    });
-  }
+  if (before) patchItem({ ...before, views: (before.views ?? 0) + 1 });
 
   try {
-    const res = await fetch(`/api/news.php?id=${newsId}&action=view`, { method: 'POST' });
+    const res = await fetch(`/api/news.php?id=${id}&action=view`, { method: 'POST' });
     const json = await res.json();
     if (!json?.success) throw new Error(json?.message || 'Ошибка обновления просмотров');
 
-    // Обновляем UI и только после успеха фиксируем "уже учтено"
     patchItem(mapApiToNewsRecord(json.data));
-    viewed[newsId] = true;
+    viewed[id] = true;
     writeViewedMap(viewed);
   } catch {
-    // Если запись в БД не удалась — откатываем локальное значение.
-    if (before) {
-      patchItem(before);
-    }
-  }
-}
-
-async function toggleLike() {
-  if (likeSubmitting.value) return;
-  const newsId = item.value?.id;
-  if (!newsId) return;
-
-  const nextLiked = !isLiked.value;
-  const before = item.value && { ...item.value };
-  likeSubmitting.value = true;
-
-  try {
-    const res = await fetch(`/api/news.php?id=${newsId}&action=like`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ liked: nextLiked }),
-    });
-    const json = await res.json();
-    if (!json?.success) throw new Error(json?.message || 'Ошибка обновления лайка');
-
-    patchItem(mapApiToNewsRecord(json.data));
-    isLiked.value = nextLiked;
-  } catch (e) {
-    if (before) {
-      patchItem(before);
-    }
-  } finally {
-    likeSubmitting.value = false;
+    if (before) patchItem(before);
   }
 }
 
