@@ -464,8 +464,13 @@ const filteredUsers = computed(() => {
         String(u.id),
         u.status,
         u.fullName,
+        u.login,
+        u.phone,
+        u.email,
         u.ofo,
-        u.lastAuthAt,
+        u.auth,
+        u.user_group,
+        u.role
       ]
         .join(' ')
         .toLowerCase();
@@ -564,20 +569,37 @@ function resetUserFilters() {
 }
 
 function toggleUserStatus(user: AdminUserRow) {
-  const next: AdminUserRow['status'] = user.status === 'Активен' ? 'Заблокирован' : 'Активен';
+  const next = user.status === 'Активен' ? 'Заблокирован' : 'Активен';
   users.value = users.value.map((u) => (u.id === user.id ? { ...u, status: next } : u));
+  
+  fetch(`/api/users.php?id=${user.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: next })
+  }).catch(e => {
+    toast.add({ title: 'Ошибка обновления статуса', color: 'error', description: String(e) });
+    // revert on error
+    users.value = users.value.map((u) => (u.id === user.id ? { ...u, status: user.status } : u));
+  });
 }
 
 const editOpen = ref(false);
 const editForm = reactive<AdminUserRow>({
   id: 0,
   status: 'Активен',
-  fullName: '',
   login: '',
-  password: '••••••••',
+  password: '',
+  firstname: '',
+  surname: '',
+  lastname: '',
+  fullName: '',
   ofo: '',
+  user_group: '',
+  phone: '',
   email: '',
-  lastAuthAt: '',
+  auth: '',
+  avatar_url: '',
+  role: ''
 });
 
 function openEdit(user: AdminUserRow) {
@@ -585,12 +607,41 @@ function openEdit(user: AdminUserRow) {
   editOpen.value = true;
 }
 
-function saveEdit() {
+async function saveEdit() {
   users.value = users.value.map((u) =>
-    u.id === editForm.id ? { ...editForm } : u,
+    u.id === editForm.id ? { 
+      ...editForm, 
+      fullName: [editForm.surname, editForm.firstname, editForm.lastname].filter(Boolean).join(' ') || '—' 
+    } : u,
   );
-  adminUserSaved(editForm.fullName);
-  editOpen.value = false;
+  
+  try {
+    const res = await fetch(`/api/users.php?id=${editForm.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: editForm.status,
+        login: editForm.login,
+        password: editForm.password,
+        firstname: editForm.firstname,
+        surname: editForm.surname,
+        lastname: editForm.lastname,
+        ofo: editForm.ofo,
+        user_group: editForm.user_group,
+        phone: editForm.phone,
+        email: editForm.email,
+        auth: editForm.auth,
+        avatar_url: editForm.avatar_url,
+        role: editForm.role
+      })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Ошибка сохранения');
+    adminUserSaved([editForm.surname, editForm.firstname, editForm.lastname].filter(Boolean).join(' ') || 'Пользователь');
+    editOpen.value = false;
+  } catch(e) {
+    toast.add({ title: 'Ошибка сохранения', color: 'error', description: String(e) });
+  }
 }
 
 function impersonate(user: AdminUserRow) {
@@ -683,12 +734,14 @@ const userColumns: TableColumn<AdminUserRow>[] = [
     accessorKey: 'status',
     header: 'Статус',
     cell: ({ row }) => {
-      const s = row.getValue('status') as AdminUserRow['status'];
+      const s = row.getValue('status') as string;
       const color = s === 'Активен' ? 'success' : 'error';
       return h(UBadge, { variant: 'subtle', color }, () => s);
     },
   },
+  { accessorKey: 'login', header: 'Логин' },
   { accessorKey: 'fullName', header: 'ФИО' },
+  { accessorKey: 'role', header: 'Роль' },
   {
     accessorKey: 'ofo',
     header: 'ОФО',
@@ -710,7 +763,7 @@ const userColumns: TableColumn<AdminUserRow>[] = [
       }, () => label);
     },
   },
-  { accessorKey: 'lastAuthAt', header: 'Последняя авторизация' },
+  { accessorKey: 'auth', header: 'Последняя авторизация' },
   {
     id: 'actions',
     header: () => h('span', { class: 'sr-only' }, 'Действия'),
@@ -1216,17 +1269,38 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
     <USlideover v-model:open="editOpen" side="right" title="Редактирование пользователя" description="">
       <template #body>
         <UForm :state="editForm" class="space-y-4" @submit.prevent="saveEdit">
-          <UFormField label="ФИО" name="fullName">
-            <UInput v-model="editForm.fullName" size="xl" class="w-full" />
+          <UFormField label="Фамилия" name="surname">
+            <UInput v-model="editForm.surname" size="xl" class="w-full" />
+          </UFormField>
+          <UFormField label="Имя" name="firstname">
+            <UInput v-model="editForm.firstname" size="xl" class="w-full" />
+          </UFormField>
+          <UFormField label="Отчество" name="lastname">
+            <UInput v-model="editForm.lastname" size="xl" class="w-full" />
           </UFormField>
           <UFormField label="Логин" name="login">
             <UInput v-model="editForm.login" size="xl" class="w-full" />
+          </UFormField>
+          <UFormField label="Пароль" name="password">
+            <UInput v-model="editForm.password" size="xl" class="w-full" type="password" />
           </UFormField>
           <UFormField label="ОФО" name="ofo">
             <UInput v-model="editForm.ofo" size="xl" class="w-full" />
           </UFormField>
           <UFormField label="Email" name="email">
             <UInput v-model="editForm.email" size="xl" class="w-full" />
+          </UFormField>
+          <UFormField label="Телефон" name="phone">
+            <UInput v-model="editForm.phone" size="xl" class="w-full" />
+          </UFormField>
+          <UFormField label="Группа пользователей" name="user_group">
+            <UInput v-model="editForm.user_group" size="xl" class="w-full" />
+          </UFormField>
+          <UFormField label="Роль" name="role">
+            <UInput v-model="editForm.role" size="xl" class="w-full" />
+          </UFormField>
+          <UFormField label="Аватар (URL)" name="avatar_url">
+            <UInput v-model="editForm.avatar_url" size="xl" class="w-full" />
           </UFormField>
           <UFormField label="Статус" name="status">
             <USelect
@@ -1239,8 +1313,8 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
               class="w-full"
             />
           </UFormField>
-          <UFormField label="Последняя авторизация" name="lastAuthAt">
-            <UInput v-model="editForm.lastAuthAt" size="xl" class="w-full" />
+          <UFormField label="Последняя авторизация" name="auth">
+            <UInput v-model="editForm.auth" size="xl" class="w-full" disabled />
           </UFormField>
         </UForm>
       </template>

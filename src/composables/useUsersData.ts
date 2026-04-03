@@ -15,30 +15,23 @@ function extractTableData(exportJson: unknown, tableName: string) {
 
 export type AdminUserRow = {
   id: number;
-  status: 'Активен' | 'Заблокирован';
-  fullName: string;
+  status: string;
   login: string;
-  password: string;
+  password?: string;
+  firstname: string;
+  surname: string;
+  lastname: string;
+  fullName: string;
   ofo: string;
+  user_group: string;
+  phone: string;
   email: string;
-  lastAuthAt: string;
+  auth: string;
+  avatar_url: string;
+  role: string;
 };
 
-function formatLastAuth(ts: unknown): string {
-  if (ts == null || ts === '') return '—';
-  const n = Number(ts);
-  if (Number.isNaN(n) || n <= 0) return '—';
-  return new Date(n * 1000).toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 export function useUsersData() {
-  // shared cache (single fetch/parse per session)
   const loading = sharedLoading;
   const error = sharedError;
   const users = sharedUsers;
@@ -52,21 +45,34 @@ export function useUsersData() {
 
     sharedLoadPromise = (async () => {
       try {
-        const res = await fetch('/data/users.json');
-        if (!res.ok) throw new Error(`Не удалось загрузить users.json: ${res.status}`);
-        const data = await res.json();
-        const rows = extractTableData(data, 'users') as Record<string, unknown>[];
-        sharedUsers.value = rows.map((r) => {
+        const res = await fetch('/api/users.php');
+        if (!res.ok) throw new Error(`Не удалось загрузить пользователей: ${res.status}`);
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Ошибка загрузки пользователей');
+        
+        sharedUsers.value = json.data.map((r: any) => {
           const id = Number(r.id);
+          const fname = r.firstname || '';
+          const sname = r.surname || '';
+          const lname = r.lastname || '';
+          const fullName = [sname, fname, lname].filter(Boolean).join(' ') || '—';
+          
           return {
             id: Number.isFinite(id) ? id : 0,
-            status: String(r.active ?? '0') === '1' ? ('Активен' as const) : ('Заблокирован' as const),
-            fullName: String(r.fio ?? '').trim() || '—',
-            login: String(r.username ?? ''),
-            password: '••••••••',
-            ofo: String(r.ofo ?? '').trim(),
-            email: String(r.email ?? '').trim() || '—',
-            lastAuthAt: formatLastAuth(r.last_login),
+            status: r.status === 'Активен' || r.status === '1' ? 'Активен' : 'Заблокирован',
+            login: r.login || '',
+            password: r.password || '',
+            firstname: fname,
+            surname: sname,
+            lastname: lname,
+            fullName,
+            ofo: String(r.ofo || '').trim(),
+            user_group: r.user_group || '',
+            phone: r.phone || '',
+            email: r.email || '',
+            auth: r.auth || '',
+            avatar_url: r.avatar_url || '',
+            role: r.role || ''
           } satisfies AdminUserRow;
         });
         sharedLoaded.value = true;
@@ -86,9 +92,7 @@ export function useUsersData() {
     void load();
   }
 
-  onMounted(() => {
-    // no auto-load by default; caller can call ensureLoaded()
-  });
+  onMounted(() => {});
 
   return { loading, error, users, load, ensureLoaded };
 }
