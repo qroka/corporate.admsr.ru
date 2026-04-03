@@ -4,6 +4,7 @@ import type { ButtonProps } from '@nuxt/ui'
 import type { BlogPostProps } from '@nuxt/ui'
 import { useRouter } from 'vue-router';
 import { useNewsData, resolveNewsImageSrc } from '../composables/useNewsData';
+import { useNewsReactions } from '../composables/useNewsReactions';
 import { useBirthdayColleagues } from '../composables/useBirthdayColleagues';
 import { attachAbsenceStorageSync, hasActiveAbsence } from '../stores/absenceJournal';
 
@@ -170,13 +171,18 @@ function newsPreviewText(html: string, maxLen: number): string {
   return plain.length > maxLen ? `${plain.slice(0, maxLen)}…` : plain;
 }
 
+function formatCountRu(n: number): string {
+  const v = Number.isFinite(Number(n)) ? Number(n) : 0;
+  return Math.max(0, Math.round(v)).toLocaleString('ru-RU');
+}
+
 const allNewsItems = computed<NewsItem[]>(() =>
   sortedNews.value.map((n) => {
     const imageSrc = resolveNewsImageSrc(n.imagePath);
     return {
       id: n.id,
-      likes: 0,
-      views: 0,
+      likes: n.likes ?? 0,
+      views: n.views ?? 0,
       post: {
         title: n.title || `Новость #${n.id}`,
         description: newsPreviewText(n.description, 220),
@@ -192,6 +198,8 @@ const allNewsItems = computed<NewsItem[]>(() =>
 
 const newsItems = computed<NewsItem[]>(() => allNewsItems.value.slice(0, visibleNewsCount.value));
 const hasMoreNews = computed(() => visibleNewsCount.value < allNewsItems.value.length);
+
+const { isLiked: isNewsLiked, toggleLike: toggleNewsLike } = useNewsReactions();
 
 function showMoreNews() {
   visibleNewsCount.value = Math.min(allNewsItems.value.length, visibleNewsCount.value + newsPageSize);
@@ -219,7 +227,7 @@ ensureBirthdaysLoaded();
           color: 'neutral',
           variant: 'solid',
           size: 'md',
-          onClick: () => router.push({ name: 'absence-journal' }),
+          onClick: () => void router.push({ name: 'absence-journal' }),
         },
       ]"
     />
@@ -277,7 +285,33 @@ ensureBirthdaysLoaded();
               <p class="text-base text-pretty text-muted">
                 {{ item.post.description }}
               </p>
+              <UContainer
+                class="relative z-10 flex justify-between items-center gap-3 w-full mt-2"
+                @click.stop
+              >
+                <UBadge
+                  as="button"
+                  type="button"
+                  :color="isNewsLiked(item.id) ? 'primary' : 'neutral'"
+                  variant="soft"
+                  size="lg"
+                  leading
+                  icon="i-lucide-heart"
+                  :label="formatCountRu(item.likes)"
+                  :class="[
+                    'relative z-10 cursor-pointer shrink-0 [&_svg]:stroke-[1.75]',
+                    isNewsLiked(item.id)
+                      ? '[&_svg]:stroke-primary [&_svg_path]:fill-primary [&_svg_path]:stroke-primary'
+                      : '[&_svg]:stroke-current [&_svg_path]:fill-none [&_svg_path]:stroke-current',
+                  ]"
+                  @click.stop.prevent="toggleNewsLike(item.id)"
+                />
+                <span class="shrink-0 text-sm text-muted">
+                  {{ formatCountRu(item.views) }} просмотров
+                </span>
+              </UContainer>
             </template>
+
           </UBlogPost>
 
           <UButton

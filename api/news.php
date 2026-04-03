@@ -55,6 +55,7 @@ try {
 
 $method = $_SERVER['REQUEST_METHOD'];
 $id     = isset($_GET['id']) ? (int)$_GET['id'] : null;
+$action = isset($_GET['action']) ? trim(strtolower((string)$_GET['action'])) : '';
 
 switch ($method) {
 
@@ -74,6 +75,53 @@ switch ($method) {
     break;
 
   case 'POST':
+    if ($id !== null && !empty($action)) {
+      if ($action === 'view') {
+        $pdo->prepare(
+          'UPDATE public.news
+           SET views = COALESCE(views, 0) + 1,
+               updated_at = NOW()
+           WHERE id = :id'
+        )->execute([':id' => $id]);
+
+        $stmt2 = $pdo->prepare('SELECT * FROM public.news WHERE id = :id');
+        $stmt2->execute([':id' => $id]);
+        $row = $stmt2->fetch();
+        if (!$row) jsonError(404, 'Новость не найдена');
+        jsonOk(fmt($row), 'Просмотр учтён');
+        break;
+      }
+
+      if ($action === 'like') {
+        $d = jsonBody();
+        $likedRaw = $d['liked'] ?? null;
+        $liked = filter_var($likedRaw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        if ($liked === null) jsonError(422, 'Поле «liked» обязательно (true/false)');
+
+        $pdo->prepare(
+          'UPDATE public.news
+           SET likes = CASE
+             WHEN :liked = 1 THEN COALESCE(likes, 0) + 1
+             ELSE GREATEST(COALESCE(likes, 0) - 1, 0)
+           END,
+           updated_at = NOW()
+           WHERE id = :id'
+        )->execute([
+          ':id' => $id,
+          ':liked' => $liked ? 1 : 0,
+        ]);
+
+        $stmt2 = $pdo->prepare('SELECT * FROM public.news WHERE id = :id');
+        $stmt2->execute([':id' => $id]);
+        $row = $stmt2->fetch();
+        if (!$row) jsonError(404, 'Новость не найдена');
+        jsonOk(fmt($row), 'Лайк обновлён');
+        break;
+      }
+
+      jsonError(400, 'Неизвестное действие');
+    }
+
     $d = jsonBody();
     required($d, ['title', 'date']);
 
@@ -179,6 +227,8 @@ function fmt(array $r): array
     'image_path'  => $r['image_path']  ?? null,
     'created_at'  => $r['created_at']  ?? null,
     'updated_at'  => $r['updated_at']  ?? null,
+    'likes'       => $r['likes']       ?? 0,
+    'views'       => $r['views']       ?? 0,
   ];
 }
 
@@ -194,7 +244,9 @@ function jsonBody(): array
 function required(array $data, array $fields): void
 {
   foreach ($fields as $f) {
-    if (!isset($data[$f]) || trim((string)$data[$f]) === '') jsonError(422, "Поле «$f» обязательно");
+    if (!isset($data[$f]) || trim((string)$data[$f]) === '') {
+      jsonError(422, 'Поле `' . $f . '` обязательно');
+    }
   }
 }
 

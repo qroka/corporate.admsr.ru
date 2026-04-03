@@ -442,10 +442,10 @@ onUnmounted(() => {
 
             <div class="absolute inset-0 p-6 flex flex-col justify-end">
               <div class="flex flex-wrap items-center gap-2 mb-3">
-                <UBadge v-if="event.badge" :color="isNewEvent ? 'primary' : 'neutral'" :variant="isNewEvent ? 'solid' : 'soft'" size="md">
+                <UBadge v-if="event.badge" :color="isNewEvent ? 'primary' : 'neutral'" :variant="isNewEvent ? 'solid' : 'soft'" size="lg">
                   {{ event.badge }}
                 </UBadge>
-                <UBadge color="neutral" variant="soft" size="md" class="backdrop-blur">
+                <UBadge color="neutral" variant="soft" size="lg" class="backdrop-blur">
                   {{ formatDateRu(event.date) }}
                 </UBadge>
               </div>

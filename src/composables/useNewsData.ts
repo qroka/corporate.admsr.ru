@@ -9,6 +9,8 @@ export type NewsRecord = {
   date: string; // YYYY-MM-DD
   imagePath: string | null;
   createdAt: string | null;
+  likes: number;
+  views: number;
 };
 
 const sharedLoading = ref(false);
@@ -28,6 +30,8 @@ function mapApiRow(r: Record<string, unknown>): NewsRecord | null {
     date:        String(r?.date        ?? '').trim(),
     imagePath:   asNonEmptyString(r?.image_path),
     createdAt:   asNonEmptyString(r?.created_at),
+    likes: Number(r?.likes ?? 0) || 0,
+    views: Number(r?.views ?? 0) || 0,
   };
 }
 

@@ -5,6 +5,7 @@ import { useNewsData, formatNewsDate, resolveNewsImageSrc } from '../../composab
 import { newsEditorToolbarItems } from '../../composables/newsEditorToolbar';
 import { newsEditorExtensions, newsEditorEmojiMenuItems } from '../../composables/newsEditorExtensions';
 import { newsEditorHandlers } from '../../composables/newsEditorHandlers';
+import { newsEditorSlideoverUi } from '../../composables/newsEditorSlideoverUi';
 import { newsEditorHtmlClass } from '../../composables/newsEditorHtmlClass';
 import { useAppToast } from '../../composables/useAppToast';
 import { currentRole } from '../../stores/role';
@@ -47,6 +48,119 @@ const surround = computed(() => {
     next: next ? { title: next.title || `Новость #${next.id}`, to: `${prefix}${next.id}` } : null,
   };
 });
+
+// ─── Likes / Views (в БД) ────────────────────────────────────────────────────
+
+const viewSessionKey = 'news-viewed:v1';
+const isLiked = ref(false);
+const likeSubmitting = ref(false);
+
+function safeParseJson(raw: string | null): any {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function formatCountRu(n: number): string {
+  const v = Number.isFinite(Number(n)) ? Number(n) : 0;
+  return Math.max(0, Math.round(v)).toLocaleString('ru-RU');
+}
+
+function readViewedMap(): Record<string, boolean> {
+  if (typeof window === 'undefined') return {};
+  return safeParseJson(window.sessionStorage.getItem(viewSessionKey)) ?? {};
+}
+
+function writeViewedMap(map: Record<string, boolean>) {
+  if (typeof window === 'undefined') return;
+  window.sessionStorage.setItem(viewSessionKey, JSON.stringify(map));
+}
+
+function mapApiToNewsRecord(d: any) {
+  return {
+    id: String(d?.id ?? ''),
+    title:       String(d?.title ?? ''),
+    category:    String(d?.category ?? ''),
+    description: String(d?.description ?? ''),
+    date:        String(d?.date ?? ''),
+    imagePath:   d?.image_path ?? null,
+    createdAt:   d?.created_at ?? null,
+    likes: Number(d?.likes ?? 0) || 0,
+    views: Number(d?.views ?? 0) || 0,
+  };
+}
+
+async function incrementViewOnce(newsId: string) {
+  if (typeof window === 'undefined') return;
+
+  const viewed = readViewedMap();
+  if (viewed?.[newsId]) return;
+
+  const before = item.value && { ...item.value };
+  if (before) {
+    patchItem({
+      ...before,
+      views: (before.views ?? 0) + 1,
+    });
+  }
+
+  try {
+    const res = await fetch(`/api/news.php?id=${newsId}&action=view`, { method: 'POST' });
+    const json = await res.json();
+    if (!json?.success) throw new Error(json?.message || 'Ошибка обновления просмотров');
+
+    // Обновляем UI и только после успеха фиксируем "уже учтено"
+    patchItem(mapApiToNewsRecord(json.data));
+    viewed[newsId] = true;
+    writeViewedMap(viewed);
+  } catch {
+    // Если запись в БД не удалась — откатываем локальное значение.
+    if (before) {
+      patchItem(before);
+    }
+  }
+}
+
+async function toggleLike() {
+  if (likeSubmitting.value) return;
+  const newsId = item.value?.id;
+  if (!newsId) return;
+
+  const nextLiked = !isLiked.value;
+  const before = item.value && { ...item.value };
+  likeSubmitting.value = true;
+
+  try {
+    const res = await fetch(`/api/news.php?id=${newsId}&action=like`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ liked: nextLiked }),
+    });
+    const json = await res.json();
+    if (!json?.success) throw new Error(json?.message || 'Ошибка обновления лайка');
+
+    patchItem(mapApiToNewsRecord(json.data));
+    isLiked.value = nextLiked;
+  } catch (e) {
+    if (before) {
+      patchItem(before);
+    }
+  } finally {
+    likeSubmitting.value = false;
+  }
+}
+
+watch(
+  () => item.value?.id,
+  (id) => {
+    if (!id) return;
+    void incrementViewOnce(id);
+  },
+  { immediate: true },
+);
 
 // ─── Edit form (по аналогии с EventDetailsPage) ────────────────────────────────
 
@@ -158,6 +272,8 @@ async function handleEditSubmit() {
       date:        String(json.data.date        ?? ''),
       imagePath:   json.data.image_path ?? null,
       createdAt:   json.data.created_at ?? null,
+      likes:       Number(json.data.likes ?? 0) || 0,
+      views:       Number(json.data.views ?? 0) || 0,
     });
     editOpen.value = false;
   } catch (e: any) {
@@ -220,9 +336,29 @@ async function handleDelete() {
               :class="imageSrc ? 'bg-linear-to-t from-black/85 via-black/35 to-transparent'
                                : 'bg-linear-to-br from-primary/12 via-transparent to-primary/8'" />
             <div class="absolute inset-0 p-6 flex flex-col justify-end">
-              <div class="flex flex-wrap items-center gap-2 mb-3">
-                <UBadge v-if="item.category" color="primary" variant="solid" size="md">{{ item.category }}</UBadge>
-                <UBadge v-if="date" color="neutral" variant="soft" size="md" class="backdrop-blur">{{ date }}</UBadge>
+              <div class="flex flex-wrap items-center gap-2 mb-2">
+                <UBadge v-if="item.category" color="primary" variant="solid" size="lg">{{ item.category }}</UBadge>
+                <UBadge v-if="date" color="neutral" variant="soft" size="lg" class="backdrop-blur">{{ date }}</UBadge>
+                <UBadge
+                  as="button"
+                  type="button"
+                  :color="isLiked ? 'primary' : 'neutral'"
+                  variant="soft"
+                  size="lg"
+                  leading
+                  icon="i-lucide-heart"
+                  :label="formatCountRu(item.likes)"
+                  :class="[
+                    'relative z-10 cursor-pointer shrink-0 [&_svg]:stroke-[1.75]',
+                    isLiked
+                      ? '[&_svg]:stroke-primary [&_svg_path]:fill-primary [&_svg_path]:stroke-primary'
+                      : '[&_svg]:stroke-current [&_svg_path]:fill-none [&_svg_path]:stroke-current',
+                  ]"
+                  @click.stop.prevent="toggleLike"
+                />
+                <UBadge color="neutral" variant="soft" size="lg" class="backdrop-blur">
+                  {{ formatCountRu(item.views) }} просмотров
+                </UBadge>
               </div>
               <div class="flex items-end justify-between gap-4 flex-wrap">
                 <h1 class="text-2xl sm:text-4xl font-semibold tracking-tight min-w-0 flex-1"
@@ -250,7 +386,7 @@ async function handleDelete() {
               <span class="text-sm font-semibold text-highlighted">Описание</span>
             </div>
           </template>
-          <div :class="['text-default', newsEditorHtmlClass]" v-html="item.description" />
+          <div :class="['text-default', newsEditorHtmlClass]" class="px-0 sm:px-0 md:px-0 lg:px-0 xl:px-0" v-html="item.description" />
         </UCard>
 
         <!-- Навигация между новостями -->
@@ -313,14 +449,10 @@ async function handleDelete() {
                 content-type="html"
                 :extensions="newsEditorExtensions"
                 :handlers="newsEditorHandlers"
+                :ui="newsEditorSlideoverUi"
                 placeholder="Текст новости…"
                 class="w-full min-h-56 rounded-lg border border-default overflow-hidden"
               >
-                <UEditorEmojiMenu
-                  :editor="editor"
-                  :items="newsEditorEmojiMenuItems"
-                  :append-to="appendEditorEmojiTo"
-                />
                 <UEditorToolbar
                   :editor="editor"
                   :items="newsEditorToolbarItems"
