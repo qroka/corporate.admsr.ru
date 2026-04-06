@@ -96,12 +96,12 @@ export function useOfoData() {
 
     sharedDirectoryPromise = (async () => {
       try {
-        const ofoExport = await fetch('/data/ofo.json').then((r) => {
-          if (!r.ok) throw new Error(`Не удалось загрузить ofo.json: ${r.status}`);
+        const ofoExport = await fetch('/api/ofo.php').then((r) => {
+          if (!r.ok) throw new Error(`Не удалось загрузить ofo: ${r.status}`);
           return r.json();
         });
 
-        const ofoTable = extractTableData(ofoExport, 'ofo') as OfoExportRow[];
+        const ofoTable = (ofoExport.data || []) as OfoExportRow[];
 
         sharedOfoRows.value = ofoTable.map((r) => ({
           id: normalizeString(r.id),
@@ -135,12 +135,12 @@ export function useOfoData() {
 
     sharedSeatsPromise = (async () => {
       try {
-        const seatsExport = await fetch('/data/office_seats.json').then((r) => {
-          if (!r.ok) throw new Error(`Не удалось загрузить office_seats.json: ${r.status}`);
+        const seatsExport = await fetch('/api/ofo_seats.php').then((r) => {
+          if (!r.ok) throw new Error(`Не удалось загрузить office_seats: ${r.status}`);
           return r.json();
         });
 
-        const seatsTable = extractTableData(seatsExport, 'office_seats') as OfficeSeatExportRow[];
+        const seatsTable = (seatsExport.data || []) as OfficeSeatExportRow[];
 
         sharedOfficeSeats.value = seatsTable.map((r) => ({
           id: normalizeString(r.id),

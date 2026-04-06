@@ -195,17 +195,17 @@ async function load() {
   try {
     const [usersRes, ofoRes] = await Promise.all([
       fetch('/data/users.json', { cache: 'force-cache' }),
-      fetch('/data/ofo.json', { cache: 'force-cache' }),
+      fetch('/api/ofo.php', { cache: 'force-cache' }),
     ]);
 
     if (!usersRes.ok) throw new Error(`Не удалось загрузить users.json (${usersRes.status})`);
-    if (!ofoRes.ok) throw new Error(`Не удалось загрузить ofo.json (${ofoRes.status})`);
+    if (!ofoRes.ok) throw new Error(`Не удалось загрузить ofo (${ofoRes.status})`);
 
     const usersRaw = await usersRes.json();
     const ofoRaw = await ofoRes.json();
 
     const users = extractTableData(usersRaw, 'users');
-    const ofoRows = extractTableData(ofoRaw, 'ofo');
+    const ofoRows = ofoRaw.data || [];
 
     const ofoMap: Record<string, string> = {};
     for (const row of ofoRows) {

@@ -227,13 +227,13 @@ export function useBirthdayColleagues() {
       try {
         const [usersRes, seatsRes] = await Promise.all([
           fetch('/data/users.json', { cache: 'force-cache' }),
-          fetch('/data/office_seats.json', { cache: 'force-cache' }),
+          fetch('/api/ofo_seats.php', { cache: 'force-cache' }),
         ]);
         if (!usersRes.ok) throw new Error(`Не удалось загрузить users.json (${usersRes.status})`);
-        if (!seatsRes.ok) throw new Error(`Не удалось загрузить office_seats.json (${seatsRes.status})`);
+        if (!seatsRes.ok) throw new Error(`Не удалось загрузить ofo_seats (${seatsRes.status})`);
         const usersRaw = await usersRes.json();
         const seatsRaw = await seatsRes.json();
-        const seatRows = extractTableData(seatsRaw, 'office_seats');
+        const seatRows = seatsRaw.data || [];
         const seatTitles = buildSeatTitleById(seatRows);
         const table = extractTableData(usersRaw, 'users');
         sharedUsers.value = mapRows(table, seatTitles);
