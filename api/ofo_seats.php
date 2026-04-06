@@ -42,7 +42,7 @@ try {
 
 try {
   // Using table `office_seats` as it is named in DB
-  $stmt = $pdo->query('SELECT id, title, ofo, insurance, rating FROM public.office_seats ORDER BY id ASC');
+  $stmt = $pdo->query('SELECT id, title, ofo, insurance, rating FROM public.ofo_seats ORDER BY id ASC');
   $rows = $stmt->fetchAll();
   
   echo json_encode(['success' => true, 'data' => $rows], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
