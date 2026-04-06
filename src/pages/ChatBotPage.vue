@@ -22,7 +22,23 @@ const messages = ref<Message[]>([
 
 const inputText = ref('')
 const isLoading = ref(false)
+const loadingSeconds = ref(0)
 const messagesEl = ref<HTMLElement | null>(null)
+
+let loadingTimer: ReturnType<typeof setInterval> | null = null
+
+function startLoadingTimer() {
+  loadingSeconds.value = 0
+  loadingTimer = setInterval(() => { loadingSeconds.value++ }, 1000)
+}
+
+function stopLoadingTimer() {
+  if (loadingTimer) {
+    clearInterval(loadingTimer)
+    loadingTimer = null
+  }
+  loadingSeconds.value = 0
+}
 
 const canSend = computed(() => inputText.value.trim().length > 0 && !isLoading.value)
 
@@ -73,6 +89,7 @@ async function sendMessage(text?: string) {
   await scrollToBottom()
 
   isLoading.value = true
+  startLoadingTimer()
 
   try {
     const history = messages.value
@@ -104,6 +121,7 @@ async function sendMessage(text?: string) {
       error: true,
     })
   } finally {
+    stopLoadingTimer()
     isLoading.value = false
     await scrollToBottom()
   }
@@ -120,7 +138,7 @@ onMounted(() => scrollToBottom(false))
 </script>
 
 <template>
-  <div class="flex flex-col h-[calc(100vh-64px)] bg-default">
+  <div class="flex flex-col h-full bg-default">
 
     <!-- ─── Header ──────────────────────────────────────────── -->
     <div class="flex items-center justify-between px-6 py-3 border-b border-default bg-default shrink-0">
@@ -131,8 +149,13 @@ onMounted(() => scrollToBottom(false))
         <div>
           <p class="font-semibold text-highlighted leading-tight">AI Ассистент</p>
           <div class="flex items-center gap-1.5">
-            <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-            <span class="text-xs text-muted">Онлайн · llama-3.1-8b</span>
+            <span
+              class="w-1.5 h-1.5 rounded-full transition-colors"
+              :class="isLoading ? 'bg-amber-400 animate-pulse' : 'bg-green-500 animate-pulse'"
+            />
+            <span class="text-xs text-muted">
+              {{ isLoading ? 'Генерирует ответ...' : 'Онлайн · Qwen2.5:7b' }}
+            </span>
           </div>
         </div>
       </div>
@@ -197,10 +220,18 @@ onMounted(() => scrollToBottom(false))
         <div class="w-8 h-8 rounded-xl bg-primary shrink-0 flex items-center justify-center">
           <UIcon name="i-lucide-bot" class="text-white size-4" />
         </div>
-        <div class="px-4 py-3.5 rounded-2xl rounded-bl-sm bg-elevated border border-default flex items-center gap-1.5">
-          <span class="w-2 h-2 rounded-full bg-muted animate-bounce [animation-delay:0ms]" />
-          <span class="w-2 h-2 rounded-full bg-muted animate-bounce [animation-delay:150ms]" />
-          <span class="w-2 h-2 rounded-full bg-muted animate-bounce [animation-delay:300ms]" />
+        <div class="flex flex-col gap-1">
+          <div class="px-4 py-3.5 rounded-2xl rounded-bl-sm bg-elevated border border-default flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-muted animate-bounce [animation-delay:0ms]" />
+            <span class="w-2 h-2 rounded-full bg-muted animate-bounce [animation-delay:150ms]" />
+            <span class="w-2 h-2 rounded-full bg-muted animate-bounce [animation-delay:300ms]" />
+            <span v-if="loadingSeconds >= 5" class="text-xs text-muted ml-1">
+              {{ loadingSeconds }}с
+            </span>
+          </div>
+          <span v-if="loadingSeconds >= 15" class="text-[11px] text-muted pl-1">
+            Модель прогревается, подождите...
+          </span>
         </div>
       </div>
 

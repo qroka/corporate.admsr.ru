@@ -19,6 +19,7 @@
 
 error_reporting(0);
 ini_set('display_errors', '0');
+set_time_limit(320);  // снимаем стандартный 30-секундный лимит PHP
 
 // ─── CORS / Headers ───────────────────────────────────────────────────────────
 header('Content-Type: application/json; charset=utf-8');
@@ -49,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 // ─── Конфигурация ─────────────────────────────────────────────────────────────
 define('AI_SERVER_URL', 'http://127.0.0.1:8000/chat');
-define('AI_TIMEOUT',    60);   // секунд — Qwen иногда думает чуть дольше
+define('AI_TIMEOUT',    300);  // секунд — Qwen 7B на CPU может отвечать 1-2 минуты
 
 // ─── Входные данные ───────────────────────────────────────────────────────────
 $rawBody = file_get_contents('php://input');
