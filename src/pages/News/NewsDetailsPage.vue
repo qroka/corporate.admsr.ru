@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import type { ButtonProps, BlogPostProps } from '@nuxt/ui';
 import { useNewsData, formatNewsDate, resolveNewsImageSrc } from '../../composables/useNewsData';
 import { useNewsReactions } from '../../composables/useNewsReactions';
 import { newsEditorToolbarItems } from '../../composables/newsEditorToolbar';
@@ -280,11 +281,70 @@ async function handleDelete() {
     deleteSubmitting.value = false;
   }
 }
+
+// ─── Лента новостей (Sidebar) ──────────────────────────────────────────────────
+
+const newsLinks = <ButtonProps[]>([
+  {
+    icon: 'i-lucide-arrow-up-right',
+    to: '/news',
+    size: 'xl',
+    color: 'neutral',
+    variant: 'outline',
+    class: 'rounded-full',
+  },
+]);
+
+type NewsItem = {
+  id: string;
+  likes: number;
+  views: number;
+  post: BlogPostProps;
+};
+
+const newsPageSize = 6;
+const visibleNewsCount = ref(newsPageSize);
+
+function newsPreviewText(html: string, maxLen: number): string {
+  const plain = String(html ?? '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return plain.length > maxLen ? `${plain.slice(0, maxLen)}…` : plain;
+}
+
+const allNewsItems = computed<NewsItem[]>(() =>
+  sortedNews.value
+    .filter(n => n.id !== item.value?.id) // Исключаем текущую новость
+    .map((n) => {
+      const imgSrc = resolveNewsImageSrc(n.imagePath);
+      return {
+        id: n.id,
+        likes: n.likes ?? 0,
+        views: n.views ?? 0,
+        post: {
+          title: n.title || `Новость #${n.id}`,
+          description: newsPreviewText(n.description, 220),
+          image: imgSrc ? { src: imgSrc, alt: n.title || 'Новость' } : { src: '/src/img/Logo.svg', alt: n.title || 'Новость' },
+          to: `/news/${n.id}`,
+          date: n.date || undefined,
+          badge: n.category || 'Новости',
+        },
+      };
+    })
+);
+
+const newsItems = computed<NewsItem[]>(() => allNewsItems.value.slice(0, visibleNewsCount.value));
+const hasMoreNews = computed(() => visibleNewsCount.value < allNewsItems.value.length);
+
+function showMoreNews() {
+  visibleNewsCount.value += newsPageSize;
+}
 </script>
 
 <template>
-  <UMain class="relative flex flex-col w-full h-full min-h-0 gap-0">
-    <div class="flex-1 min-h-0 overflow-y-auto max-w-full w-full scrollbar-hide pb-8">
+  <UMain class="relative flex flex-col xl:flex-row w-full h-full min-h-0 gap-6">
+    <div class="flex-1 min-h-0 overflow-y-auto max-w-full w-full scrollbar-hide">
 
       <div v-if="loading" class="space-y-6">
         <USkeleton class="h-96 rounded-lg" />
@@ -377,6 +437,64 @@ async function handleDelete() {
         <UEmpty icon="i-lucide-file-question" title="Новость не найдена"
           description="Возможно, она была удалена или ссылка неверная." />
       </div>
+    </div>
+
+    <!-- Правая колонка: Лента новостей -->
+    <div class="hidden xl:flex w-96 flex-col gap-3 min-h-0  shrink-0">
+            <UScrollArea class="flex-1 min-h-0 min-w-0 scrollbar-hide">
+        <div class="flex flex-col gap-3 p-px">
+          <UBlogPost
+            v-for="sidebarItem in newsItems"
+            :key="sidebarItem.id"
+            v-bind="sidebarItem.post"
+            class="w-full"
+          >
+            <template #description>
+              <p class="text-base text-pretty text-muted">
+                {{ sidebarItem.post.description }}
+              </p>
+              <div
+                class="relative z-10 flex justify-between items-center gap-3 w-full mt-2"
+                @click.stop
+              >
+                <UBadge
+                  as="button"
+                  type="button"
+                  :color="isLikedFn(sidebarItem.id) ? 'primary' : 'neutral'"
+                  variant="soft"
+                  size="lg"
+                  leading
+                  icon="i-lucide-heart"
+                  :label="formatCountRu(sidebarItem.likes)"
+                  :class="[
+                    'relative z-10 cursor-pointer shrink-0 [&_svg]:stroke-[1.75]',
+                    isLikedFn(sidebarItem.id)
+                      ? '[&_svg]:stroke-primary [&_svg_path]:fill-primary [&_svg_path]:stroke-primary'
+                      : '[&_svg]:stroke-current [&_svg_path]:fill-none [&_svg_path]:stroke-current',
+                  ]"
+                  @click.stop.prevent="toggleLikeAction(sidebarItem.id)"
+                />
+                <span class="shrink-0 text-sm text-muted">
+                  {{ formatCountRu(sidebarItem.views) }} просмотров
+                </span>
+              </div>
+            </template>
+          </UBlogPost>
+
+          <UButton
+            v-if="hasMoreNews"
+            type="button"
+            color="neutral"
+            variant="outline"
+            size="xl"
+            class="relative z-10 w-full shrink-0 justify-center"
+            icon="i-lucide-chevron-down"
+            @click="showMoreNews"
+          >
+            Показать ещё
+          </UButton>
+        </div>
+      </UScrollArea>
     </div>
 
     <!-- Slideover редактирования -->

@@ -23,6 +23,7 @@ import DevelopmentMotivationDepartmentPage from '../pages/DevelopmentMotivationD
 import AdminDashboardPage from '../pages/Admin/AdminDashboardPage.vue';
 import BirthdaysPage from '../pages/BirthdaysPage.vue';
 import LoginPage from '../pages/login.vue';
+import ChatBotPage from '../pages/ChatBotPage.vue';
 
 const routes = [
   { path: '/login', name: 'login', component: LoginPage, meta: { title: 'Вход', layout: 'auth' } },
@@ -78,6 +79,7 @@ const routes = [
   { path: '/municipal-service', name: 'municipal-service', component: MunicipalServiceDepartmentPage, meta: { title: 'Отдел муниципальной службы' } },
   { path: '/development-motivation', name: 'development-motivation', component: DevelopmentMotivationDepartmentPage, meta: { title: 'Отдел развития и мотивации' } },
   { path: '/admin', name: 'admin', component: AdminDashboardPage, meta: { title: 'Дэшборд администратора', requiresAdmin: true } },
+  { path: '/chatbot', name: 'chatbot', component: ChatBotPage, meta: { title: 'AI Ассистент' } },
 ];
 
 export const router = createRouter({

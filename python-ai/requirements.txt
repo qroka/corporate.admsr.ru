@@ -1,0 +1,18 @@
+# ─── ADMSR AI Chat Server — Python зависимости ────────────────────────────────
+#
+# Установка:
+#   pip install -r requirements.txt
+#
+# Требования: Python >= 3.11
+
+# HTTP-фреймворк
+fastapi>=0.115.0
+
+# ASGI-сервер (uvicorn со стандартными зависимостями: httptools, uvloop)
+uvicorn[standard]>=0.32.0
+
+# Клиент Ollama (общается с локальным Ollama-демоном)
+ollama>=0.4.4
+
+# Валидация данных (используется FastAPI)
+pydantic>=2.10.0
