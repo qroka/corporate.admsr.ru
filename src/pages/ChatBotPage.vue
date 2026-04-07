@@ -222,9 +222,9 @@ onMounted(() => scrollToBottom(false))
         </div>
         <div class="flex flex-col gap-1">
           <div class="px-4 py-3.5 rounded-2xl rounded-bl-sm bg-elevated border border-default flex items-center gap-2">
-            <span class="w-2 h-2 rounded-full bg-muted animate-bounce [animation-delay:0ms]" />
-            <span class="w-2 h-2 rounded-full bg-muted animate-bounce [animation-delay:150ms]" />
-            <span class="w-2 h-2 rounded-full bg-muted animate-bounce [animation-delay:300ms]" />
+            <span class="w-2 h-2 rounded-full bg-inverted animate-bounce [animation-delay:0ms]" />
+            <span class="w-2 h-2 rounded-full bg-inverted animate-bounce [animation-delay:150ms]" />
+            <span class="w-2 h-2 rounded-full bg-inverted animate-bounce [animation-delay:300ms]" />
             <span v-if="loadingSeconds >= 5" class="text-xs text-muted ml-1">
               {{ loadingSeconds }}с
             </span>

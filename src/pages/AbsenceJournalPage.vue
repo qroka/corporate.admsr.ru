@@ -11,6 +11,7 @@ type CurrentUser = {
   id: string;
   fio: string;
   ofoId: string;
+  role: string;
 };
 
 type AbsenceStatus = 'active' | 'completed';
@@ -24,23 +25,31 @@ type AbsenceRecord = {
   startAt: Date;
   endAt: Date | null;
   reason: string;
+  role: string;
   status: AbsenceStatus;
 };
 
-function extractTableData(raw: unknown, tableName: string): JsonRow[] {
-  if (!Array.isArray(raw)) return [];
-  for (const item of raw) {
-    if (!item || typeof item !== 'object') continue;
-    const rec = item as { type?: string; name?: string; data?: unknown[] };
-    if (rec.type === 'table' && rec.name === tableName && Array.isArray(rec.data)) {
-      return rec.data as JsonRow[];
-    }
-  }
-  return [];
-}
-
 function asText(v: unknown): string {
   return String(v ?? '').replace(/\t/g, '').trim();
+}
+
+/** Разбирает запись из API в AbsenceRecord */
+function mapApiRecord(row: JsonRow, ofoMap: Record<string, string>): AbsenceRecord {
+  const ofoId = String(row.ofo ?? '');
+  const role = asText((row as any).role ?? (row as any).pos);
+  return {
+    id:        String(row.id),
+    userId:    String(row.user_id),
+    fio:       asText(row.fio),
+    ofoId,
+    ofoTitle:  ofoMap[ofoId] || (ofoId ? `ОФО #${ofoId}` : '—'),
+    createdAt: new Date(asText(row.created_at)),
+    startAt:   new Date(asText(row.start_datetime)),
+    endAt:     row.end_datetime ? new Date(asText(row.end_datetime)) : null,
+    reason:    asText(row.reason),
+    role,
+    status:    row.end_datetime ? 'completed' : 'active',
+  };
 }
 
 function formatDateTime(dt: Date): string {
@@ -51,6 +60,13 @@ function formatDateTime(dt: Date): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function formatDateTimeWrap(dt: Date): string {
+  if (Number.isNaN(dt.getTime())) return '—';
+  const date = dt.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const time = dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return `${date}\n${time}`;
 }
 
 function two(n: number) {
@@ -102,7 +118,20 @@ const ofoTitleById = ref<Record<string, string>>({});
 
 const startAbsenceAt = ref(toLocalDateTimeInputValue(new Date()));
 const filterPeriod = ref<'all' | 'today' | 'week' | 'month'>('all');
-const records = ref<AbsenceRecord[]>([]);
+const myRecordsStore = ref<AbsenceRecord[]>([]);
+const adminRecordsStore = ref<AbsenceRecord[]>([]);
+
+const MY_PAGE_SIZE = 200;
+const myOffset = ref(0);
+const myHasMore = ref(true);
+const myLoadingMore = ref(false);
+const myInitialLoaded = ref(false);
+
+const ADMIN_PAGE_SIZE = 80;
+const adminOffset = ref(0);
+const adminHasMore = ref(true);
+const adminLoadingMore = ref(false);
+const adminInitialLoaded = ref(false);
 
 const periodOptions = [
   { label: 'За все время', value: 'all' },
@@ -125,13 +154,7 @@ const canStartAbsence = computed(() =>
 const isAdmin = computed(() => currentRole.value === 'admin');
 
 const mySearchQuery = ref('');
-const myStatusFilter = ref<'' | AbsenceStatus>('');
-
-const statusFilterItems = [
-  { value: '', label: 'Все статусы' },
-  { value: 'active', label: 'Не завершено' },
-  { value: 'completed', label: 'Завершено' },
-];
+// Фильтр по статусу для "Мои отсутствия" убран по запросу
 
 function recordHaystack(r: AbsenceRecord): string {
   return [
@@ -148,18 +171,12 @@ function recordHaystack(r: AbsenceRecord): string {
 }
 
 const myRecords = computed(() => {
-  const id = currentUser.value?.id;
-  if (!id) return [];
-  return records.value.filter((r) => r.userId === id);
+  return myRecordsStore.value;
 });
 
 const filteredMyRecords = computed(() => {
   const now = new Date();
   let list = myRecords.value;
-
-  if (myStatusFilter.value) {
-    list = list.filter((r) => r.status === myStatusFilter.value);
-  }
 
   const q = mySearchQuery.value.trim().toLowerCase();
   if (q) {
@@ -182,6 +199,20 @@ const filteredMyRecords = computed(() => {
 
 const activeRecord = computed(() => myRecords.value.find((r) => r.status === 'active') ?? null);
 
+watch([filterPeriod], () => {
+  if (!currentUser.value) return;
+  void resetAndLoadMy();
+});
+
+let mySearchTimer: number | null = null;
+watch(mySearchQuery, () => {
+  if (!currentUser.value) return;
+  if (mySearchTimer !== null) window.clearTimeout(mySearchTimer);
+  mySearchTimer = window.setTimeout(() => {
+    void resetAndLoadMy();
+  }, 300);
+});
+
 const USlideover = resolveComponent('USlideover');
 const UBadge = resolveComponent('UBadge');
 const UButton = resolveComponent('UButton');
@@ -193,88 +224,43 @@ async function load() {
   loading.value = true;
   error.value = null;
   try {
-    const [usersRes, ofoRes] = await Promise.all([
-      fetch('/data/users.json', { cache: 'force-cache' }),
-      fetch('/api/ofo.php', { cache: 'force-cache' }),
-    ]);
-
-    if (!usersRes.ok) throw new Error(`Не удалось загрузить users.json (${usersRes.status})`);
-    if (!ofoRes.ok) throw new Error(`Не удалось загрузить ofo (${ofoRes.status})`);
-
-    const usersRaw = await usersRes.json();
-    const ofoRaw = await ofoRes.json();
-
-    const users = extractTableData(usersRaw, 'users');
-    const ofoRows = ofoRaw.data || [];
-
-    const ofoMap: Record<string, string> = {};
-    for (const row of ofoRows) {
-      const id = asText(row.id);
-      if (!id) continue;
-      ofoMap[id] = asText(row.title) || '—';
-    }
-    ofoTitleById.value = ofoMap;
-
-    const firstActive = users.find((u) => asText(u.active) === '1');
-    if (!firstActive) throw new Error('Не найден активный пользователь');
+    // Текущий пользователь из localStorage (устанавливается при авторизации)
+    const storedUser = JSON.parse(localStorage.getItem('auth-user') ?? 'null');
+    if (!storedUser?.id) throw new Error('Пользователь не авторизован');
 
     const user: CurrentUser = {
-      id: asText(firstActive.id),
-      fio: asText(firstActive.fio) || '—',
-      ofoId: asText(firstActive.ofo),
+      id:    String(storedUser.id),
+      fio:   asText(storedUser.fio),
+      ofoId: String(storedUser.ofo ?? storedUser.ofo_id ?? ''),
+      role:  String(storedUser.role ?? ''),
     };
     currentUser.value = user;
 
-    const baseCreated = new Date();
-    baseCreated.setHours(10, 6, 0, 0);
-    const baseStart = new Date(baseCreated);
-    baseStart.setHours(12, 0, 0, 0);
-    const baseEnd = new Date(baseCreated);
-    baseEnd.setHours(16, 45, 0, 0);
+    // Параллельно грузим ОФО-справочник и записи журнала
+    const [ofoRes] = await Promise.all([
+      fetch('/api/ofo.php', { cache: 'force-cache' }),
+    ]);
 
-    const activeUsers = users.filter((u) => asText(u.active) === '1');
-    const demoRecords: AbsenceRecord[] = activeUsers.slice(0, 24).map((u, idx) => {
-      const uid = asText(u.id) || `u-${idx}`;
-      const fio = asText(u.fio) || `Сотрудник #${idx + 1}`;
-      const ofoId = asText(u.ofo);
-      const ofoTitle = ofoMap[ofoId] || (ofoId ? `ОФО #${ofoId}` : '—');
+    if (!ofoRes.ok)     throw new Error(`Не удалось загрузить ОФО (${ofoRes.status})`);
 
-      // spread demo records across last 10 days
-      const createdAt = new Date(Date.now() - (idx % 10) * 24 * 60 * 60 * 1000);
-      createdAt.setHours(9 + (idx % 6), 10 + (idx % 4) * 10, 0, 0);
-      const startAt = new Date(createdAt);
-      startAt.setHours(10 + (idx % 6), (idx % 4) * 15, 0, 0);
-      const endAt = new Date(startAt.getTime() + (60 + (idx % 6) * 35) * 60 * 1000);
+    const ofoRaw     = await ofoRes.json();
 
-      return {
-        id: `demo-${uid}-${createdAt.getTime()}`,
-        userId: uid,
-        fio,
-        ofoId,
-        ofoTitle,
-        createdAt,
-        startAt,
-        endAt,
-        reason: reasonPresets[idx % reasonPresets.length],
-        status: 'completed',
-      };
-    });
+    // Строим карту ОФО id → название
+    const ofoMap: Record<string, string> = {};
+    for (const row of (ofoRaw.data || [])) {
+      const id = asText(row.id);
+      if (id) ofoMap[id] = asText(row.title) || '—';
+    }
+    ofoTitleById.value = ofoMap;
 
-    // Ensure the current user has at least one record (the first row in UI)
-    demoRecords.unshift({
-      id: 'initial-1',
-      userId: user.id,
-      fio: user.fio,
-      ofoId: user.ofoId,
-      ofoTitle: ofoMap[user.ofoId] || (user.ofoId ? `ОФО #${user.ofoId}` : '—'),
-      createdAt: baseCreated,
-      startAt: baseStart,
-      endAt: baseEnd,
-      reason: 'Работа вне офиса',
-      status: 'completed',
-    });
+    await resetAndLoadMy();
 
-    records.value = demoRecords;
+    if (isAdmin.value) {
+      await resetAndLoadAdmin();
+    } else {
+      adminRecordsStore.value = [];
+      adminInitialLoaded.value = false;
+    }
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Ошибка загрузки данных';
     toast.add({
@@ -285,6 +271,125 @@ async function load() {
     });
   } finally {
     loading.value = false;
+  }
+}
+
+function makeMyQueryParams(): URLSearchParams {
+  const params = new URLSearchParams();
+  params.set('limit', String(MY_PAGE_SIZE));
+  params.set('offset', String(myOffset.value));
+  params.set('user_id', String(currentUser.value?.id ?? ''));
+  if (filterPeriod.value) params.set('period', filterPeriod.value);
+  const q = mySearchQuery.value.trim();
+  if (q) params.set('q', q);
+  return params;
+}
+
+async function loadMoreMy(): Promise<void> {
+  if (myLoadingMore.value) return;
+  if (!myHasMore.value) return;
+  const uid = currentUser.value?.id;
+  if (!uid) return;
+
+  myLoadingMore.value = true;
+  try {
+    const params = makeMyQueryParams();
+    const res = await fetch(`/api/absence_journal.php?${params.toString()}`);
+    if (!res.ok) throw new Error(`Не удалось загрузить журнал (${res.status})`);
+    const raw = await res.json();
+    if (!raw.success) throw new Error(raw.error || 'Ошибка загрузки журнала');
+
+    const batch = (raw.data as JsonRow[]).map((row) => mapApiRecord(row, ofoTitleById.value));
+    myRecordsStore.value = [...myRecordsStore.value, ...batch];
+    myOffset.value += batch.length;
+    myHasMore.value = batch.length >= MY_PAGE_SIZE;
+    myInitialLoaded.value = true;
+  } catch (e) {
+    toast.add({
+      title: 'Ошибка загрузки',
+      description: e instanceof Error ? e.message : 'Не удалось загрузить данные',
+      color: 'error',
+      icon: 'i-lucide-alert-circle',
+    });
+    myHasMore.value = false;
+  } finally {
+    myLoadingMore.value = false;
+  }
+}
+
+async function resetAndLoadMy(): Promise<void> {
+  myOffset.value = 0;
+  myHasMore.value = true;
+  myInitialLoaded.value = false;
+  myRecordsStore.value = [];
+  await loadMoreMy();
+}
+
+function onMyScroll(e: Event) {
+  const el = e.target as HTMLElement | null;
+  if (!el) return;
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 250) {
+    void loadMoreMy();
+  }
+}
+
+function makeAdminQueryParams(): URLSearchParams {
+  const params = new URLSearchParams();
+  params.set('limit', String(ADMIN_PAGE_SIZE));
+  params.set('offset', String(adminOffset.value));
+  if (ofoFilter.value !== '_all' && ofoFilter.value !== '_none') params.set('ofo', ofoFilter.value);
+  params.set('status', 'completed');
+  const q = adminSearchQuery.value.trim();
+  if (q) params.set('q', q);
+  return params;
+}
+
+async function loadMoreAdmin(): Promise<void> {
+  if (!isAdmin.value) return;
+  if (adminLoadingMore.value) return;
+  if (!adminHasMore.value) return;
+  if (ofoFilter.value === '_none') return;
+  if (!Object.keys(ofoTitleById.value).length) return;
+
+  adminLoadingMore.value = true;
+  try {
+    const params = makeAdminQueryParams();
+    const res = await fetch(`/api/absence_journal.php?${params.toString()}`);
+    if (!res.ok) throw new Error(`Не удалось загрузить журнал (${res.status})`);
+    const raw = await res.json();
+    if (!raw.success) throw new Error(raw.error || 'Ошибка загрузки журнала');
+
+    const batch = (raw.data as JsonRow[]).map((row) => mapApiRecord(row, ofoTitleById.value));
+    adminRecordsStore.value = [...adminRecordsStore.value, ...batch];
+    adminOffset.value += batch.length;
+    adminHasMore.value = batch.length >= ADMIN_PAGE_SIZE;
+    adminInitialLoaded.value = true;
+  } catch (e) {
+    toast.add({
+      title: 'Ошибка загрузки',
+      description: e instanceof Error ? e.message : 'Не удалось загрузить данные',
+      color: 'error',
+      icon: 'i-lucide-alert-circle',
+    });
+    adminHasMore.value = false;
+  } finally {
+    adminLoadingMore.value = false;
+  }
+}
+
+async function resetAndLoadAdmin(): Promise<void> {
+  adminOffset.value = 0;
+  adminHasMore.value = true;
+  adminInitialLoaded.value = false;
+  adminRecordsStore.value = [];
+  await loadMoreAdmin();
+}
+
+function onAdminScroll(e: Event) {
+  const el = e.target as HTMLElement | null;
+  if (!el) return;
+  if (el.scrollTop + el.clientHeight >= el.scrollHeight - 250) {
+    void loadMoreAdmin();
   }
 }
 
@@ -308,13 +413,21 @@ const editError = ref<string | null>(null);
 const finishingRecord = computed(() => {
   const id = finishingId.value;
   if (!id) return null;
-  return records.value.find((r) => r.id === id) ?? null;
+  return (
+    myRecordsStore.value.find((r) => r.id === id)
+    ?? adminRecordsStore.value.find((r) => r.id === id)
+    ?? null
+  );
 });
 
 const editingRecord = computed(() => {
   const id = editingId.value;
   if (!id) return null;
-  return records.value.find((r) => r.id === id) ?? null;
+  return (
+    myRecordsStore.value.find((r) => r.id === id)
+    ?? adminRecordsStore.value.find((r) => r.id === id)
+    ?? null
+  );
 });
 
 const canSaveEdit = computed(() => {
@@ -351,51 +464,46 @@ function openFinish(record: AbsenceRecord) {
   finishOpen.value = true;
 }
 
-function startAbsence() {
+async function startAbsence() {
   if (!canStartAbsence.value) return;
 
   const start = parseDateTimeInputValue(startAbsenceAt.value);
   if (!start) {
-    toast.add({
-      title: 'Не указано начало',
-      description: 'Выберите дату и время начала отсутствия.',
-      color: 'error',
-      icon: 'i-lucide-alert-circle',
-    });
+    toast.add({ title: 'Не указано начало', description: 'Выберите дату и время начала отсутствия.', color: 'error', icon: 'i-lucide-alert-circle' });
     return;
   }
 
-  const now = new Date();
   const u = currentUser.value;
   if (!u) {
-    toast.add({
-      title: 'Пользователь не определён',
-      description: 'Перезагрузите страницу и попробуйте снова.',
-      color: 'error',
-      icon: 'i-lucide-alert-circle',
-    });
+    toast.add({ title: 'Пользователь не определён', description: 'Перезагрузите страницу.', color: 'error', icon: 'i-lucide-alert-circle' });
     return;
   }
-  const record: AbsenceRecord = {
-    id: `abs-${now.getTime()}`,
-    userId: u.id,
-    fio: u.fio,
-    ofoId: u.ofoId,
-    ofoTitle: ofoTitleById.value[u.ofoId] || (u.ofoId ? `ОФО #${u.ofoId}` : '—'),
-    createdAt: now,
-    startAt: start,
-    endAt: null,
-    reason: '',
-    status: 'active',
-  };
 
-  records.value = [record, ...records.value];
-  toast.add({
-    title: 'Отсутствие начато',
-    description: `Начало: ${formatDateTime(start)}.`,
-    color: 'success',
-    icon: 'i-lucide-circle-check',
-  });
+  loading.value = true;
+  try {
+    const res = await fetch('/api/absence_journal.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id:        Number(u.id),
+        fio:            u.fio,
+        ofo:            Number(u.ofoId),
+        role:           u.role,
+        start_datetime: toLocalDateTimeInputValue(start).replace('T', ' ') + ':00',
+      }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Ошибка создания записи');
+
+    const newRecord = mapApiRecord(data.data as JsonRow, ofoTitleById.value);
+    myRecordsStore.value = [newRecord, ...myRecordsStore.value];
+    if (isAdmin.value) adminRecordsStore.value = [newRecord, ...adminRecordsStore.value];
+    toast.add({ title: 'Отсутствие начато', description: `Начало: ${formatDateTime(start)}.`, color: 'success', icon: 'i-lucide-circle-check' });
+  } catch (e) {
+    toast.add({ title: 'Ошибка', description: e instanceof Error ? e.message : 'Не удалось создать запись', color: 'error', icon: 'i-lucide-alert-circle' });
+  } finally {
+    loading.value = false;
+  }
 }
 
 function openEdit(record: AbsenceRecord) {
@@ -407,7 +515,7 @@ function openEdit(record: AbsenceRecord) {
   editOpen.value = true;
 }
 
-function saveEdit() {
+async function saveEdit() {
   const rec = editingRecord.value;
   if (!rec) return;
 
@@ -433,93 +541,120 @@ function saveEdit() {
   }
 
   editError.value = null;
-  records.value = records.value.map((r) => {
-    if (r.id !== rec.id) return r;
-    return {
-      ...r,
-      startAt: start,
-      endAt: end ?? null,
+  loading.value = true;
+  try {
+    const body: Record<string, unknown> = {
+      start_datetime: toLocalDateTimeInputValue(start).replace('T', ' ') + ':00',
+      end_datetime:   end ? toLocalDateTimeInputValue(end).replace('T', ' ') + ':00' : '',
       reason,
-      status: end ? 'completed' : 'active',
     };
-  });
+    const res = await fetch(`/api/absence_journal.php?id=${rec.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Ошибка обновления записи');
 
-  editOpen.value = false;
-  editingId.value = null;
-  toast.add({
-    title: 'Изменения сохранены',
-    description: end ? `${formatDateTime(start)} → ${formatDateTime(end)}` : `Начало: ${formatDateTime(start)} (незавершено)`,
-    color: 'success',
-    icon: 'i-lucide-circle-check',
-  });
+    const updated = mapApiRecord(data.data as JsonRow, ofoTitleById.value);
+    myRecordsStore.value = myRecordsStore.value.map((r) => r.id === rec.id ? updated : r);
+    adminRecordsStore.value = adminRecordsStore.value.map((r) => r.id === rec.id ? updated : r);
+
+    editOpen.value  = false;
+    editingId.value = null;
+    toast.add({
+      title: 'Изменения сохранены',
+      description: end ? `${formatDateTime(start)} → ${formatDateTime(end)}` : `Начало: ${formatDateTime(start)} (незавершено)`,
+      color: 'success',
+      icon: 'i-lucide-circle-check',
+    });
+  } catch (e) {
+    editError.value = e instanceof Error ? e.message : 'Ошибка';
+    toast.add({ title: 'Ошибка сохранения', description: editError.value ?? '', color: 'error', icon: 'i-lucide-alert-circle' });
+  } finally {
+    loading.value = false;
+  }
 }
 
-function finishAbsence() {
+async function finishAbsence() {
   const rec = finishingRecord.value;
   if (!rec) return;
-  const end = parseDateTimeInputValue(finishForm.value.endAt);
+  const end    = parseDateTimeInputValue(finishForm.value.endAt);
   const reason = finishForm.value.reason.trim();
+
   if (!end) {
     finishError.value = 'Укажите время окончания.';
-    toast.add({
-      title: 'Не указано окончание',
-      description: 'Укажите дату и время окончания отсутствия.',
-      color: 'error',
-      icon: 'i-lucide-alert-circle',
-    });
+    toast.add({ title: 'Не указано окончание', description: 'Укажите дату и время окончания отсутствия.', color: 'error', icon: 'i-lucide-alert-circle' });
     return;
   }
   if (!reason) {
     finishError.value = 'Укажите причину.';
-    toast.add({
-      title: 'Не указана причина',
-      description: 'Заполните причину отсутствия.',
-      color: 'error',
-      icon: 'i-lucide-alert-circle',
-    });
+    toast.add({ title: 'Не указана причина', description: 'Заполните причину отсутствия.', color: 'error', icon: 'i-lucide-alert-circle' });
     return;
   }
   if (end.getTime() < rec.startAt.getTime()) {
     finishError.value = 'Окончание не может быть раньше начала.';
-    toast.add({
-      title: 'Некорректное время',
-      description: 'Окончание отсутствия не может быть раньше начала.',
-      color: 'error',
-      icon: 'i-lucide-alert-circle',
-    });
+    toast.add({ title: 'Некорректное время', description: 'Окончание отсутствия не может быть раньше начала.', color: 'error', icon: 'i-lucide-alert-circle' });
     return;
   }
 
   finishError.value = null;
-  records.value = records.value.map((r) => {
-    if (r.id !== rec.id) return r;
-    return {
-      ...r,
-      endAt: end,
-      reason,
-      status: 'completed',
-    };
-  });
+  loading.value = true;
+  try {
+    const res = await fetch(`/api/absence_journal.php?id=${rec.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        end_datetime: toLocalDateTimeInputValue(end).replace('T', ' ') + ':00',
+        reason,
+      }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Ошибка завершения записи');
 
-  finishOpen.value = false;
-  finishingId.value = null;
-  toast.add({
-    title: 'Отсутствие завершено',
-    description: `${formatDateTime(rec.startAt)} → ${formatDateTime(end)} · ${reason}`,
-    color: 'success',
-    icon: 'i-lucide-circle-check',
-  });
+    const updated = mapApiRecord(data.data as JsonRow, ofoTitleById.value);
+    myRecordsStore.value = myRecordsStore.value.map((r) => r.id === rec.id ? updated : r);
+    adminRecordsStore.value = adminRecordsStore.value.map((r) => r.id === rec.id ? updated : r);
+
+    finishOpen.value  = false;
+    finishingId.value = null;
+    toast.add({
+      title: 'Отсутствие завершено',
+      description: `${formatDateTime(rec.startAt)} → ${formatDateTime(end)} · ${reason}`,
+      color: 'success',
+      icon: 'i-lucide-circle-check',
+    });
+  } catch (e) {
+    finishError.value = e instanceof Error ? e.message : 'Ошибка';
+    toast.add({ title: 'Ошибка', description: finishError.value ?? '', color: 'error', icon: 'i-lucide-alert-circle' });
+  } finally {
+    loading.value = false;
+  }
 }
 
-function deleteDraft(recordId: string) {
-  const row = records.value.find((r) => r.id === recordId);
-  records.value = records.value.filter((r) => r.id !== recordId);
-  toast.add({
-    title: 'Запись удалена',
-    description: row ? `Удалено: ${formatDateTime(row.startAt)}` : 'Запись удалена.',
-    color: 'success',
-    icon: 'i-lucide-circle-check',
-  });
+async function deleteDraft(recordId: string) {
+  const row = myRecordsStore.value.find((r) => r.id === recordId) ?? adminRecordsStore.value.find((r) => r.id === recordId);
+  // Оптимистичное удаление из UI
+  myRecordsStore.value = myRecordsStore.value.filter((r) => r.id !== recordId);
+  adminRecordsStore.value = adminRecordsStore.value.filter((r) => r.id !== recordId);
+  try {
+    const res = await fetch(`/api/absence_journal.php?id=${recordId}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Ошибка удаления');
+    toast.add({
+      title: 'Запись удалена',
+      description: row ? `Удалено: ${formatDateTime(row.startAt)}` : 'Запись удалена.',
+      color: 'success',
+      icon: 'i-lucide-circle-check',
+    });
+  } catch (e) {
+    // Откатываем если ошибка
+    if (row) {
+      if (row.userId === currentUser.value?.id) myRecordsStore.value = [row, ...myRecordsStore.value];
+      if (isAdmin.value) adminRecordsStore.value = [row, ...adminRecordsStore.value];
+    }
+    toast.add({ title: 'Ошибка удаления', description: e instanceof Error ? e.message : 'Не удалось удалить запись', color: 'error', icon: 'i-lucide-alert-circle' });
+  }
 }
 
 function applyFilter() {
@@ -546,8 +681,8 @@ const tableRows = computed<AbsenceRow[]>(() =>
     const durationMs = end ? diffMs(r.startAt, end) : diffMs(r.startAt, new Date());
     return {
       ...r,
-      startLabel: formatDateTime(r.startAt),
-      endLabel: end ? formatDateTime(end) : '—',
+      startLabel: formatDateTimeWrap(r.startAt),
+      endLabel: end ? formatDateTimeWrap(end) : '—',
       durationLabel: formatDurationRu(durationMs),
     };
   }),
@@ -555,27 +690,53 @@ const tableRows = computed<AbsenceRow[]>(() =>
 
 type AbsenceAdminRow = AbsenceRow & {
   fioLabel: string;
+  userIdLabel: string;
+  createdLabel: string;
   ofoLabel: string;
 };
 
-const ofoFilter = ref<string>('_all');
+const ofoFilter = ref<string>('_none');
 const adminSearchQuery = ref('');
-const adminStatusFilter = ref<'' | AbsenceStatus>('');
+const adminStatusFilter = ref<'' | AbsenceStatus>('completed');
+
+watch([ofoFilter, adminStatusFilter], () => {
+  if (!isAdmin.value) return;
+  if (ofoFilter.value === '_none') {
+    adminRecordsStore.value = [];
+    adminInitialLoaded.value = true;
+    adminHasMore.value = false;
+    return;
+  }
+  void resetAndLoadAdmin();
+});
+
+let adminSearchTimer: number | null = null;
+watch(adminSearchQuery, () => {
+  if (!isAdmin.value) return;
+  if (ofoFilter.value === '_none') return;
+  if (adminSearchTimer !== null) window.clearTimeout(adminSearchTimer);
+  adminSearchTimer = window.setTimeout(() => {
+    void resetAndLoadAdmin();
+  }, 300);
+});
 
 function resetMyFilters() {
   mySearchQuery.value = '';
-  myStatusFilter.value = '';
   filterPeriod.value = 'all';
+  void resetAndLoadMy();
 }
 
 function resetAdminFilters() {
   adminSearchQuery.value = '';
-  adminStatusFilter.value = '';
-  ofoFilter.value = '_all';
+  adminStatusFilter.value = 'completed';
+  ofoFilter.value = '_none';
 }
 
 const ofoItems = computed(() => {
-  const base = [{ label: 'Все ОФО', value: '_all' }];
+  const base = [
+    { label: 'Выберите ОФО', value: '_none' },
+    { label: 'Все ОФО', value: '_all' },
+  ];
   const entries = Object.entries(ofoTitleById.value)
     .map(([id, title]) => ({ label: title ? `${title}` : `ОФО #${id}`, value: id }))
     .sort((a, b) => a.label.localeCompare(b.label, 'ru'));
@@ -583,14 +744,7 @@ const ofoItems = computed(() => {
 });
 
 const adminTableRows = computed<AbsenceAdminRow[]>(() => {
-  let list = records.value;
-
-  if (ofoFilter.value !== '_all') {
-    list = list.filter((r) => r.ofoId === ofoFilter.value);
-  }
-  if (adminStatusFilter.value) {
-    list = list.filter((r) => r.status === adminStatusFilter.value);
-  }
+  let list = adminRecordsStore.value;
   const q = adminSearchQuery.value.trim().toLowerCase();
   if (q) {
     list = list.filter((r) => recordHaystack(r).includes(q));
@@ -601,10 +755,12 @@ const adminTableRows = computed<AbsenceAdminRow[]>(() => {
     const durationMs = end ? diffMs(r.startAt, end) : diffMs(r.startAt, new Date());
     return {
       ...r,
-      startLabel: formatDateTime(r.startAt),
-      endLabel: end ? formatDateTime(end) : '—',
+      startLabel: formatDateTimeWrap(r.startAt),
+      endLabel: end ? formatDateTimeWrap(end) : '—',
       durationLabel: formatDurationRu(durationMs),
       fioLabel: r.fio || '—',
+      userIdLabel: String(r.userId ?? ''),
+      createdLabel: formatDateTimeWrap(r.createdAt),
       ofoLabel: r.ofoTitle || '—',
     };
   });
@@ -683,12 +839,12 @@ const columns: TableColumn<AbsenceRow>[] = [
   {
     accessorKey: 'startLabel',
     header: 'Начало',
-    meta: { class: { th: 'min-w-[180px]', td: 'tabular-nums' } },
+    meta: { class: { th: 'min-w-[150px]', td: 'tabular-nums whitespace-pre-line' } },
   },
   {
     accessorKey: 'endLabel',
     header: 'Конец',
-    meta: { class: { th: 'min-w-[180px]', td: 'tabular-nums' } },
+    meta: { class: { th: 'min-w-[150px]', td: 'tabular-nums whitespace-pre-line' } },
   },
   {
     accessorKey: 'durationLabel',
@@ -698,10 +854,14 @@ const columns: TableColumn<AbsenceRow>[] = [
   {
     accessorKey: 'reason',
     header: 'Причина',
-    meta: { class: { th: 'min-w-[280px]' } },
+    meta: { class: { th: 'min-w-[280px]', td: 'whitespace-normal' } },
     cell: ({ row }) => {
       const r = row.original as AbsenceRow;
-      return h('span', { class: r.reason ? 'text-default' : 'text-muted' }, r.reason || '—');
+      return h(
+        'span',
+        { class: [r.reason ? 'text-default' : 'text-muted', 'break-words whitespace-pre-line'].join(' ') },
+        r.reason || '—',
+      );
     },
   },
   {
@@ -730,14 +890,19 @@ const columns: TableColumn<AbsenceRow>[] = [
 
 const adminColumns: TableColumn<AbsenceAdminRow>[] = [
   {
+    accessorKey: 'userIdLabel',
+    header: 'ID',
+    meta: { class: { th: '', td: 'tabular-nums whitespace-nowrap text-muted' } },
+  },
+  {
     accessorKey: 'fioLabel',
     header: 'Сотрудник',
-    meta: { class: { th: 'min-w-[220px]', td: 'whitespace-nowrap' } },
+    meta: { class: { th: '', td: 'whitespace-normal break-words' } },
   },
   {
     accessorKey: 'ofoLabel',
     header: 'ОФО',
-    meta: { class: { th: 'min-w-[240px]' } },
+    meta: { class: { th: 'min-w-[240px]', td: 'whitespace-normal' } },
     cell: ({ row }) => {
       const r = row.original as AbsenceAdminRow;
       const id = (r.ofoId ?? '').trim();
@@ -753,12 +918,66 @@ const adminColumns: TableColumn<AbsenceAdminRow>[] = [
         color: ofoBadgeColor(id),
         leading: true,
         leadingIcon: 'i-lucide-building-2',
-        class: 'max-w-[min(340px,100%)] min-w-0 truncate',
+        class: 'max-w-none min-w-0 whitespace-normal break-words',
         title: title ? `${id} — ${title}` : (id ? `ID: ${id}` : 'Не указано'),
       }, () => label);
     },
   },
-  ...(columns as unknown as TableColumn<AbsenceAdminRow>[]),
+  {
+    accessorKey: 'createdLabel',
+    header: 'Создано',
+    meta: { class: { th: 'min-w-[150px]', td: 'tabular-nums whitespace-pre-line' } },
+  },
+  {
+    accessorKey: 'startLabel',
+    header: 'Начало',
+    meta: { class: { th: 'min-w-[150px]', td: 'tabular-nums whitespace-pre-line' } },
+  },
+  {
+    accessorKey: 'endLabel',
+    header: 'Конец',
+    meta: { class: { th: 'min-w-[150px]', td: 'tabular-nums whitespace-pre-line' } },
+  },
+  {
+    accessorKey: 'durationLabel',
+    header: 'Длительность',
+    meta: { class: { th: 'w-[120px]', td: 'tabular-nums whitespace-nowrap' } },
+  },
+  {
+    accessorKey: 'reason',
+    header: 'Причина',
+    meta: { class: { th: 'min-w-[280px]', td: 'whitespace-normal' } },
+    cell: ({ row }) => {
+      const r = row.original as AbsenceAdminRow;
+      return h(
+        'span',
+        { class: [r.reason ? 'text-default' : 'text-muted', 'break-words whitespace-pre-line'].join(' ') },
+        r.reason || '—',
+      );
+    },
+  },
+  {
+    id: 'actions',
+    header: () => h('span', { class: 'sr-only' }, 'Действия'),
+    enableHiding: false,
+    meta: { class: { th: 'w-14 text-right', td: 'text-right' } },
+    cell: ({ row }) => {
+      const r = row.original as AbsenceAdminRow;
+      return h(
+        UDropdownMenu,
+        { content: { align: 'end' }, items: rowMenuItems(r), 'aria-label': 'Действия с записью отсутствия' },
+        () =>
+          h(UButton, {
+            icon: 'i-lucide-ellipsis-vertical',
+            color: 'neutral',
+            variant: 'ghost',
+            square: true,
+            size: 'sm',
+            'aria-label': 'Действия',
+          }),
+      );
+    },
+  },
 ];
 
 const tabItems = [
@@ -833,8 +1052,6 @@ watch(
           <UContainer class="flex flex-row gap-3 w-full max-w-none">
             <UInput v-model="mySearchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline"
               placeholder="Поиск по причине, дате, статусу…" class="w-full sm:flex-1 sm:min-w-[240px]" />
-            <USelectMenu v-model="myStatusFilter" :items="statusFilterItems" size="xl" color="neutral"
-              placeholder="Статус" class="w-full sm:w-52" :content="{ align: 'start', sideOffset: 8 }" />
             <USelectMenu v-model="filterPeriod" :items="periodOptions" value-key="value" label-key="label" size="xl"
               color="neutral" placeholder="Период" class="w-full sm:w-52"
               :content="{ align: 'start', sideOffset: 8 }" />
@@ -845,11 +1062,39 @@ watch(
           </UContainer>
 
           <UContainer v-if="!tableRows.length" class="py-4 text-sm text-muted">Записей не найдено</UContainer>
-          <UScrollArea v-else class="flex-1 min-h-0 w-full rounded-lg border border-default" orientation="both"
-            :ui="{ root: 'overflow-auto' }">
-            <UTable :columns="columns" :data="tableRows" class="w-full h-full"
-              :ui="{ th: 'px-4 sm:px-6', td: 'px-4 sm:px-6' }" />
-          </UScrollArea>
+          <div
+            v-else
+            class="flex-1 min-h-0 w-full rounded-lg border border-default overflow-auto"
+            @scroll.passive="onMyScroll"
+          >
+            <UTable
+              :columns="columns"
+              :data="tableRows"
+              class="w-full h-full"
+              :ui="{
+                table: 'w-full',
+                th: 'px-4 sm:px-6 py-3 text-xs font-semibold text-muted whitespace-normal',
+                td: 'px-4 sm:px-6 py-3 text-sm align-top',
+                tr: 'hover:bg-muted/40',
+              }"
+            />
+
+            <div class="p-4 text-sm text-muted flex items-center justify-center gap-3">
+              <span v-if="myLoadingMore">Загрузка…</span>
+              <template v-else>
+                <UButton
+                  v-if="myHasMore"
+                  color="neutral"
+                  variant="soft"
+                  size="sm"
+                  icon="i-lucide-arrow-down"
+                  @click="loadMoreMy"
+                >
+                  Загрузить ещё
+                </UButton>
+              </template>
+            </div>
+          </div>
         </UContainer>
       </UContainer>
 
@@ -858,9 +1103,7 @@ watch(
       <UContainer v-else class="w-full max-w-none flex flex-col gap-4 h-full min-h-0">
         <UContainer class="flex flex-row gap-3 w-full max-w-none">
           <UInput v-model="adminSearchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline"
-            placeholder="Поиск по ФИО, ОФО, причине, дате…" class="w-full sm:flex-1 sm:min-w-[240px]" />
-          <USelectMenu v-model="adminStatusFilter" :items="statusFilterItems" size="xl" color="neutral"
-            placeholder="Статус" class="w-full sm:w-52" :content="{ align: 'start', sideOffset: 8 }" />
+            placeholder="Поиск по ФИО, причине, дате…" class="w-full sm:flex-1 sm:min-w-[240px]" />
           <USelectMenu v-model="ofoFilter" :items="ofoItems" size="xl" color="neutral" placeholder="ОФО"
             class="w-full sm:w-64" value-key="value" label-key="label" :content="{ align: 'start', sideOffset: 8 }" />
           <UButton color="neutral" variant="outline" size="xl" icon="i-lucide-rotate-ccw" class="shrink-0"
@@ -869,11 +1112,47 @@ watch(
           </UButton>
         </UContainer>
 
-        <UContainer v-if="!adminTableRows.length" class="py-4 text-sm text-muted">Записей не найдено</UContainer>
-        <UScrollArea v-else class="flex-1 min-h-0 w-full rounded-lg border border-default" orientation="both"
-          :ui="{ root: 'overflow-auto' }">
-          <UTable :columns="adminColumns" :data="adminTableRows" class="w-full" />
-        </UScrollArea>
+        <UContainer v-if="ofoFilter === '_none'" class="py-10 text-sm text-muted">
+          Выберите ОФО, чтобы посмотреть отсутствия сотрудников.
+        </UContainer>
+
+        <UContainer v-else-if="adminInitialLoaded && !adminTableRows.length" class="py-4 text-sm text-muted">
+          Записей не найдено
+        </UContainer>
+
+        <div
+          v-else
+          class="flex-1 min-h-0 w-full rounded-lg border border-default overflow-auto"
+          @scroll.passive="onAdminScroll"
+        >
+          <UTable
+            :columns="adminColumns"
+            :data="adminTableRows"
+            class="w-full"
+            :ui="{
+              table: 'w-full',
+              th: 'px-4 sm:px-6 py-3 text-xs font-semibold text-muted whitespace-normal',
+              td: 'px-4 sm:px-6 py-3 text-sm align-top',
+              tr: 'hover:bg-muted/40',
+            }"
+          />
+
+          <div class="p-4 text-sm text-muted flex items-center justify-center gap-3">
+            <span v-if="adminLoadingMore">Загрузка…</span>
+            <template v-else>
+              <UButton
+                v-if="adminHasMore"
+                color="neutral"
+                variant="soft"
+                size="sm"
+                icon="i-lucide-arrow-down"
+                @click="loadMoreAdmin"
+              >
+                Загрузить ещё
+              </UButton>
+            </template>
+          </div>
+        </div>
       </UContainer>
 
       <USlideover v-model:open="finishOpen" title="Завершение отсутствия">

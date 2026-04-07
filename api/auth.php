@@ -143,7 +143,7 @@ try {
 }
 
 $stmt = $pdo->prepare(
-    'SELECT id, status, password, firstname, surname, lastname, ofo, user_group FROM public.user_info WHERE login = :login LIMIT 1'
+    'SELECT id, status, password, firstname, surname, lastname, ofo, user_group, role FROM public.user_info WHERE login = :login LIMIT 1'
 );
 $stmt->execute([':login' => $login]);
 $user = $stmt->fetch();
@@ -190,5 +190,6 @@ echo json_encode([
         'fio'        => $fio,
         'ofo'        => $user['ofo'],
         'user_group' => $user['user_group'],
+        'role'       => $user['role'] ?? '',
     ],
 ]);

@@ -5,11 +5,24 @@ const successDefaults = {
   icon: 'i-lucide-circle-check',
 };
 
+const errorDefaults = {
+  color: 'error' as const,
+  icon: 'i-lucide-alert-circle',
+};
+
 /**
  * Единая точка для уведомлений приложения (обёртка над useToast из Nuxt UI).
  */
 export function useAppToast() {
   const toast = useToast();
+
+  function success(title: string, description?: string) {
+    toast.add({ title, description, ...successDefaults });
+  }
+
+  function error(title: string, description?: string) {
+    toast.add({ title, description, ...errorDefaults });
+  }
 
   function profileSaved() {
     toast.add({
@@ -39,6 +52,8 @@ export function useAppToast() {
 
   return {
     toast,
+    success,
+    error,
     profileSaved,
     adminUserSaved,
     adminOfoSaved,
