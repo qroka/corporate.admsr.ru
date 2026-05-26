@@ -91,11 +91,6 @@ const portalFeatures = [
     description: 'Поздравляйте коллег и не пропускайте важные даты.',
   },
   {
-    icon: 'i-lucide-bot',
-    title: 'AI-ассистент',
-    description: 'Быстрые подсказки по процессам и навигации по порталу.',
-  },
-  {
     icon: 'i-lucide-user-circle',
     title: 'Профиль',
     description: 'Настройки аккаунта, аватар и данные для корпоративных сервисов.',
@@ -139,8 +134,8 @@ const canProceedFromAvatar = computed(() => Boolean(String(form.avatarUrl ?? '')
 const greetingName = computed(() => {
   const p = profile.value;
   if (!p) return 'коллега';
-  const short = [p.firstname, p.surname].filter(Boolean).join(' ');
-  return short || 'коллега';
+  const namePatronymic = [p.firstname, p.lastname].filter(Boolean).join(' ');
+  return namePatronymic || 'коллега';
 });
 
 watch(
@@ -302,7 +297,7 @@ onMounted(async () => {
       style="background-image: radial-gradient(circle at 15% 20%, color-mix(in oklab, var(--ui-color-primary-500) 35%, transparent) 0%, transparent 45%), radial-gradient(circle at 85% 75%, color-mix(in oklab, var(--ui-color-violet-500) 25%, transparent) 0%, transparent 40%);"
     />
 
-    <div class="relative z-10 flex w-full max-w-3xl flex-col gap-6">
+    <div class="relative z-10 flex w-full max-w-4xl flex-col gap-6">
       <div class="flex flex-col items-center gap-2 text-center">
         <p
           class="text-[clamp(18px,3vw,28px)] leading-tight text-(--ui-text-highlighted)"
@@ -315,18 +310,26 @@ onMounted(async () => {
 
       <UCard class="w-full shadow-lg ring-1 ring-default">
         <div class="flex flex-col gap-6 p-1 sm:p-2">
-          <nav aria-label="Шаги настройки профиля" class="w-full overflow-x-auto pb-1">
+          <nav
+            aria-label="Шаги настройки профиля"
+            class="w-full px-2 sm:px-4 pt-2 pb-1"
+          >
             <UTimeline
               v-model="currentStep"
               orientation="horizontal"
               :items="timelineItems"
               color="primary"
-              size="sm"
-              class="w-full min-w-[min(100%,36rem)]"
+              size="2xl"
+              class="w-full"
               :ui="{
-                wrapper: 'text-center',
-                date: 'text-[0.65rem] sm:text-xs',
-                title: 'text-xs sm:text-sm',
+                root: 'w-full flex flex-row items-start justify-between gap-0',
+                item: 'flex-1 min-w-0 basis-0 flex flex-col items-center gap-3',
+                container: 'w-full flex flex-row items-center justify-center',
+                indicator: 'shrink-0 size-14 sm:size-16 [&_[data-slot=icon]]:size-7 sm:[&_[data-slot=icon]]:size-8',
+                separator: 'flex-1 min-w-3 max-w-none mx-1.5 sm:mx-2 self-center',
+                wrapper: 'w-full flex flex-col items-center text-center gap-1 px-1',
+                date: 'w-full text-xs sm:text-sm text-muted tabular-nums',
+                title: 'w-full text-sm sm:text-base font-medium leading-snug text-balance',
               }"
               @select="onTimelineSelect"
             />
