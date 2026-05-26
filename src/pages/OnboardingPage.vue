@@ -81,6 +81,28 @@ const form = reactive({
 });
 
 const saving = ref(false);
+const loggingOut = ref(false);
+
+async function logout() {
+  loggingOut.value = true;
+  try {
+    const user = JSON.parse(localStorage.getItem('auth-user') || 'null') as { id?: number } | null;
+    if (user?.id) {
+      await fetch('/api/logout.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: user.id }),
+      });
+    }
+  } catch {
+    /* сеть недоступна — всё равно выходим локально */
+  } finally {
+    localStorage.removeItem('auth-user');
+    localStorage.removeItem('auth-last-check');
+    loggingOut.value = false;
+    await router.replace({ name: 'login' });
+  }
+}
 
 const portalFeatures = [
   {
@@ -304,6 +326,20 @@ onMounted(async () => {
 
 <template>
   <div class="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-(--ui-bg) px-4 py-8 sm:py-11">
+    <div class="absolute top-4 right-4 z-20 sm:top-6 sm:right-6">
+      <UButton
+        type="button"
+        color="neutral"
+        variant="outline"
+        size="lg"
+        icon="i-lucide-log-out"
+        label="Выйти"
+        :loading="loggingOut"
+        :disabled="saving"
+        @click="logout"
+      />
+    </div>
+
     <div
       class="pointer-events-none absolute inset-0 opacity-40 dark:opacity-25"
       aria-hidden="true"
