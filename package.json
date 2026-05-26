@@ -18,7 +18,7 @@
   "license": "ISC",
   "dependencies": {
     "@heroicons/vue": "^2.2.0",
-    "@nuxt/ui": "^4.5.1",
+    "@nuxt/ui": "^4.8.0",
     "@tiptap/extension-emoji": "^3.22.1",
     "@tiptap/extension-text-align": "^3.22.1",
     "@vueuse/core": "^14.2.1",

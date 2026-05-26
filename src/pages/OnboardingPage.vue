@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import type { TimelineItem } from '@nuxt/ui';
 import { useOfoData } from '../composables/useOfoData';
 import { useProfileDisplay } from '../composables/useProfileDisplay';
 import { useAppToast } from '../composables/useAppToast';
@@ -27,21 +28,34 @@ void loadDirectory();
 void loadSeats();
 
 const STEPS = [
-  { id: 'welcome', label: 'Приветствие' },
-  { id: 'work', label: 'Место работы' },
-  { id: 'avatar', label: 'Аватар' },
-  { id: 'done', label: 'Готово' },
+  { id: 'welcome', label: 'Приветствие', icon: 'i-lucide-sparkles', date: 'Шаг 1' },
+  { id: 'work', label: 'Место работы', icon: 'i-lucide-building-2', date: 'Шаг 2' },
+  { id: 'avatar', label: 'Аватар', icon: 'i-lucide-smile', date: 'Шаг 3' },
+  { id: 'done', label: 'Готово', icon: 'i-lucide-check-circle', date: 'Шаг 4' },
 ] as const;
 
 type StepId = (typeof STEPS)[number]['id'];
 
 const currentStep = ref<StepId>('welcome');
 const stepIndex = computed(() => STEPS.findIndex((s) => s.id === currentStep.value));
-const progressValue = computed(() => {
-  const max = STEPS.length - 1;
-  if (max <= 0) return 100;
-  return Math.round((stepIndex.value / max) * 100);
-});
+
+const timelineItems = computed<TimelineItem[]>(() =>
+  STEPS.map((step) => ({
+    value: step.id,
+    title: step.label,
+    date: step.date,
+    icon: step.icon,
+  })),
+);
+
+function onTimelineSelect(_event: Event, item: TimelineItem) {
+  const id = item.value as StepId | undefined;
+  if (!id) return;
+  const targetIndex = STEPS.findIndex((s) => s.id === id);
+  if (targetIndex >= 0 && targetIndex <= stepIndex.value) {
+    currentStep.value = id;
+  }
+}
 
 const profile = ref<ProfileSnapshot | null>(null);
 const profileLoading = ref(true);
@@ -297,31 +311,26 @@ onMounted(async () => {
           <span class="font-bold">ADMSR</span>
           <span class="font-light"> | КОРПОРАТИВНЫЙ ПОРТАЛ</span>
         </p>
-        <p class="text-sm text-muted">
-          Первый вход · шаг {{ stepIndex + 1 }} из {{ STEPS.length }}
-        </p>
       </div>
 
       <UCard class="w-full shadow-lg ring-1 ring-default">
         <div class="flex flex-col gap-6 p-1 sm:p-2">
-          <div class="space-y-3">
-            <UProgress :value="progressValue" size="sm" color="primary" />
-            <nav
-              class="flex flex-wrap justify-center gap-2"
-              aria-label="Шаги настройки профиля"
-            >
-              <UBadge
-                v-for="(step, i) in STEPS"
-                :key="step.id"
-                :color="i <= stepIndex ? 'primary' : 'neutral'"
-                :variant="i === stepIndex ? 'solid' : 'subtle'"
-                size="md"
-                class="font-normal"
-              >
-                {{ step.label }}
-              </UBadge>
-            </nav>
-          </div>
+          <nav aria-label="Шаги настройки профиля" class="w-full overflow-x-auto pb-1">
+            <UTimeline
+              v-model="currentStep"
+              orientation="horizontal"
+              :items="timelineItems"
+              color="primary"
+              size="sm"
+              class="w-full min-w-[min(100%,36rem)]"
+              :ui="{
+                wrapper: 'text-center',
+                date: 'text-[0.65rem] sm:text-xs',
+                title: 'text-xs sm:text-sm',
+              }"
+              @select="onTimelineSelect"
+            />
+          </nav>
 
           <USkeleton v-if="profileLoading" class="h-64 w-full" />
 
