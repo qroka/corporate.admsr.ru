@@ -3,6 +3,7 @@ import * as z from 'zod'
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { FormSubmitEvent } from '@nuxt/ui'
+import { userNeedsOnboarding } from '../composables/useOnboarding'
 
 const router = useRouter()
 
@@ -36,7 +37,8 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
 
     if (data.success) {
       localStorage.setItem('auth-user', JSON.stringify(data.user))
-      router.push('/')
+      const needsWelcome = await userNeedsOnboarding(data.user.id)
+      await router.push(needsWelcome ? { name: 'onboarding' } : { name: 'home' })
     } else {
       errorMessage.value = data.message || 'Ошибка авторизации'
     }

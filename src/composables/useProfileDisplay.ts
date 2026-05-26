@@ -1,4 +1,5 @@
 import { ref, watch } from 'vue';
+import { defaultAvatarUrl } from './useOnboarding';
 
 const KEY_NAME = 'ui-profile-display-name:v1';
 const KEY_SUBTITLE = 'ui-profile-subtitle:v1';
@@ -6,7 +7,7 @@ const KEY_AVATAR = 'ui-profile-avatar-src:v1';
 
 const DEFAULT_NAME = '';
 const DEFAULT_SUBTITLE = '';
-const DEFAULT_AVATAR = `/img/FullPic/avatars/${encodeURIComponent('Alien.png')}`;
+const DEFAULT_AVATAR = defaultAvatarUrl();
 
 function readStored(key: string, fallback: string): string {
   if (typeof window === 'undefined') return fallback;

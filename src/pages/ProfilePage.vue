@@ -7,6 +7,7 @@ import { useOfoData } from '../composables/useOfoData';
 import { useProfileDisplay } from '../composables/useProfileDisplay';
 import { currentRole, setRole } from '../stores/role';
 import { NEUTRAL_COLORS, PRIMARY_COLORS } from '../composables/useUiTheme';
+import { avatarUrlFromFilename, PROFILE_AVATAR_FILENAMES } from '../constants/profileAvatars';
 
 const { profileSaved } = useAppToast();
 
@@ -26,27 +27,7 @@ const profileTab = ref<(typeof profileTabItems)[number]['value']>('account');
 
 const { displayName, subtitle, avatarSrc, setAvatarSrc, setDisplayName, setSubtitle } = useProfileDisplay();
 const avatarPickerOpen = ref(false);
-const avatarFilenames = [
-  'Alien.png',
-  'Clown Face.png',
-  'Cold Face.png',
-  'Face With Symbols On Mouth.png',
-  'Face With Thermometer.png',
-  'Nerd Face.png',
-  'Pleading Face.png',
-  'Rolling On The Floor Laughing.png',
-  'Skull.png',
-  'Slightly Smiling Face.png',
-  'Smiling Face With Hearts.png',
-  'Smiling Face With Horns.png',
-  'Star Struck.png',
-  'Winking Face With Tongue.png',
-  'Winking Face.png',
-] as const;
-
-function avatarUrlFromFilename(filename: string): string {
-  return `/img/FullPic/avatars/${encodeURIComponent(filename)}`;
-}
+const avatarFilenames = PROFILE_AVATAR_FILENAMES;
 
 const publicProfileUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/profile/public/demo`;
 
