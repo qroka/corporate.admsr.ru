@@ -326,20 +326,6 @@ onMounted(async () => {
 
 <template>
   <div class="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-(--ui-bg) px-4 py-8 sm:py-11">
-    <div class="absolute top-4 right-4 z-20 sm:top-6 sm:right-6">
-      <UButton
-        type="button"
-        color="neutral"
-        variant="outline"
-        size="lg"
-        icon="i-lucide-log-out"
-        label="Выйти"
-        :loading="loggingOut"
-        :disabled="saving"
-        @click="logout"
-      />
-    </div>
-
     <div
       class="pointer-events-none absolute inset-0 opacity-40 dark:opacity-25"
       aria-hidden="true"
@@ -464,7 +450,17 @@ onMounted(async () => {
                 </UCard>
               </div>
 
-              <div class="flex justify-end pt-2">
+              <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
+                <UButton
+                  type="button"
+                  size="xl"
+                  color="neutral"
+                  variant="outline"
+                  icon="i-lucide-log-out"
+                  label="Выйти"
+                  :loading="loggingOut"
+                  @click="logout"
+                />
                 <UButton
                   size="xl"
                   trailing-icon="i-lucide-arrow-right"
