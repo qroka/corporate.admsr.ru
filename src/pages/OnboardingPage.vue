@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import type { TimelineItem } from '@nuxt/ui';
 import { useOfoData } from '../composables/useOfoData';
 import { useProfileDisplay } from '../composables/useProfileDisplay';
 import { useAppToast } from '../composables/useAppToast';
@@ -39,21 +38,35 @@ type StepId = (typeof STEPS)[number]['id'];
 const currentStep = ref<StepId>('welcome');
 const stepIndex = computed(() => STEPS.findIndex((s) => s.id === currentStep.value));
 
-const timelineItems = computed<TimelineItem[]>(() =>
-  STEPS.map((step) => ({
-    value: step.id,
-    title: step.label,
-    date: step.date,
-    icon: step.icon,
-  })),
-);
+type StepVisualState = 'completed' | 'active' | 'upcoming';
 
-function onTimelineSelect(_event: Event, item: TimelineItem) {
-  const id = item.value as StepId | undefined;
-  if (!id) return;
-  const targetIndex = STEPS.findIndex((s) => s.id === id);
-  if (targetIndex >= 0 && targetIndex <= stepIndex.value) {
-    currentStep.value = id;
+function stepVisualState(index: number): StepVisualState {
+  if (index < stepIndex.value) return 'completed';
+  if (index === stepIndex.value) return 'active';
+  return 'upcoming';
+}
+
+function leftSegmentClass(index: number): string {
+  if (index === 0) return 'opacity-0 pointer-events-none';
+  return index <= stepIndex.value ? 'bg-primary' : 'bg-elevated';
+}
+
+function rightSegmentClass(index: number): string {
+  if (index === STEPS.length - 1) return 'opacity-0 pointer-events-none';
+  return index < stepIndex.value ? 'bg-primary' : 'bg-elevated';
+}
+
+function indicatorClass(index: number): string {
+  const state = stepVisualState(index);
+  if (state === 'upcoming') {
+    return 'bg-elevated text-muted ring-1 ring-default';
+  }
+  return 'bg-primary text-inverted ring-2 ring-primary/30';
+}
+
+function goToTimelineStep(stepId: StepId, index: number) {
+  if (index <= stepIndex.value) {
+    currentStep.value = stepId;
   }
 }
 
@@ -312,27 +325,60 @@ onMounted(async () => {
         <div class="flex flex-col gap-6 p-1 sm:p-2">
           <nav
             aria-label="Шаги настройки профиля"
-            class="w-full px-2 sm:px-4 pt-2 pb-1"
+            class="w-full px-2 sm:px-6 pt-2 pb-1"
           >
-            <UTimeline
-              v-model="currentStep"
-              orientation="horizontal"
-              :items="timelineItems"
-              color="primary"
-              size="2xl"
-              class="w-full"
-              :ui="{
-                root: 'w-full flex flex-row items-start justify-between gap-0',
-                item: 'flex-1 min-w-0 basis-0 flex flex-col items-center gap-3',
-                container: 'w-full flex flex-row items-center justify-center',
-                indicator: 'shrink-0 size-14 sm:size-16 [&_[data-slot=icon]]:size-7 sm:[&_[data-slot=icon]]:size-8',
-                separator: 'flex-1 min-w-3 max-w-none mx-1.5 sm:mx-2 self-center',
-                wrapper: 'w-full flex flex-col items-center text-center gap-1 px-1',
-                date: 'w-full text-xs sm:text-sm text-muted tabular-nums',
-                title: 'w-full text-sm sm:text-base font-medium leading-snug text-balance',
-              }"
-              @select="onTimelineSelect"
-            />
+            <ol class="m-0 grid w-full list-none grid-cols-4 gap-0 p-0">
+              <li
+                v-for="(step, index) in STEPS"
+                :key="step.id"
+                class="flex min-w-0 flex-col items-center"
+              >
+                <div class="flex w-full items-center">
+                  <div
+                    class="h-0.5 min-w-2 flex-1 rounded-full transition-colors duration-300"
+                    :class="leftSegmentClass(index)"
+                    aria-hidden="true"
+                  />
+
+                  <button
+                    type="button"
+                    class="shrink-0 rounded-full transition-transform focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-default"
+                    :aria-current="stepVisualState(index) === 'active' ? 'step' : undefined"
+                    :aria-label="`${step.date}: ${step.label}`"
+                    :disabled="index > stepIndex"
+                    @click="goToTimelineStep(step.id, index)"
+                  >
+                    <UAvatar
+                      :icon="step.icon"
+                      size="xl"
+                      :class="[
+                        'size-14 sm:size-16 [&_[data-slot=icon]]:size-7 sm:[&_[data-slot=icon]]:size-8',
+                        indicatorClass(index),
+                      ]"
+                      :ui="{ root: '!rounded-full', icon: 'text-inherit' }"
+                    />
+                  </button>
+
+                  <div
+                    class="h-0.5 min-w-2 flex-1 rounded-full transition-colors duration-300"
+                    :class="rightSegmentClass(index)"
+                    aria-hidden="true"
+                  />
+                </div>
+
+                <div class="mt-3 w-full px-1 text-center">
+                  <p class="text-xs text-muted tabular-nums sm:text-sm">
+                    {{ step.date }}
+                  </p>
+                  <p
+                    class="mt-0.5 text-sm font-medium leading-snug text-balance sm:text-base"
+                    :class="stepVisualState(index) === 'upcoming' ? 'text-muted' : 'text-highlighted'"
+                  >
+                    {{ step.label }}
+                  </p>
+                </div>
+              </li>
+            </ol>
           </nav>
 
           <USkeleton v-if="profileLoading" class="h-64 w-full" />
