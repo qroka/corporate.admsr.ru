@@ -1,0 +1,11 @@
+<?php
+/**
+ * Локальная конфигурация API (копия на сервере: api/config.local.php).
+ * Используется health.php; остальные endpoint'ы пока читают константы в своих файлах.
+ */
+
+define('DB_HOST', 'localhost');
+define('DB_PORT', '5432');
+define('DB_NAME', 'corporate_portal');
+define('DB_USER', 'myuser');
+define('DB_PASS', 'CHANGE_ME');

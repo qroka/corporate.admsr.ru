@@ -6,11 +6,16 @@ dist/
 dist-ssr/
 *.local
 
+# Vite / Nuxt UI (генерируются при dev/build)
+auto-imports.d.ts
+components.d.ts
+src/route-map.d.ts
+
 # Public uploads / generated images
 public/img/
 
-# Logs
-logs/
+# Logs (корневой каталог, не src/components/logs/)
+/logs/
 *.log
 npm-debug.log*
 pnpm-debug.log*
@@ -34,6 +39,8 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+api/config.local.php
+deploy/deploy.env
 
 # Cache
 .cache/
