@@ -1,5 +1,14 @@
 import { computed, ref } from 'vue';
 import { resolveNewsImageSrc } from './useNewsData';
+import { avatarUrlFromFilename } from '../constants/profileAvatars';
+
+/** avatar_url из user_info → URL картинки. Пусто/нет файла → заглушка. */
+function resolveBdayAvatar(raw: unknown): string {
+  const p = String(raw ?? '').replace(/\\/g, '/').trim();
+  if (!p || p.toLowerCase().includes('no-avatar')) return PLACEHOLDER_AVATAR;
+  if (p.startsWith('/')) return p;          // уже готовый путь (/img/...)
+  return avatarUrlFromFilename(p);          // имя файла → /img/FullPic/avatars/<file>
+}
 
 function extractTableData(exportJson: unknown, tableName: string): Record<string, unknown>[] {
   if (!Array.isArray(exportJson)) return [];
@@ -225,18 +234,21 @@ export function useBirthdayColleagues() {
 
     sharedPromise = (async () => {
       try {
-        const [usersRes, seatsRes] = await Promise.all([
-          fetch('/data/users.json', { cache: 'force-cache' }),
-          fetch('/api/ofo_seats.php', { cache: 'force-cache' }),
-        ]);
-        if (!usersRes.ok) throw new Error(`Не удалось загрузить users.json (${usersRes.status})`);
-        if (!seatsRes.ok) throw new Error(`Не удалось загрузить ofo_seats (${seatsRes.status})`);
-        const usersRaw = await usersRes.json();
-        const seatsRaw = await seatsRes.json();
-        const seatRows = seatsRaw.data || [];
-        const seatTitles = buildSeatTitleById(seatRows);
-        const table = extractTableData(usersRaw, 'users');
-        sharedUsers.value = mapRows(table, seatTitles);
+        // Источник — месячные xlsx-файлы (см. /api/birthdays.php). Возвращает [{fio, month, day}].
+        const res = await fetch('/api/birthdays.php', { cache: 'no-store' });
+        if (!res.ok) throw new Error(`Не удалось загрузить дни рождения (${res.status})`);
+        const json = await res.json();
+        if (!json.success) throw new Error(json.message || 'Ошибка загрузки');
+        const list = Array.isArray(json.data) ? json.data : [];
+        sharedUsers.value = list
+          .map((e: any, i: number): RawUserForBirthday | null => {
+            const m = Number(e.month);
+            const d = Number(e.day);
+            const fio = String(e.fio ?? '').trim();
+            if (!fio || !(m >= 1 && m <= 12) || !(d >= 1 && d <= 31)) return null;
+            return { id: i + 1, fio, md: { m, d }, avatar: resolveBdayAvatar(e.avatar), positionTitle: '' };
+          })
+          .filter((x): x is RawUserForBirthday => x !== null);
         sharedLoaded.value = true;
       } catch (e) {
         sharedError.value = e instanceof Error ? e.message : 'Ошибка загрузки';
@@ -254,6 +266,13 @@ export function useBirthdayColleagues() {
     void load();
   }
 
+  /** Перезагрузить данные (после загрузки нового xlsx в админке). */
+  async function reload() {
+    sharedLoaded.value = false;
+    sharedPromise = null;
+    return load();
+  }
+
   return {
     loading: sharedLoading,
     error: sharedError,
@@ -262,5 +281,6 @@ export function useBirthdayColleagues() {
     upcomingBirthdays,
     birthdayColleaguesCount,
     ensureLoaded,
+    reload,
   };
 }

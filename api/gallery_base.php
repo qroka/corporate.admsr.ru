@@ -53,6 +53,7 @@ function detectMime(string $path): string
     if (substr($bytes, 0, 3) === "\xFF\xD8\xFF")                             return 'image/jpeg';
     if (substr($bytes, 0, 8) === "\x89PNG\r\n\x1A\n")                        return 'image/png';
     if (substr($bytes, 0, 4) === 'RIFF' && substr($bytes, 8, 4) === 'WEBP')  return 'image/webp';
+    if (substr($bytes, 4, 4) === 'ftyp')                                     return 'video/mp4';
     return 'application/octet-stream';
 }
 
@@ -123,37 +124,61 @@ if ($method === 'GET') {
 
 // ── POST: загрузить фото ──────────────────────────────────────────────────────
 if ($method === 'POST') {
+    // Если запрос превысил post_max_size, PHP обнуляет $_POST и $_FILES.
+    $contentLen = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
+    if ($contentLen > 0 && empty($_POST) && empty($_FILES)) {
+        jsonError(413, 'Файл слишком большой — превышен лимит сервера (post_max_size). Увеличьте upload_max_filesize и post_max_size в php.ini.');
+    }
+
     $albumId = isset($_POST['album_id']) ? (int)$_POST['album_id'] : 0;
     if ($albumId <= 0) jsonError(400, 'Укажите album_id');
     if (empty($_FILES['image'])) jsonError(400, 'Файл не передан');
 
     $file = $_FILES['image'];
     if ($file['error'] !== UPLOAD_ERR_OK) jsonError(400, 'Ошибка загрузки файла (код ' . $file['error'] . ')');
-    if ($file['size'] > 20 * 1024 * 1024) jsonError(400, 'Файл превышает 20 МБ');
 
-    $mime = detectMime($file['tmp_name']);
-    if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp'], true)) {
-        jsonError(400, 'Допустимы только JPEG, PNG или WebP');
+    $mime    = detectMime($file['tmp_name']);
+    $isVideo = ($mime === 'video/mp4');
+
+    if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp', 'video/mp4'], true)) {
+        jsonError(400, 'Допустимы только изображения (JPEG, PNG, WebP) или видео MP4');
     }
 
-    $baseName = bin2hex(random_bytes(12));
-    $webpName = $baseName . '.webp';
-    $tmpPath  = $file['tmp_name'];
+    // Лимиты размера: фото — 20 МБ, видео — 200 МБ
+    $maxSize = $isVideo ? 200 * 1024 * 1024 : 20 * 1024 * 1024;
+    if ($file['size'] > $maxSize) {
+        jsonError(400, $isVideo ? 'Видео превышает 200 МБ' : 'Файл превышает 20 МБ');
+    }
 
     if (!is_dir(FULL_DIR))  mkdir(FULL_DIR,  0755, true);
     if (!is_dir(SMALL_DIR)) mkdir(SMALL_DIR, 0755, true);
 
-    try {
-        // FullPic — WebP 1920px quality 100
-        toWebP($tmpPath, FULL_DIR . $webpName, $mime, 1920, 100);
-        // SmallPic — WebP 960px quality 76
-        toWebP($tmpPath, SMALL_DIR . $webpName, $mime, 960, 76);
-    } catch (Throwable $e) {
-        jsonError(500, 'Ошибка обработки изображения: ' . $e->getMessage());
-    }
+    $baseName = bin2hex(random_bytes(12));
 
-    $fullUrl  = '/img/FullPic/'  . $webpName;
-    $smallUrl = '/img/SmallPic/' . $webpName;
+    if ($isVideo) {
+        // Видео сохраняем как есть в FullPic (без конвертации).
+        // Ссылка на сам видеофайл идёт и в full, и в small (обложку) — фронт
+        // отличает видео по расширению .mp4 и рендерит <video>.
+        $videoName = $baseName . '.mp4';
+        if (!move_uploaded_file($file['tmp_name'], FULL_DIR . $videoName)) {
+            jsonError(500, 'Не удалось сохранить видео');
+        }
+        $fullUrl  = '/img/FullPic/' . $videoName;
+        $smallUrl = $fullUrl;
+    } else {
+        $webpName = $baseName . '.webp';
+        $tmpPath  = $file['tmp_name'];
+        try {
+            // FullPic — WebP 1920px quality 100
+            toWebP($tmpPath, FULL_DIR . $webpName, $mime, 1920, 100);
+            // SmallPic — WebP 960px quality 76
+            toWebP($tmpPath, SMALL_DIR . $webpName, $mime, 960, 76);
+        } catch (Throwable $e) {
+            jsonError(500, 'Ошибка обработки изображения: ' . $e->getMessage());
+        }
+        $fullUrl  = '/img/FullPic/'  . $webpName;
+        $smallUrl = '/img/SmallPic/' . $webpName;
+    }
 
     $stmt = $pdo->prepare(
         'INSERT INTO public.gallery_base (album_id, image_full_url, image_small_url)
@@ -168,7 +193,7 @@ if ($method === 'POST') {
         'album_id'        => $albumId,
         'image_full_url'  => $fullUrl,
         'image_small_url' => $smallUrl,
-    ], 'Фото загружено');
+    ], $isVideo ? 'Видео загружено' : 'Фото загружено');
 }
 
 // ── DELETE: удалить фото ──────────────────────────────────────────────────────

@@ -20,14 +20,18 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      // Бэкенд теперь редиректит 80→443, поэтому ходим сразу по https.
+      // secure:false — игнорируем несовпадение wildcard-сертификата с IP (только для dev).
       '/api': {
-        target: 'http://172.17.4.21',
+        target: 'https://172.17.4.21',
         changeOrigin: true,
+        secure: false,
       },
       // Static uploads (FullPic/SmallPic) are served by backend web root in dev
       '/img': {
-        target: 'http://172.17.4.21',
+        target: 'https://172.17.4.21',
         changeOrigin: true,
+        secure: false,
       },
     },
   },

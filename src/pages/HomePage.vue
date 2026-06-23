@@ -7,6 +7,7 @@ import { useNewsData, resolveNewsImageSrc } from '../composables/useNewsData';
 import { useNewsReactions } from '../composables/useNewsReactions';
 import { useBirthdayColleagues } from '../composables/useBirthdayColleagues';
 import { attachAbsenceStorageSync, hasActiveAbsence } from '../stores/absenceJournal';
+import { currentRole } from '../stores/role';
 
 const eventsLinks = <ButtonProps[]>([
   {
@@ -29,6 +30,8 @@ const newsLinks = <ButtonProps[]>([
     class: 'rounded-full',
   },
 ])
+
+const isAdmin = computed(() => currentRole.value === 'admin');
 
 const birthdayLinks = <ButtonProps[]>([
   {
@@ -205,9 +208,61 @@ function showMoreNews() {
   visibleNewsCount.value = Math.min(allNewsItems.value.length, visibleNewsCount.value + newsPageSize);
 }
 
-const { birthdayGroups, loading: birthdaysLoading, error: birthdaysError, ensureLoaded: ensureBirthdaysLoaded } =
+const { birthdayGroups, loading: birthdaysLoading, error: birthdaysError, ensureLoaded: ensureBirthdaysLoaded, reload: reloadBirthdays } =
   useBirthdayColleagues();
 ensureBirthdaysLoaded();
+
+// ── Админ: загрузка дат рождений из xlsx ──────────────────────────────────────
+const MONTH_NAMES = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+const birthdayUploadOpen = ref(false);
+const birthdayFile = ref<File | File[] | undefined>(undefined);
+const birthdayUploading = ref(false);
+const birthdayUploadError = ref<string | null>(null);
+const birthdayManifest = ref<Record<string, { filename?: string; year?: number }>>({});
+
+const birthdayMonths = computed(() =>
+  MONTH_NAMES.map((name, i) => ({
+    month: i + 1,
+    name,
+    filename: birthdayManifest.value[String(i + 1)]?.filename ?? null,
+  })),
+);
+
+async function loadBirthdayManifest() {
+  try {
+    const res = await fetch('/api/birthdays.php?manifest=1');
+    const json = await res.json();
+    if (json.success) birthdayManifest.value = json.data ?? {};
+  } catch { /* молча */ }
+}
+
+function openBirthdayUpload() {
+  birthdayUploadError.value = null;
+  birthdayFile.value = undefined;
+  birthdayUploadOpen.value = true;
+  void loadBirthdayManifest();
+}
+
+watch(birthdayFile, async (val) => {
+  const file = Array.isArray(val) ? val[0] : val;
+  if (!file) return;
+  birthdayUploading.value = true;
+  birthdayUploadError.value = null;
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/birthdays.php', { method: 'POST', body: fd });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Ошибка загрузки');
+    birthdayManifest.value = json.data ?? birthdayManifest.value;
+    await reloadBirthdays();
+  } catch (e: any) {
+    birthdayUploadError.value = e?.message ?? 'Ошибка загрузки';
+  } finally {
+    birthdayUploading.value = false;
+    birthdayFile.value = undefined;
+  }
+});
 
 </script>
 
@@ -235,7 +290,7 @@ ensureBirthdaysLoaded();
     <UContainer class="flex flex-1 flex-row w-full gap-6 min-h-0 max-h-full overflow-hidden max-w-none">
     <UContainer
       v-if="eventsLoading || hasActualEvents"
-      class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 max-w-96"
+      class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-96 shrink-0"
     >
       <UPageHeader title="" :links="eventsLinks" class="border-none p-0">
         <template #title>
@@ -329,25 +384,36 @@ ensureBirthdaysLoaded();
         </UContainer>
       </UScrollArea>
     </UContainer>
-    <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-fit">
+    <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-96 shrink-0">
       <UPageHeader title="" :links="birthdayLinks" class="border-none p-0">
         <template #title>
           <h1 class="text-2xl font-medium">Дни рождения коллег</h1>
         </template>
       </UPageHeader>
+      <UButton
+        v-if="isAdmin"
+        label="Загрузить даты xlsx"
+        icon="i-lucide-upload"
+        color="neutral"
+        variant="outline"
+        size="xl"
+        block
+        class="shrink-0"
+        @click="openBirthdayUpload"
+      />
       <UContainer class="overflow-y-auto sm:p-px md:p-px lg:p-px xl:p-px scrollbar-hide">
-        <UContainer v-if="birthdaysLoading" class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-fit">
-          <USkeleton v-for="n in 3" :key="n" class="h-32 w-96 rounded-lg" />
+        <UContainer v-if="birthdaysLoading" class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-full">
+          <USkeleton v-for="n in 3" :key="n" class="h-32 w-full rounded-lg" />
         </UContainer>
-        <p v-else-if="birthdaysError" class="text-sm text-error max-w-96">
+        <p v-else-if="birthdaysError" class="text-sm text-error w-full">
           {{ birthdaysError }}
         </p>
-        <UContainer v-else class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-fit">
+        <UContainer v-else class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-full">
           <UCard
             v-for="group in birthdayGroups"
             :key="group.id"
           >
-            <UContainer class="flex flex-col gap-4 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-fit">
+            <UContainer class="flex flex-col gap-4 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-full">
               <UContainer class="flex items-center gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0">
                 <h2 class="text-2xl font-medium leading-none text-highlighted">
                   {{ group.dateLabel }}
@@ -359,20 +425,20 @@ ensureBirthdaysLoaded();
                   :label="group.dayLabel"
                 />
               </UContainer>
-              <p v-if="!group.people.length" class="text-sm text-muted max-w-96">
+              <p v-if="!group.people.length" class="text-sm text-muted w-full">
                 В этот день никого нет
               </p>
               <UContainer
                 v-for="person in group.people"
                 :key="person.id"
-                class="flex items-center gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-96"
+                class="flex items-center gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-full"
               >
                 <UUser
                   :name="person.name"
                   :description="person.role"
                   :avatar="{ src: person.avatar }"
                   size="xl"
-                  class="w-96"
+                  class="w-full"
                 />
               </UContainer>
             </UContainer>
@@ -381,5 +447,44 @@ ensureBirthdaysLoaded();
       </UContainer>
     </UContainer>
   </UContainer>
+  <!-- Админ: окно загрузки дат рождений (xlsx) -->
+  <USlideover v-model:open="birthdayUploadOpen" side="right" title="Загрузка дат рождений (xlsx)" description="">
+    <template #body>
+      <div class="space-y-4">
+        <UFileUpload
+          v-model="birthdayFile"
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          label="Перетащите xlsx сюда"
+          description="Один файл = один месяц. A1 — месяц, B1 — год, далее ФИО и дата."
+          class="w-full min-h-32"
+        />
+        <UAlert
+          v-if="birthdayUploadError"
+          color="error"
+          variant="subtle"
+          icon="i-lucide-alert-circle"
+          :description="birthdayUploadError"
+        />
+        <p v-if="birthdayUploading" class="text-sm text-muted">Загрузка…</p>
+
+        <div class="flex flex-col divide-y divide-default rounded-lg ring ring-default">
+          <div
+            v-for="m in birthdayMonths"
+            :key="m.month"
+            class="flex items-center justify-between gap-3 px-3 py-2"
+          >
+            <span class="text-sm capitalize">{{ m.name }}</span>
+            <span
+              class="text-sm truncate max-w-[60%]"
+              :class="m.filename ? 'text-default' : 'text-muted italic'"
+              :title="m.filename || 'не загружено'"
+            >
+              {{ m.filename || 'не загружено' }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </template>
+  </USlideover>
   </UMain>
 </template>

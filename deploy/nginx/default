@@ -1,0 +1,58 @@
+# ============================================================================
+#  /etc/nginx/sites-available/default  — corporate.admsr.ru (Vue SPA) + HTTPS
+#  Добавлен TLS (443) и редирект 80→443. Остальная логика — как была.
+# ============================================================================
+
+# --- HTTP → HTTPS -----------------------------------------------------------
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    return 301 https://$host$request_uri;
+}
+
+# --- HTTPS ------------------------------------------------------------------
+server {
+    listen 443 ssl http2 default_server;
+    listen [::]:443 ssl http2 default_server;
+    server_name _;
+
+    # ----- Сертификаты (wildcard *.admsr.ru) -----
+    ssl_certificate     /etc/nginx/ssl/admsr.ru/admsr.crt;
+    ssl_certificate_key /etc/nginx/ssl/admsr.ru/admsr.key;
+    ssl_protocols             TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache         shared:SSL:10m;
+    ssl_session_timeout       1d;
+    ssl_session_tickets       off;
+    # HSTS — включай, когда убедишься, что https работает (иначе закомментируй):
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    root /var/www/corporate.admsr.ru/dist;
+    index index.html index.htm index.nginx-debian.html;
+
+    client_max_body_size 210m;    # видео в галерее — до 200 МБ (фото — 20 МБ)
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /img/ {
+        alias /var/www/corporate.admsr.ru/public/img/;
+        try_files $uri =404;
+    }
+
+    location ~ ^/api/.*\.php$ {
+        root /var/www/html;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+        fastcgi_read_timeout 120s;   # чат к AI может отвечать долго
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+    }
+}

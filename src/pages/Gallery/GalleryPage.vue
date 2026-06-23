@@ -8,15 +8,25 @@ import { formatDateRuLong } from '../../utils/date';
 
 type Album = BlogPostProps & { id: string; date: string; rawDate: string };
 
-const coverModules = (import.meta as any).glob('../../img/EventsWebp/*.webp', {
-  eager: true,
-  import: 'default',
-});
-const coverSrcs = Object.entries(coverModules)
-  .sort(([a], [b]) => a.localeCompare(b))
-  .map(([, src]) => src as string);
-function coverAt(index: number): string {
-  return coverSrcs.length ? coverSrcs[index % coverSrcs.length] : '/src/img/Logo.svg';
+/** Видео не может быть обложкой <img> — отличаем по .mp4 и подставляем заглушку. */
+function isVideo(url: string): boolean {
+  return /\.mp4(\?|$)/i.test(url ?? '');
+}
+
+/** Заглушка обложки «АЛЬБОМ» — когда в альбоме нет фото (пусто или только видео). */
+const albumPlaceholder = (() => {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">` +
+    `<rect width="800" height="450" fill="#1e293b"/>` +
+    `<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" ` +
+    `fill="#94a3b8" font-family="sans-serif" font-size="72" font-weight="700" letter-spacing="10">АЛЬБОМ</text>` +
+    `</svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+})();
+
+/** Обложка альбома: реальное фото, иначе — заглушка «АЛЬБОМ». */
+function albumCover(image?: string): string {
+  return image && !isVideo(image) ? image : albumPlaceholder;
 }
 
 const { loading, error, albums: albumRecords, ensureLoaded, reload } = useGalleryData();
@@ -38,14 +48,14 @@ watch(
 );
 
 const albums = computed<Album[]>(() =>
-  albumRecords.value.map((a, idx) => ({
+  albumRecords.value.map((a) => ({
     id: a.id,
     title: a.title,
     description: a.description,
     rawDate: a.date,
     date: formatDateRuLong(a.date) || a.date,
     to: `/gallery/${a.id}`,
-    image: { src: a.image || coverAt(idx), alt: 'Обложка альбома' },
+    image: { src: albumCover(a.image), alt: 'Обложка альбома' },
   })),
 );
 
@@ -340,12 +350,13 @@ onUnmounted(() => {
             </UInputDate>
           </UFormField>
 
-          <UFormField label="Фотографии (необязательно)" name="files">
+          <UFormField label="Фото и видео (необязательно)" name="files">
             <UFileUpload
               v-model="createFiles"
               multiple
-              label="Перетащите фото сюда"
-              description="JPG, PNG или WEBP. Можно выбрать несколько."
+              accept="image/jpeg,image/png,image/webp,video/mp4"
+              label="Перетащите файлы сюда"
+              description="JPG, PNG, WEBP или MP4 (до 200 МБ). Можно выбрать несколько."
               class="w-full min-h-48 rounded-lg"
             />
           </UFormField>

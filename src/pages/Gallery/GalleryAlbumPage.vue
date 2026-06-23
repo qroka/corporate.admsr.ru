@@ -118,6 +118,11 @@ const modalOpen = computed({
 });
 function openPhoto(p: Photo) { selected.value = p; }
 
+/** Видео отличаем по расширению .mp4 — бэкенд кладёт ссылку на сам файл. */
+function isVideo(url: string): boolean {
+  return /\.mp4(\?|$)/i.test(url ?? '');
+}
+
 // ── Добавление фото ───────────────────────────────────────────────────────────
 const addPhotosOpen   = ref(false);
 const addPhotoFiles   = ref<File[] | undefined>(undefined);
@@ -425,7 +430,26 @@ onUnmounted(() => {
                 class="absolute inset-0 rounded-xl animate-pulse bg-accented/50"
                 aria-hidden="true"
               />
+              <!-- Видео: превью + иконка play -->
+              <template v-if="isVideo(item.fullSrc)">
+                <video
+                  :src="`${item.thumbSrc}#t=0.1`"
+                  muted
+                  playsinline
+                  preload="metadata"
+                  class="relative z-1 block w-full h-auto rounded-xl transition-opacity duration-300"
+                  :class="thumbLoaded[item.id] ? 'opacity-100' : 'opacity-0'"
+                  @loadeddata="onThumbLoad(item.id)"
+                />
+                <span class="absolute inset-0 z-2 flex items-center justify-center pointer-events-none">
+                  <span class="size-12 rounded-full bg-black/55 flex items-center justify-center">
+                    <UIcon name="i-lucide-play" class="text-white text-2xl" />
+                  </span>
+                </span>
+              </template>
+              <!-- Фото -->
               <img
+                v-else
                 :src="item.thumbSrc"
                 alt="Фотография"
                 loading="lazy"
@@ -455,15 +479,25 @@ onUnmounted(() => {
     <UModal
       v-model:open="modalOpen"
       class="p-0"
-      :ui="{ content: 'bg-transparent shadow-none', header: 'hidden' }"
+      :ui="{ content: 'bg-transparent shadow-none ring-0 w-auto max-w-[95vw]', header: 'hidden', body: 'p-0' }"
     >
       <template #content>
-        <div v-if="selected" class="grid place-items-center  p-0">
+        <div v-if="selected" class="flex items-center justify-center p-0">
+          <!-- Размер по пропорциям медиа, ограничен вьюпортом: разрешение не влияет -->
+          <video
+            v-if="isVideo(selected.fullSrc)"
+            :src="selected.fullSrc"
+            controls
+            autoplay
+            playsinline
+            class="block w-auto h-auto max-w-[95vw] max-h-[90vh] rounded-lg"
+          />
           <img
+            v-else
             :src="selected.fullSrc"
             alt="Фотография"
             decoding="async"
-            class="block w-auto h-auto max-h-[1920px]"
+            class="block w-auto h-auto max-w-[95vw] max-h-[90vh] rounded-lg"
           />
         </div>
       </template>
@@ -476,8 +510,9 @@ onUnmounted(() => {
           <UFileUpload
             v-model="addPhotoFiles"
             multiple
-            label="Перетащите фото сюда"
-            description="JPG, PNG или WEBP. Можно выбрать несколько файлов."
+            accept="image/jpeg,image/png,image/webp,video/mp4"
+            label="Перетащите файлы сюда"
+            description="JPG, PNG, WEBP или MP4 (до 200 МБ). Можно выбрать несколько файлов."
             class="w-full min-h-48"
           />
           <UAlert v-if="addError" color="error" variant="subtle" icon="i-lucide-alert-circle" :description="addError" />
