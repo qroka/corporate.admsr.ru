@@ -46,26 +46,32 @@ $id     = isset($_GET['id']) ? (int)$_GET['id'] : null;
 
 switch ($method) {
   case 'GET':
-    $stmt = $pdo->prepare('SELECT id, status, login, password, firstname, surname, lastname, ofo, user_group, phone, email, auth, avatar_url, role FROM public.user_info ORDER BY id ASC');
+    $stmt = $pdo->prepare(
+      "SELECT id, status, login, password, firstname, surname, lastname, ofo, user_group, phone, email,
+              (auth = true AND last_activity IS NOT NULL AND last_activity > now() - interval '24 hours') AS auth,
+              last_activity, avatar_url, role
+       FROM public.user_info ORDER BY id ASC"
+    );
     $stmt->execute();
     $rows = $stmt->fetchAll();
-    
+
     $formatted = array_map(function($r) {
       return [
-        'id'         => (int)$r['id'],
-        'status'     => (string)$r['status'],
-        'login'      => (string)$r['login'],
-        'password'   => (string)$r['password'],
-        'firstname'  => (string)$r['firstname'],
-        'surname'    => (string)$r['surname'],
-        'lastname'   => (string)$r['lastname'],
-        'ofo'        => (string)$r['ofo'],
-        'user_group' => (string)$r['user_group'],
-        'phone'      => (string)$r['phone'],
-        'email'      => (string)$r['email'],
-        'auth'       => (string)$r['auth'],
-        'avatar_url' => (string)$r['avatar_url'],
-        'role'       => (string)$r['role'],
+        'id'            => (int)$r['id'],
+        'status'        => (string)$r['status'],
+        'login'         => (string)$r['login'],
+        'password'      => (string)$r['password'],
+        'firstname'     => (string)$r['firstname'],
+        'surname'       => (string)$r['surname'],
+        'lastname'      => (string)$r['lastname'],
+        'ofo'           => (string)$r['ofo'],
+        'user_group'    => (string)$r['user_group'],
+        'phone'         => (string)$r['phone'],
+        'email'         => (string)$r['email'],
+        'auth'          => (string)$r['auth'],
+        'last_activity' => $r['last_activity'] ? (string)$r['last_activity'] : '',
+        'avatar_url'    => (string)$r['avatar_url'],
+        'role'          => (string)$r['role'],
       ];
     }, $rows);
     

@@ -174,7 +174,7 @@ if (!(bool)$user['status']) {
     exit;
 }
 
-$pdo->prepare('UPDATE public.user_info SET auth = true WHERE id = :id')
+$pdo->prepare('UPDATE public.user_info SET auth = true, last_activity = now() WHERE id = :id')
     ->execute([':id' => $user['id']]);
 
 $fio = implode(' ', array_filter([

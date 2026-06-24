@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { useOfoData } from '../composables/useOfoData';
+import { useOfoTree, type OfoPosition } from '../composables/useOfoTree';
+import OfoSelect from '../components/OfoSelect.vue';
 import { useProfileDisplay } from '../composables/useProfileDisplay';
 import { useAppToast } from '../composables/useAppToast';
 import {
@@ -22,9 +23,11 @@ const router = useRouter();
 const { success, error } = useAppToast();
 const { setAvatarSrc, setDisplayName, setSubtitle } = useProfileDisplay();
 
-const { ofoStats, officeSeats, loadDirectory, loadSeats, loading: ofoLoading, error: ofoError } = useOfoData();
-void loadDirectory();
-void loadSeats();
+const { ensureLoaded: ensureOfoLoaded, error: ofoError, pathLabel, unitNumberOf, fetchPositions } = useOfoTree();
+ensureOfoLoaded();
+
+const positionsList = ref<OfoPosition[]>([]);
+const positionsLoading = ref(false);
 
 const STEPS = [
   { id: 'welcome', label: 'Приветствие', icon: 'i-lucide-sparkles', date: 'Шаг 1' },
@@ -74,8 +77,8 @@ const profile = ref<ProfileSnapshot | null>(null);
 const profileLoading = ref(true);
 
 const form = reactive({
-  ofoId: '',
-  positionId: '',
+  ofoId: null as number | null,
+  positionId: null as number | null,
   role: '',
   avatarUrl: defaultAvatarUrl(),
 });
@@ -132,36 +135,14 @@ const portalFeatures = [
   },
 ];
 
-const ofoItems = computed(() =>
-  ofoStats.value.map((o) => ({
-    value: o.id,
-    label: o.title,
-  })),
+const positionItems = computed(() =>
+  positionsList.value.map((p) => ({ value: p.id, label: p.name })),
 );
 
-const positionItems = computed(() => {
-  const ofoId = String(form.ofoId ?? '').trim();
-  if (!ofoId) return [];
-
-  const list = officeSeats.value
-    .filter((s) => String(s.ofo ?? '').trim() === ofoId)
-    .map((s) => ({ value: s.id, label: s.title }));
-
-  const byLabel = new Map<string, { value: string; label: string }>();
-  for (const it of list) {
-    const key = String(it.label ?? '').trim();
-    if (!key) continue;
-    if (!byLabel.has(key)) byLabel.set(key, { value: String(it.value ?? ''), label: key });
-  }
-  return [...byLabel.values()].sort((a, b) => a.label.localeCompare(b.label, 'ru'));
-});
-
-const selectedOfoLabel = computed(() =>
-  ofoItems.value.find((o) => o.value === form.ofoId)?.label ?? '',
-);
+const selectedOfoLabel = computed(() => pathLabel(form.ofoId));
 
 const canProceedFromWork = computed(
-  () => Boolean(String(form.ofoId ?? '').trim()) && Boolean(String(form.positionId ?? '').trim()),
+  () => form.ofoId != null && form.positionId != null,
 );
 
 const canProceedFromAvatar = computed(() => Boolean(String(form.avatarUrl ?? '').trim()));
@@ -175,31 +156,28 @@ const greetingName = computed(() => {
 
 watch(
   () => form.ofoId,
-  () => {
-    form.positionId = '';
+  async (id) => {
+    form.positionId = null;
     form.role = '';
+    positionsList.value = [];
+    const un = unitNumberOf(id);
+    if (un == null) return;
+    positionsLoading.value = true;
+    try {
+      positionsList.value = await fetchPositions(un);
+    } catch {
+      positionsList.value = [];
+    } finally {
+      positionsLoading.value = false;
+    }
   },
 );
 
 watch(
   () => form.positionId,
   (val) => {
-    const pos = positionItems.value.find((p) => p.value === val);
-    form.role = pos?.label ?? '';
+    form.role = positionsList.value.find((p) => p.id === val)?.name ?? '';
   },
-);
-
-watch(
-  () => [form.role, form.ofoId, officeSeats.value.length] as const,
-  () => {
-    if (form.positionId) return;
-    const roleLabel = String(form.role ?? '').trim();
-    const ofoId = String(form.ofoId ?? '').trim();
-    if (!roleLabel || !ofoId) return;
-    const match = positionItems.value.find((p) => p.label === roleLabel);
-    if (match) form.positionId = match.value;
-  },
-  { immediate: true },
 );
 
 function goNext() {
@@ -242,7 +220,7 @@ async function finishOnboarding() {
   try {
     const ok = await saveOnboardingProfile({
       id: p.id,
-      ofo: form.ofoId,
+      ofo: String(form.ofoId ?? ''),
       role: form.role,
       avatar_url: form.avatarUrl,
       firstname: p.firstname,
@@ -315,7 +293,8 @@ onMounted(async () => {
     }
 
     profile.value = snap;
-    if (!isOfoUnset(snap.ofo)) form.ofoId = String(snap.ofo);
+    const ofoNum = Number(snap.ofo);
+    if (!isOfoUnset(snap.ofo) && Number.isFinite(ofoNum) && ofoNum > 0) form.ofoId = ofoNum;
     if (snap.role) form.role = snap.role;
     if (snap.avatar_url) form.avatarUrl = snap.avatar_url;
   } finally {
@@ -495,20 +474,9 @@ onMounted(async () => {
                   label="ОФО"
                   name="ofoId"
                   required
-                  :help="ofoError ? String(ofoError) : undefined"
+                  :help="ofoError ? String(ofoError) : 'Категория — заголовок, раскройте и выберите подразделение.'"
                 >
-                  <USelectMenu
-                    v-model="form.ofoId"
-                    :items="ofoItems"
-                    value-key="value"
-                    label-key="label"
-                    placeholder="Выберите ОФО"
-                    size="xl"
-                    color="neutral"
-                    class="w-full"
-                    :disabled="ofoLoading"
-                    :content="{ align: 'start', sideOffset: 8 }"
-                  />
+                  <OfoSelect v-model="form.ofoId" />
                 </UFormField>
 
                 <UFormField label="Должность" name="positionId" required>
@@ -517,11 +485,12 @@ onMounted(async () => {
                     :items="positionItems"
                     value-key="value"
                     label-key="label"
-                    placeholder="Выберите должность"
+                    :placeholder="form.ofoId == null ? 'Сначала выберите ОФО' : 'Выберите должность'"
                     size="xl"
                     color="neutral"
                     class="w-full"
-                    :disabled="!form.ofoId || ofoLoading"
+                    :disabled="form.ofoId == null || positionsLoading"
+                    :loading="positionsLoading"
                     :content="{ align: 'start', sideOffset: 8 }"
                   />
                 </UFormField>

@@ -8,7 +8,7 @@ export default defineConfig({
     ui({
       ui: {
         colors: {
-          primary: 'sky',
+          primary: 'emerald',
           neutral: 'slate'
         },
         container: {

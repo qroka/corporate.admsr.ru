@@ -3,7 +3,8 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import type { DropdownMenuItem, TabsItem } from '@nuxt/ui';
 import { useAppToast } from '../composables/useAppToast';
 import { useAppConfig } from '../composables/useAppConfig';
-import { useOfoData } from '../composables/useOfoData';
+import { useOfoTree, type OfoPosition } from '../composables/useOfoTree';
+import OfoSelect from '../components/OfoSelect.vue';
 import { useProfileDisplay } from '../composables/useProfileDisplay';
 import { currentRole, setRole } from '../stores/role';
 import { NEUTRAL_COLORS, PRIMARY_COLORS } from '../composables/useUiTheme';
@@ -11,9 +12,11 @@ import { avatarUrlFromFilename, PROFILE_AVATAR_FILENAMES } from '../constants/pr
 
 const { profileSaved } = useAppToast();
 
-const { ofoStats, officeSeats, loadDirectory, loadSeats, loading: ofoLoading, error: ofoError } = useOfoData();
-void loadDirectory();
-void loadSeats();
+const { ensureLoaded: ensureOfoLoaded, error: ofoError, unitNumberOf, fetchPositions } = useOfoTree();
+ensureOfoLoaded();
+
+const positionsList = ref<OfoPosition[]>([]);
+const positionsLoading = ref(false);
 
 const profileTabItems = [
   { label: 'Настройки аккаунта', value: 'account', slot: 'account' },
@@ -133,8 +136,8 @@ const accountForm = reactive({
   patronymic: '',
   phone: '',
   email: '',
-  ofoId: '',
-  positionId: '',
+  ofoId: null as number | null,
+  positionId: null as number | null,
   role: '',
   city: 'Москва',
   state: 'Москва',
@@ -160,7 +163,8 @@ async function loadProfile() {
     accountForm.patronymic = p.lastname  ?? '';
     accountForm.phone      = p.phone     ?? '';
     accountForm.email      = p.email     ?? '';
-    accountForm.ofoId      = p.ofo       ?? '';
+    const ofoNum = Number(p.ofo);
+    accountForm.ofoId      = (p.ofo != null && Number.isFinite(ofoNum) && ofoNum > 0) ? ofoNum : null;
     accountForm.role       = p.role      ?? '';
 
     if (p.avatar_url) setAvatarSrc(p.avatar_url);
@@ -173,61 +177,38 @@ async function loadProfile() {
   }
 }
 
-const ofoItems = computed(() =>
-  ofoStats.value.map((o) => ({
-    value: o.id,
-    label: o.title,
-  })),
+const positionItems = computed(() =>
+  positionsList.value.map((p) => ({ value: p.id, label: p.name })),
 );
-
-const positionItems = computed(() => {
-  const ofoId = String(accountForm.ofoId ?? '').trim();
-  if (!ofoId) return [];
-
-  const list = officeSeats.value
-    .filter((s) => String((s as any).ofo ?? '').trim() === ofoId)
-    .map((s) => ({ value: (s as any).id, label: (s as any).title }));
-
-  const byLabel = new Map<string, { value: string; label: string }>();
-  for (const it of list) {
-    const key = String(it.label ?? '').trim();
-    if (!key) continue;
-    if (!byLabel.has(key)) byLabel.set(key, { value: String(it.value ?? ''), label: key });
-  }
-  return [...byLabel.values()].sort((a, b) => a.label.localeCompare(b.label, 'ru'));
-});
 
 watch(
   () => accountForm.ofoId,
-  () => {
-    accountForm.positionId = '';
+  async (id) => {
+    accountForm.positionId = null;
+    positionsList.value = [];
+    const un = unitNumberOf(id);
+    if (un == null) { accountForm.role = ''; return; }
+    positionsLoading.value = true;
+    try {
+      positionsList.value = await fetchPositions(un);
+      // восстановить выбранную должность по сохранённому тексту роли
+      const match = positionsList.value.find((p) => p.name === accountForm.role);
+      if (match) accountForm.positionId = match.id;
+      else accountForm.role = '';
+    } catch {
+      positionsList.value = [];
+    } finally {
+      positionsLoading.value = false;
+    }
   },
 );
 
 watch(
   () => accountForm.positionId,
   (val) => {
-    const pos = positionItems.value.find((p) => p.value === val);
-    if (pos?.label) accountForm.role = pos.label;
+    const pos = positionsList.value.find((p) => p.id === val);
+    if (pos?.name) accountForm.role = pos.name;
   },
-);
-
-watch(
-  () => [accountForm.role, accountForm.ofoId, officeSeats.value.length] as const,
-  () => {
-    // При загрузке профиля роль уже есть в БД, но positionId — нет.
-    // Если должность ещё не выбрана в форме, пытаемся восстановить её по тексту роли.
-    if (accountForm.positionId) return;
-    const roleLabel = String(accountForm.role ?? '').trim();
-    const ofoId = String(accountForm.ofoId ?? '').trim();
-    if (!roleLabel || !ofoId) return;
-
-    const match = positionItems.value.find((p) => p.label === roleLabel);
-    if (match) {
-      accountForm.positionId = match.value;
-    }
-  },
-  { immediate: true },
 );
 
 const cityItems = [
@@ -266,7 +247,7 @@ async function onUpdateAccount() {
         lastname:   accountForm.patronymic,
         phone:      accountForm.phone,
         email:      accountForm.email,
-        ofo:        accountForm.ofoId,
+        ofo:        String(accountForm.ofoId ?? ''),
         role:       accountForm.role,
         avatar_url: avatarSrc.value,
       }),
@@ -411,18 +392,7 @@ onMounted(() => {
                             autocomplete="email" :disabled="profileLoading" />
                         </UFormField>
                         <UFormField label="ОФО" name="ofoId" :help="ofoError ? String(ofoError) : undefined">
-                          <USelectMenu
-                            v-model="accountForm.ofoId"
-                            :items="ofoItems"
-                            value-key="value"
-                            label-key="label"
-                            placeholder="Выберите ОФО"
-                            size="xl"
-                            color="neutral"
-                            class="w-full"
-                            :disabled="ofoLoading"
-                            :content="{ align: 'start', sideOffset: 8 }"
-                          />
+                          <OfoSelect v-model="accountForm.ofoId" />
                         </UFormField>
                         <UFormField label="Должность" name="positionId">
                           <USelectMenu
@@ -430,11 +400,12 @@ onMounted(() => {
                             :items="positionItems"
                             value-key="value"
                             label-key="label"
-                            placeholder="Выберите должность"
+                            :placeholder="accountForm.ofoId == null ? 'Сначала выберите ОФО' : 'Выберите должность'"
                             size="xl"
                             color="neutral"
                             class="w-full"
-                            :disabled="!accountForm.ofoId || ofoLoading"
+                            :disabled="accountForm.ofoId == null || positionsLoading"
+                            :loading="positionsLoading"
                             :content="{ align: 'start', sideOffset: 8 }"
                           />
                         </UFormField>

@@ -63,9 +63,7 @@ watch(
           </svg>
           <svg :class="[
             'overflow-visible absolute w-10 h-10 transition-all duration-300 ease-out',
-            isDark
-              ? 'group-hover:filter-[drop-shadow(0_0_10px_currentColor)_drop-shadow(0_0_5px_currentColor)_drop-shadow(0_0_1px_currentColor)]'
-              : '',
+            isDark ? 'logo-glow' : '',
             'opacity-0 group-hover:opacity-100 fill-primary text-primary'
           ]" viewBox="16 16 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path
@@ -142,3 +140,25 @@ watch(
   </header>
 
 </template>
+
+<style scoped>
+/* Свечение логотипа по форме иконки: послойные узкие drop-shadow повторяют
+   контур пути (в отличие от box-shadow/большого блюра, дающего прямоугольник). */
+.logo-glow {
+  transition: opacity 0.3s ease-out, filter 0.3s ease-out;
+  /* Базовое состояние — те же 4 слоя с нулевым радиусом (того же цвета),
+     чтобы список фильтров совпадал по длине и переход шёл плавно, без вспышки. */
+  filter:
+    drop-shadow(0 0 0 var(--ui-primary))
+    drop-shadow(0 0 0 var(--ui-primary))
+    drop-shadow(0 0 0 var(--ui-primary))
+    drop-shadow(0 0 0 var(--ui-primary));
+}
+.group:hover .logo-glow {
+  filter:
+    drop-shadow(0 0 1px var(--ui-primary))
+    drop-shadow(0 0 2px var(--ui-primary))
+    drop-shadow(0 0 4px var(--ui-primary))
+    drop-shadow(0 0 8px var(--ui-primary));
+}
+</style>

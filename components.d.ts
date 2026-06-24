@@ -11,6 +11,7 @@ export {}
 /* prettier-ignore */
 declare module 'vue' {
   export interface GlobalComponents {
+    AdminOfoPanel: typeof import('./src/components/AdminOfoPanel.vue')['default']
     AppAside: typeof import('./src/components/AppAside.vue')['default']
     AppHeader: typeof import('./src/components/AppHeader.vue')['default']
     FormBuilder: typeof import('./src/components/tests/FormBuilder.vue')['default']
@@ -20,6 +21,7 @@ declare module 'vue' {
     FormTake: typeof import('./src/components/tests/FormTake.vue')['default']
     KioskAside: typeof import('./src/components/KioskAside.vue')['default']
     KioskHeader: typeof import('./src/components/KioskHeader.vue')['default']
+    OfoSelect: typeof import('./src/components/OfoSelect.vue')['default']
     QuestionEditor: typeof import('./src/components/tests/QuestionEditor.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']

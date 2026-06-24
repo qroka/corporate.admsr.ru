@@ -3,6 +3,8 @@ import { computed, h, nextTick, onUnmounted, reactive, ref, resolveComponent, wa
 import type { TableColumn } from '@nuxt/ui';
 import { useAppToast } from '../../composables/useAppToast';
 import { useOfoData, type OfoStat } from '../../composables/useOfoData';
+import AdminOfoPanel from '../../components/AdminOfoPanel.vue';
+import { useOfoTree } from '../../composables/useOfoTree';
 import { useGroupsData } from '../../composables/useGroupsData';
 import { useUsersData, type AdminUserRow } from '../../composables/useUsersData';
 import { currentRole } from '../../stores/role';
@@ -430,19 +432,41 @@ const statusFilterItems = [
   { value: 'Заблокирован', label: 'Заблокирован' },
 ];
 
+// Новая система ОФО (дерево подразделений) — для отображения в таблице пользователей
+const { units: ofoTreeUnits, unitById: ofoUnitById, ensureLoaded: ensureOfoTreeLoaded } = useOfoTree();
+ensureOfoTreeLoaded();
+
 const ofoTitleById = computed(() => {
   const m: Record<string, string> = {};
-  for (const s of ofoStats.value) m[s.id] = s.title;
+  for (const u of ofoTreeUnits.value) m[String(u.id)] = u.name;
   return m;
 });
+
+/**
+ * Классы цвета бейджа ОФО по типу подразделения (определяется по названию).
+ * Только «управления» используют цвет темы (primary) — меняется с палитрой;
+ * остальные — фиксированные цвета.
+ */
+function ofoBadgeClass(id: string): string {
+  const n = (ofoUnitById.value.get(Number(id))?.name ?? '').toLowerCase();
+  if (n.includes('департамент')) return '!text-amber-500 !bg-amber-500/10';        // жёлтый
+  if (n.includes('комитет'))     return '!text-teal-500 !bg-teal-500/10';          // (на выбор) бирюзовый
+  if (n.includes('управлени'))   return '!text-primary !bg-primary/10';            // цвет темы
+  if (n.includes('служб'))       return '!text-orange-500 !bg-orange-500/10';      // оранжевый
+  if (n.includes('отдел'))       return '!text-default !bg-elevated';              // «белый»/нейтральный
+  if (n.includes('руководств') || n.includes('администрац') || n.includes('аппарат'))
+    return '!text-fuchsia-500 !bg-fuchsia-500/10';                                 // (на выбор) руководство
+  return '!text-default !bg-elevated';
+}
 
 const ofoFilterItems = computed(() => {
   const uniq = [...new Set(users.value.map((u) => u.ofo))].sort((a, b) => a.localeCompare(b, 'ru'));
   return [
     { value: '', label: 'Все ОФО' },
     ...uniq.map((o) => {
+      if (!o || o === '-1' || o === '0') return { value: o, label: 'Без ОФО' };
       const title = ofoTitleById.value[o];
-      return { value: o, label: title ? `${o} — ${title}` : o };
+      return { value: o, label: title ? title : `ОФО #${o}` };
     }),
   ];
 });
@@ -468,6 +492,7 @@ const filteredUsers = computed(() => {
         u.phone,
         u.email,
         u.ofo,
+        ofoTitleById.value[u.ofo] ?? '',
         u.auth,
         u.user_group,
         u.role
@@ -575,7 +600,7 @@ function toggleUserStatus(user: AdminUserRow) {
   fetch(`/api/users.php?id=${user.id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status: next })
+    body: JSON.stringify({ status: next === 'Активен' })
   }).catch(e => {
     toast.add({ title: 'Ошибка обновления статуса', color: 'error', description: String(e) });
     // revert on error
@@ -620,7 +645,7 @@ async function saveEdit() {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        status: editForm.status,
+        status: editForm.status === 'Активен',
         login: editForm.login,
         password: editForm.password,
         firstname: editForm.firstname,
@@ -630,7 +655,6 @@ async function saveEdit() {
         user_group: editForm.user_group,
         phone: editForm.phone,
         email: editForm.email,
-        auth: editForm.auth,
         avatar_url: editForm.avatar_url,
         role: editForm.role
       })
@@ -747,23 +771,41 @@ const userColumns: TableColumn<AdminUserRow>[] = [
     header: 'ОФО',
     cell: ({ row }) => {
       const id = row.getValue('ofo') as string;
+      const unset = !id || id === '-1' || id === '0';
+      if (unset) {
+        return h(UBadge, {
+          variant: 'subtle',
+          color: 'neutral',
+          leading: true,
+          leadingIcon: 'i-lucide-building-2',
+          class: 'max-w-[220px] min-w-0 truncate !text-dimmed !bg-elevated',
+          title: 'Без ОФО',
+        }, () => 'Без ОФО');
+      }
       const title = ofoTitleById.value[id];
-      const label = title
-        ? title
-        : (!id || id === '-1' || id === '0')
-            ? 'Не указано'
-            : `ОФО #${id}`;
+      const label = title ?? `ОФО #${id}`;
       return h(UBadge, {
         variant: 'subtle',
-        color: ofoBadgeColor(id),
+        color: 'neutral',
         leading: true,
         leadingIcon: 'i-lucide-building-2',
-        class: 'max-w-[min(340px,100%)] min-w-0 truncate',
-        title: title ? `${id} — ${title}` : (id ? `ID: ${id}` : 'Не указано'),
+        class: `max-w-[220px] min-w-0 truncate ${ofoBadgeClass(id)}`,
+        title: title ? `${id} — ${title}` : `ID: ${id}`,
       }, () => label);
     },
   },
-  { accessorKey: 'auth', header: 'Последняя авторизация' },
+  {
+    accessorKey: 'auth',
+    header: 'Авторизация',
+    cell: ({ row }) => {
+      const online = String(row.getValue('auth')) === '1' || row.getValue('auth') === true;
+      return h(UBadge, {
+        variant: 'subtle',
+        color: online ? 'success' : 'neutral',
+        class: online ? '' : '!text-dimmed',
+      }, () => (online ? 'В сети' : 'Не в сети'));
+    },
+  },
   {
     id: 'actions',
     header: () => h('span', { class: 'sr-only' }, 'Действия'),
@@ -999,7 +1041,7 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
                   :columns="userColumns"
                   :data="usersVisible"
                   sticky
-                  class="min-w-[960px]"
+                  class="w-full"
                 />
                 <div v-if="usersInfiniteLoading" class="py-3 text-center text-xs text-muted">
                   Загрузка…
@@ -1045,10 +1087,14 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
         </div>
 
         <div v-else class="flex flex-col gap-4">
+          <AdminOfoPanel />
+        </div>
+
+        <div v-if="false" class="flex flex-col gap-4">
 
 
           <div class="flex flex-col gap-4">
-            
+
             <div class="flex flex-col gap-3">
               
               <div class="flex items-center justify-between gap-3 flex-wrap">

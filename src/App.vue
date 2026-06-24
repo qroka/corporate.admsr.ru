@@ -33,12 +33,17 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ru } from '@nuxt/ui/locale';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import AppHeader from './components/AppHeader.vue';
 import AppAside from './components/AppAside.vue';
+import { startSessionActivity } from './composables/useSessionActivity';
 
 // Текущий маршрут (используется для подсветки активных пунктов навигации)
 const route = useRoute();
+const router = useRouter();
+
+// Авто-логаут по 24ч бездействия (heartbeat + проверка статуса)
+onMounted(() => startSessionActivity(router));
 
 // Имя активного пункта верхнего меню (events / gallery / newcomers / culture)
 const activeNav = computed(() => (route.name ?? 'events'));
@@ -68,9 +73,8 @@ onMounted(() => {
 
   if (saved === 'light' || saved === 'dark') {
     mode = saved;
-  } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    mode = 'dark';
   } else {
+    // Первый вход — по умолчанию светлая тема (выбор пользователя сохраняется ниже).
     mode = 'light';
   }
 
