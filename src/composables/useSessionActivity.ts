@@ -9,7 +9,7 @@ import type { Router } from 'vue-router';
  */
 
 const HEARTBEAT_THROTTLE = 4 * 60 * 1000; // не чаще раза в 4 минуты
-const CHECK_INTERVAL = 5 * 60 * 1000;     // проверять статус каждые 5 минут
+const CHECK_INTERVAL = 60 * 1000;         // проверять статус каждую минуту
 
 let started = false;
 let lastBeat = 0;

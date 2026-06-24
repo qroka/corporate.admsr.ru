@@ -49,7 +49,8 @@ switch ($method) {
     $stmt = $pdo->prepare(
       "SELECT id, status, login, password, firstname, surname, lastname, ofo, user_group, phone, email,
               (auth = true AND last_activity IS NOT NULL AND last_activity > now() - interval '24 hours') AS auth,
-              last_activity, avatar_url, role
+              to_char(last_activity AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS last_activity,
+              avatar_url, role
        FROM public.user_info ORDER BY id ASC"
     );
     $stmt->execute();

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, nextTick, onUnmounted, reactive, ref, resolveComponent, watch } from 'vue';
+import { computed, h, nextTick, onMounted, onUnmounted, reactive, ref, resolveComponent, watch } from 'vue';
 import type { TableColumn } from '@nuxt/ui';
 import { useAppToast } from '../../composables/useAppToast';
 import { useOfoData, type OfoStat } from '../../composables/useOfoData';
@@ -30,7 +30,23 @@ const {
   error: usersError,
   users,
   ensureLoaded: ensureUsersLoaded,
+  refresh: refreshUsers,
 } = useUsersData();
+
+// Авто-поллинг списка пользователей раз в минуту, пока открыта админка
+// (тихое обновление — без морганий: статус «в сети» и таймер до разлогина).
+// nowTick форсит перерисовку таймеров каждую минуту даже без смены данных.
+const nowTick = ref(Date.now());
+let usersPollTimer: ReturnType<typeof setInterval> | null = null;
+onMounted(() => {
+  usersPollTimer = setInterval(() => {
+    nowTick.value = Date.now();
+    void refreshUsers();
+  }, 60 * 1000);
+});
+onUnmounted(() => {
+  if (usersPollTimer) clearInterval(usersPollTimer);
+});
 
 const { loading: groupsLoading, error: groupsError, groups } = useGroupsData();
 
@@ -726,6 +742,23 @@ function ofoBadgeColor(ofoId: string, depthOverride?: number): BadgeColor {
   return ofoBadgeColorByDepth(depth);
 }
 
+/** Снять авторизацию у пользователя (admin → принудительный логаут). */
+async function logoutUser(user: AdminUserRow) {
+  try {
+    const res = await fetch('/api/logout.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: user.id }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message || 'Ошибка');
+    users.value = users.value.map((u) => (u.id === user.id ? { ...u, auth: '', last_activity: '' } : u));
+    toast.add({ title: 'Пользователь разлогинен', color: 'success', icon: 'i-lucide-check-circle' });
+  } catch (e) {
+    toast.add({ title: 'Не удалось разлогинить', color: 'error', description: String(e) });
+  }
+}
+
 function rowActionItems(user: AdminUserRow) {
   return [
     {
@@ -749,7 +782,29 @@ function rowActionItems(user: AdminUserRow) {
         impersonate(user);
       },
     },
+    ...(user.auth === '1'
+      ? [{
+          label: 'Разлогинить',
+          icon: 'i-lucide-log-out',
+          color: 'error' as const,
+          onSelect() {
+            void logoutUser(user);
+          },
+        }]
+      : []),
   ];
+}
+
+const SESSION_LIMIT_MS = 24 * 60 * 60 * 1000;
+/** Остаток времени до авто-логаута «Ч:ММ» от last_activity, либо null. */
+function timeLeftLabel(lastActivity: string | undefined, now: number): string | null {
+  if (!lastActivity) return null;
+  const t = new Date(lastActivity).getTime();
+  if (!Number.isFinite(t)) return null;
+  const left = SESSION_LIMIT_MS - (now - t);
+  if (left <= 0) return null;
+  const totalMin = Math.floor(left / 60000);
+  return `${Math.floor(totalMin / 60)}:${String(totalMin % 60).padStart(2, '0')}`;
 }
 
 const userColumns: TableColumn<AdminUserRow>[] = [
@@ -799,11 +854,21 @@ const userColumns: TableColumn<AdminUserRow>[] = [
     header: 'Авторизация',
     cell: ({ row }) => {
       const online = String(row.getValue('auth')) === '1' || row.getValue('auth') === true;
-      return h(UBadge, {
+      if (!online) {
+        return h(UBadge, { variant: 'subtle', color: 'neutral', class: '!text-dimmed' }, () => 'Не в сети');
+      }
+      const onlineBadge = h(UBadge, { variant: 'subtle', color: 'success' }, () => 'В сети');
+      const left = timeLeftLabel(row.original.last_activity, nowTick.value);
+      if (!left) return onlineBadge;
+      const timer = h(UBadge, {
         variant: 'subtle',
-        color: online ? 'success' : 'neutral',
-        class: online ? '' : '!text-dimmed',
-      }, () => (online ? 'В сети' : 'Не в сети'));
+        color: 'neutral',
+        leading: true,
+        leadingIcon: 'i-lucide-clock',
+        class: 'tabular-nums',
+        title: 'До авто-выхода по бездействию',
+      }, () => left);
+      return h('div', { class: 'flex items-center gap-1.5' }, [onlineBadge, timer]);
     },
   },
   {
