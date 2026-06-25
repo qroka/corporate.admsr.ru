@@ -17,6 +17,7 @@ import ApplicationsPage from '../pages/ApplicationsPage.vue';
 import KnowledgeBasePage from '../pages/KnowledgeBasePage.vue';
 import PersonnelReservePage from '../pages/PersonnelReservePage.vue';
 import TestsPage from '../pages/TestsPage.vue';
+import TestsBlankPage from '../pages/TestsBlankPage.vue';
 import HrDepartmentPage from '../pages/HrDepartmentPage.vue';
 import MunicipalServiceDepartmentPage from '../pages/MunicipalServiceDepartmentPage.vue';
 import DevelopmentMotivationDepartmentPage from '../pages/DevelopmentMotivationDepartmentPage.vue';
@@ -77,7 +78,8 @@ const routes = [
   { path: '/applications', name: 'applications', component: ApplicationsPage, meta: { title: 'Заявки' } },
   { path: '/knowledge-base', name: 'knowledge-base', component: KnowledgeBasePage, meta: { title: 'База знаний' } },
   { path: '/personnel-reserve', name: 'personnel-reserve', component: PersonnelReservePage, meta: { title: 'Кадровый резерв' } },
-  { path: '/tests', name: 'tests', component: TestsPage, meta: { title: 'Тесты' } },
+  { path: '/tests', name: 'tests', component: TestsBlankPage, meta: { title: 'Тесты' } },
+  { path: '/tests/old', name: 'tests-old', component: TestsPage, meta: { title: 'Тесты (старые)' } },
   { path: '/hr-department', name: 'hr-department', component: HrDepartmentPage, meta: { title: 'Отдел кадров' } },
   { path: '/municipal-service', name: 'municipal-service', component: MunicipalServiceDepartmentPage, meta: { title: 'Отдел муниципальной службы' } },
   { path: '/development-motivation', name: 'development-motivation', component: DevelopmentMotivationDepartmentPage, meta: { title: 'Отдел развития и мотивации' } },
