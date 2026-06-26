@@ -67,6 +67,14 @@ export function useHeaderUser() {
     return normalizeAvatarSrc(p?.avatar_url) || DEFAULT_AVATAR;
   });
 
+  const canToggleAdminRole = computed(() => {
+    const fromProfile = String(profile.value?.user_group ?? '').trim().toLowerCase();
+    if (fromProfile) return fromProfile === 'admin';
+
+    const authUser = safeParseAuthUser() as { user_group?: string } | null;
+    return String(authUser?.user_group ?? '').trim().toLowerCase() === 'admin';
+  });
+
   async function reload() {
     error.value = null;
     profile.value = null;
@@ -124,6 +132,7 @@ export function useHeaderUser() {
     headerName,
     subtitle,
     avatarSrc,
+    canToggleAdminRole,
     reload,
   };
 }

@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useHeaderUser } from '../composables/useHeaderUser';
 import { currentRole, setRole } from '../stores/role';
 
-const { headerName, subtitle, avatarSrc, loading } = useHeaderUser();
+const { headerName, subtitle, avatarSrc, loading, canToggleAdminRole } = useHeaderUser();
 
 defineProps({
   isDark: {
@@ -25,10 +25,15 @@ const menuOpen = ref(false);
 
 const isAdminRole = ref(currentRole.value === 'admin');
 
-watch(isAdminRole, (v) => setRole(v ? 'admin' : 'user'));
+watch(isAdminRole, (v) => {
+  if (canToggleAdminRole.value) setRole(v ? 'admin' : 'user');
+});
 watch(currentRole, (r) => {
   isAdminRole.value = r === 'admin';
 });
+watch(canToggleAdminRole, (can) => {
+  if (!can) setRole('user');
+}, { immediate: true });
 
 function navigate(name) {
   router.push({ name });
@@ -106,7 +111,12 @@ watch(
     </UContainer>
 
     <div class="flex items-center gap-2 min-w-0">
-      <UTooltip arrow :content="{ side: 'bottom' }" text="Роль: администратор">
+      <UTooltip
+        v-if="canToggleAdminRole"
+        arrow
+        :content="{ side: 'bottom' }"
+        text="Роль: администратор"
+      >
         <div class="bg-elevated rounded-full p-3 flex items-center gap-2">
           <USwitch v-model="isAdminRole" size="xl" aria-label="Переключить роль администратора" />
         </div>
