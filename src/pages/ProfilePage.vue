@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import type { DropdownMenuItem, TabsItem } from '@nuxt/ui';
+import type { DropdownMenuItem } from '@nuxt/ui';
 import { useAppToast } from '../composables/useAppToast';
 import { useAppConfig } from '../composables/useAppConfig';
 import { useOfoTree, type OfoPosition } from '../composables/useOfoTree';
 import OfoSelect from '../components/OfoSelect.vue';
 import { useProfileDisplay } from '../composables/useProfileDisplay';
-import { currentRole, setRole } from '../stores/role';
 import { NEUTRAL_COLORS, PRIMARY_COLORS } from '../composables/useUiTheme';
 import { avatarUrlFromFilename, PROFILE_AVATAR_FILENAMES } from '../constants/profileAvatars';
+import { useProfileWall, wallPostPlainText, type WallPost } from '../composables/useProfileWall';
+import ProfileWallPost from '../components/profile/ProfileWallPost.vue';
+import ProfileCreatePost from '../components/profile/ProfileCreatePost.vue';
 
 const { profileSaved } = useAppToast();
 
@@ -18,39 +20,71 @@ ensureOfoLoaded();
 const positionsList = ref<OfoPosition[]>([]);
 const positionsLoading = ref(false);
 
-const profileTabItems = [
-  { label: 'Настройки аккаунта', value: 'account', slot: 'account' },
-  { label: 'Компания', value: 'company', slot: 'company' },
-  { label: 'Документы', value: 'documents', slot: 'documents' },
-  { label: 'Оплата', value: 'billing', slot: 'billing' },
-  { label: 'Уведомления', value: 'notifications', slot: 'notifications' },
-] satisfies TabsItem[];
-
-const profileTab = ref<(typeof profileTabItems)[number]['value']>('account');
+type PageView = 'wall' | 'edit';
+const pageView = ref<PageView>('wall');
 
 const { displayName, subtitle, avatarSrc, setAvatarSrc, setDisplayName, setSubtitle } = useProfileDisplay();
 const avatarPickerOpen = ref(false);
 const avatarFilenames = PROFILE_AVATAR_FILENAMES;
 
-const publicProfileUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}/profile/public/demo`;
+const currentUserId = ref(0);
 
-const copied = ref(false);
-let copyTimer: ReturnType<typeof setTimeout> | null = null;
+// --- Wall ---
+const {
+  sortedPosts,
+  ensureLoaded: ensureWallLoaded,
+  createPost,
+  deletePost,
+  updatePost,
+} = useProfileWall();
+ensureWallLoaded();
 
-async function copyProfileUrl() {
-  try {
-    await navigator.clipboard.writeText(publicProfileUrl);
-    copied.value = true;
-    if (copyTimer) clearTimeout(copyTimer);
-    copyTimer = setTimeout(() => {
-      copied.value = false;
-    }, 2000);
-  } catch {
-    copied.value = false;
-  }
+const postEditorOpen = ref(false);
+const editingPost = ref<WallPost | null>(null);
+const wallSearch = ref('');
+const wallSearchOpen = ref(false);
+
+const filteredPosts = computed(() => {
+  const q = wallSearch.value.trim().toLowerCase();
+  if (!q) return sortedPosts.value;
+  return sortedPosts.value.filter((p) => {
+    const plain = wallPostPlainText(p.content).toLowerCase();
+    return plain.includes(q) || p.authorName.toLowerCase().includes(q);
+  });
+});
+
+function toggleWallSearch() {
+  wallSearchOpen.value = !wallSearchOpen.value;
+  if (!wallSearchOpen.value) wallSearch.value = '';
 }
 
-// --- Theme dropdown (primary / neutral) ---
+function openCreatePost() {
+  editingPost.value = null;
+  postEditorOpen.value = true;
+}
+
+function openEditPost(post: WallPost) {
+  editingPost.value = post;
+  postEditorOpen.value = true;
+}
+
+function onPostSubmit(payload: { content: string; postId?: string }) {
+  if (payload.postId) {
+    updatePost(payload.postId, { content: payload.content });
+    editingPost.value = null;
+    return;
+  }
+  if (!currentUserId.value) return;
+  createPost({
+    userId: currentUserId.value,
+    authorName: displayName.value || 'Сотрудник',
+    authorAvatar: avatarSrc.value,
+    content: payload.content,
+  });
+  editingPost.value = null;
+}
+
+// --- Theme dropdown ---
 const colors = PRIMARY_COLORS;
 const neutrals = NEUTRAL_COLORS;
 const appConfig = useAppConfig();
@@ -94,37 +128,9 @@ const themeMenuItems = computed<DropdownMenuItem[][]>(() => [
   ],
 ]);
 
-function chipColorHex(chip: string | undefined, shade: '500' | '400'): string {
-  if (!chip) return '#999';
-  if (typeof window === 'undefined') return '#999';
-  const v = getComputedStyle(document.documentElement).getPropertyValue(`--color-${chip}-${shade}`).trim();
-  return v || '#999';
-}
-
-function dropdownChip(item: any): string | undefined {
-  const label = String(item?.label ?? '').trim();
-  if (label === 'Primary') return appConfig.ui.colors.primary;
-  if (label === 'Neutral') return appConfig.ui.colors.neutral;
-  if ((colors as readonly string[]).includes(label)) return label;
-  if ((neutrals as readonly string[]).includes(label)) return label;
-  return undefined;
-}
-
-function onChangeCover() {
-  window.alert('Здесь будет загрузка обложки профиля.');
-}
-
-function onChangeAvatar() {
-  avatarPickerOpen.value = true;
-}
-
 function selectAvatar(filename: string) {
   setAvatarSrc(avatarUrlFromFilename(filename));
   avatarPickerOpen.value = false;
-}
-
-function onViewPublicProfile() {
-  window.alert('Публичный профиль откроется в новой вкладке, когда будет готов маршрут.');
 }
 
 const profileLoading = ref(false);
@@ -139,10 +145,6 @@ const accountForm = reactive({
   ofoId: null as number | null,
   positionId: null as number | null,
   role: '',
-  city: 'Москва',
-  state: 'Москва',
-  postcode: '101000',
-  country: 'Россия',
 });
 
 async function loadProfile() {
@@ -150,6 +152,7 @@ async function loadProfile() {
   if (!raw) return;
   const user = JSON.parse(raw) as { id: number };
   if (!user?.id) return;
+  currentUserId.value = user.id;
 
   profileLoading.value = true;
   try {
@@ -191,7 +194,6 @@ watch(
     positionsLoading.value = true;
     try {
       positionsList.value = await fetchPositions(un);
-      // восстановить выбранную должность по сохранённому тексту роли
       const match = positionsList.value.find((p) => p.name === accountForm.role);
       if (match) accountForm.positionId = match.id;
       else accountForm.role = '';
@@ -210,24 +212,6 @@ watch(
     if (pos?.name) accountForm.role = pos.name;
   },
 );
-
-const cityItems = [
-  { value: 'Москва', label: 'Москва' },
-  { value: 'Санкт-Петербург', label: 'Санкт-Петербург' },
-  { value: 'Казань', label: 'Казань' },
-];
-
-const postcodeItems = [
-  { value: '101000', label: '101000' },
-  { value: '190000', label: '190000' },
-  { value: '420000', label: '420000' },
-];
-
-const countryItems = [
-  { value: 'Россия', label: 'Россия' },
-  { value: 'Казахстан', label: 'Казахстан' },
-  { value: 'Беларусь', label: 'Беларусь' },
-];
 
 async function onUpdateAccount() {
   const raw = localStorage.getItem('auth-user');
@@ -263,217 +247,507 @@ async function onUpdateAccount() {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('ui:user-profile-updated'));
     }
+    pageView.value = 'wall';
   } finally {
     profileSaving.value = false;
   }
 }
 
-const roleOptions = [
-  { value: 'user', label: 'Пользователь' },
-  { value: 'admin', label: 'Администратор' },
-];
-
-const roleLocal = computed({
-  get: () => currentRole.value,
-  set: (val) => setRole(val),
-});
-
-watch(currentRole, (val) => {
-  if (!roleOptions.some((r) => r.value === val)) {
-    setRole('user');
-  }
+const profileInfoLines = computed(() => {
+  const lines: { icon: string; text: string }[] = [];
+  if (accountForm.role) lines.push({ icon: 'i-lucide-briefcase', text: accountForm.role });
+  if (accountForm.phone) lines.push({ icon: 'i-lucide-phone', text: accountForm.phone });
+  if (accountForm.email) lines.push({ icon: 'i-lucide-mail', text: accountForm.email });
+  return lines;
 });
 
 onMounted(() => {
   void loadProfile();
 });
-
 </script>
+
 <template>
-  <UMain class="flex flex-col  w-full  h-full min-h-0 gap-6 mx-0 max-w-none">
-    <UPageHeader class="border-none p-0 w-full max-w-none">
-      <template #title>
-        <h1 class="text-4xl font-normal font-unbounded">Профиль</h1>
-      </template>
-    </UPageHeader>
+  <UMain class="profile-page flex flex-col w-full h-full min-h-0 mx-0 max-w-none">
+    <!-- Обложка -->
+    <div class="profile-cover">
+      <div class="profile-cover__gradient" />
+      <div class="profile-cover__pattern" />
+    </div>
 
-    <UContainer class="flex-1 min-h-0 overflow-y-auto max-w-none w-full sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
-      <!-- Обложка -->
-      <UContainer
-        class="max-w-none sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0 relative h-40 sm:h-48 rounded-xl overflow-hidden ring ring-default bg-linear-to-br from-primary-500 via-primary-600 to-violet-700 dark:from-primary-600 dark:via-violet-700 dark:to-violet-900">
-        <UContainer class="max-w-none absolute inset-0 opacity-30 dark:opacity-20 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0"
-          style="background-image: radial-gradient(circle at 20% 50%, white 0%, transparent 45%), radial-gradient(circle at 80% 30%, white 0%, transparent 40%), radial-gradient(circle at 50% 80%, white 0%, transparent 35%);" />
-        <UContainer
-          class="max-w-none absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=\\'60\\' height=\\'60\\' viewBox=\\'0 0 60 60\\' xmlns=\\'http://www.w3.org/2000/svg\\'%3E%3Cg fill=\\'none\\' fill-rule=\\'evenodd\\'%3E%3Cg fill=\\'%23ffffff\\' fill-opacity=\\'0.08\\'%3E%3Cpath d=\\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-40" />
-      </UContainer>
+    <!-- Шапка профиля -->
+    <header class="profile-header">
+      <div class="profile-header__main">
+        <div class="profile-header__avatar-wrap">
+          <UAvatar
+            :src="avatarSrc"
+            :alt="displayName"
+            size="3xl"
+            class="profile-header__avatar"
+            :ui="{ root: '!bg-elevated ring-4 ring-(--ui-bg)' }"
+          />
+          <UPopover v-model:open="avatarPickerOpen">
+            <UButton
+              type="button"
+              color="primary"
+              variant="solid"
+              size="xs"
+              icon="i-lucide-plus"
+              class="profile-header__avatar-btn rounded-full"
+              aria-label="Изменить аватар"
+            />
+            <template #content>
+              <div class="p-3 grid grid-cols-3 gap-2 w-56">
+                <UButton
+                  v-for="name in avatarFilenames"
+                  :key="name"
+                  size="sm"
+                  variant="subtle"
+                  color="neutral"
+                  @click="selectAvatar(name)"
+                >
+                  <img :src="avatarUrlFromFilename(name)" alt="" class="w-10 h-10 object-contain" />
+                </UButton>
+              </div>
+            </template>
+          </UPopover>
+        </div>
 
-      <!-- Контент -->
-      <UContainer class="sm:p-0 md:p-0 lg:p-0 xl:p-0 relative z-10 -mt-14 sm:-mt-16 mx-auto">
-        <UContainer class="grid grid-cols-1 xl:grid-cols-12 gap-4 xl:gap-6 sm:p-0 md:p-0 lg:p-0 xl:p-0">
-          <!-- Левая колонка: карточка профиля -->
-          <UContainer class="xl:col-span-4 p-px ">
-            <UCard class="overflow-visible">
-              <UContainer class="flex flex-col items-center text-center pt-2 pb-2">
-                <UContainer class="relative -mt-20 sm:-mt-22 mb-4">
-                  <UAvatar
-                    :src="avatarSrc"
-                    :alt="displayName"
-                    size="3xl"
-                    class="size-28 sm:size-32"
-                    :ui="{ root: '!bg-elevated' }"
-                  />
-                </UContainer>
-                <h2 class="text-lg sm:text-xl font-semibold text-highlighted">
-                  {{ displayName }}
-                </h2>
-                <p class="text-sm text-muted mt-0.5">
-                  {{ subtitle }}
-                </p>
-              </UContainer>
-              <UPopover v-model:open="avatarPickerOpen"  >
-                    <UButton
-                      type="button"
-                      color="neutral"
-                      label="Изменить аватар"
-                      variant="outline"
-                      size="xl"
-                      class="w-full items-center justify-center"
-                      icon="i-lucide-smile"
-                      aria-label="Изменить аватар"
+        <div class="profile-header__info min-w-0">
+          <h1 class="profile-header__name">{{ displayName || 'Профиль' }}</h1>
+          <p v-if="subtitle" class="profile-header__role">{{ subtitle }}</p>
+        </div>
+      </div>
+
+      <div class="profile-header__actions">
+        <UButton
+          type="button"
+          :color="pageView === 'edit' ? 'primary' : 'neutral'"
+          :variant="pageView === 'edit' ? 'solid' : 'outline'"
+          size="lg"
+          icon="i-lucide-pencil"
+          label="Редактировать профиль"
+          class="rounded-xl"
+          @click="pageView = 'edit'"
+        />
+        <UButton
+          v-if="pageView === 'edit'"
+          type="button"
+          color="neutral"
+          variant="ghost"
+          size="lg"
+          icon="i-lucide-arrow-left"
+          label="К стене"
+          class="rounded-xl"
+          @click="pageView = 'wall'"
+        />
+      </div>
+    </header>
+
+    <!-- Контент -->
+    <div class="profile-body">
+      <!-- Стена -->
+      <section v-if="pageView === 'wall'" class="profile-wall">
+        <div class="profile-wall__composer" role="button" tabindex="0" @click="openCreatePost" @keydown.enter="openCreatePost">
+          <UIcon name="i-lucide-plus" class="size-5 text-dimmed shrink-0" />
+          <span class="text-muted text-sm sm:text-base">Создать пост</span>
+          <div class="profile-wall__composer-tools" @click.stop>
+            <UButton type="button" color="neutral" variant="ghost" size="sm" icon="i-lucide-image" class="rounded-full" aria-label="Добавить фото" @click="openCreatePost" />
+            <UButton type="button" color="neutral" variant="ghost" size="sm" icon="i-lucide-smile" class="rounded-full" aria-label="Эмодзи" @click="openCreatePost" />
+          </div>
+        </div>
+
+        <div class="profile-wall__toolbar">
+          <span class="text-sm font-medium text-highlighted">Все посты</span>
+          <UButton
+            type="button"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            :icon="wallSearchOpen ? 'i-lucide-x' : 'i-lucide-search'"
+            class="rounded-full shrink-0"
+            :aria-label="wallSearchOpen ? 'Закрыть поиск' : 'Поиск по постам'"
+            @click="toggleWallSearch"
+          />
+        </div>
+
+        <UInput
+          v-if="wallSearchOpen"
+          v-model="wallSearch"
+          placeholder="Поиск по записям..."
+          size="lg"
+          icon="i-lucide-search"
+          class="w-full"
+          autofocus
+        />
+
+        <div v-if="filteredPosts.length" class="profile-wall__feed">
+          <ProfileWallPost
+            v-for="post in filteredPosts"
+            :key="post.id"
+            :post="post"
+            :is-owner="post.userId === currentUserId"
+            @delete="deletePost"
+            @edit="openEditPost"
+          />
+        </div>
+
+        <div v-else class="profile-wall__empty">
+          <UIcon name="i-lucide-message-square-plus" class="size-10 text-dimmed mb-3" />
+          <p class="text-sm font-medium text-highlighted">Пока нет записей</p>
+          <p class="text-xs text-muted mt-1 max-w-xs text-center">
+            Создайте первый пост — поделитесь новостью или фотографией с коллегами
+          </p>
+          <UButton
+            type="button"
+            color="primary"
+            variant="soft"
+            size="md"
+            label="Создать пост"
+            class="mt-4 rounded-full"
+            @click="openCreatePost"
+          />
+        </div>
+      </section>
+
+      <!-- Редактирование -->
+      <section v-else class="profile-edit">
+        <UCard class="profile-edit__card">
+          <template #header>
+            <div>
+              <h2 class="text-lg font-semibold text-highlighted">Личные данные</h2>
+              <p class="text-sm text-muted mt-0.5">Информация отображается в профиле и на стене</p>
+            </div>
+          </template>
+
+          <UForm :state="accountForm" class="space-y-6" @submit.prevent="onUpdateAccount">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
+              <UFormField label="Фамилия" name="lastName">
+                <UInput v-model="accountForm.lastName" size="lg" class="w-full" autocomplete="family-name" :disabled="profileLoading" />
+              </UFormField>
+              <UFormField label="Имя" name="firstName">
+                <UInput v-model="accountForm.firstName" size="lg" class="w-full" autocomplete="given-name" :disabled="profileLoading" />
+              </UFormField>
+              <UFormField label="Отчество" name="patronymic">
+                <UInput v-model="accountForm.patronymic" size="lg" class="w-full" autocomplete="additional-name" :disabled="profileLoading" />
+              </UFormField>
+              <UFormField label="Телефон" name="phone">
+                <UInput v-model="accountForm.phone" size="lg" class="w-full" type="tel" autocomplete="tel" :disabled="profileLoading" />
+              </UFormField>
+              <UFormField label="Электронная почта" name="email">
+                <UInput v-model="accountForm.email" size="lg" class="w-full" type="email" autocomplete="email" :disabled="profileLoading" />
+              </UFormField>
+              <UFormField label="ОФО" name="ofoId" :help="ofoError ? String(ofoError) : undefined">
+                <OfoSelect v-model="accountForm.ofoId" />
+              </UFormField>
+              <UFormField label="Должность" name="positionId">
+                <USelectMenu
+                  v-model="accountForm.positionId"
+                  :items="positionItems"
+                  value-key="value"
+                  label-key="label"
+                  :placeholder="accountForm.ofoId == null ? 'Сначала выберите ОФО' : 'Выберите должность'"
+                  size="lg"
+                  color="neutral"
+                  class="w-full"
+                  :disabled="accountForm.ofoId == null || positionsLoading"
+                  :loading="positionsLoading"
+                  :content="{ align: 'start', sideOffset: 8 }"
+                />
+              </UFormField>
+            </div>
+
+            <USeparator />
+
+            <div>
+              <h3 class="text-sm font-semibold text-highlighted mb-1">Аватар</h3>
+              <p class="text-sm text-muted mb-3">Выберите изображение для профиля</p>
+              <div class="flex flex-wrap gap-2">
+                <UButton
+                  v-for="name in avatarFilenames"
+                  :key="name"
+                  size="md"
+                  :variant="avatarSrc.includes(name) ? 'solid' : 'outline'"
+                  :color="avatarSrc.includes(name) ? 'primary' : 'neutral'"
+                  @click="selectAvatar(name)"
+                >
+                  <img :src="avatarUrlFromFilename(name)" alt="" class="w-8 h-8 object-contain" />
+                </UButton>
+              </div>
+            </div>
+
+            <USeparator />
+
+            <div>
+              <h3 class="text-sm font-semibold text-highlighted mb-1">Цвета интерфейса</h3>
+              <p class="text-sm text-muted mb-3">Настройка сохранится в браузере</p>
+              <UDropdownMenu :items="themeMenuItems">
+                <UButton type="button" icon="i-lucide-palette" color="neutral" variant="outline" size="lg" trailing-icon="i-lucide-chevrons-up-down">
+                  Кастомизация портала
+                </UButton>
+                <template #chip-leading="{ item }">
+                  <div class="inline-flex items-center justify-center shrink-0 size-5">
+                    <span
+                      class="rounded-full ring ring-bg bg-(--chip-light) dark:bg-(--chip-dark) size-2"
+                      :style="{
+                        '--chip-light': `var(--color-${(item as any).chip}-500)`,
+                        '--chip-dark': `var(--color-${(item as any).chip}-400)`,
+                      }"
                     />
-
-                    <template #content>
-                      <UContainer class="sm:p-3 md:p-3 lg:p-3 xl:p-3 mx-0">
-                        <UContainer class="grid grid-cols-3 gap-2 w-full sm:p-0 md:p-0 lg:p-0 xl:p-0">
-                          <UButton
-                            v-for="name in avatarFilenames"
-                            :key="name"
-                            size="xl"
-                            variant="subtle"
-                            color="neutral"
-                            @click="selectAvatar(name)">
-                              <img
-                                :src="avatarUrlFromFilename(name)"
-                                alt=""
-                                class="w-12 h-auto p-0"
-                              />
-                          </UButton>
-                        </UContainer>
-                      </UContainer>
-                    </template>
-                  </UPopover>
-            </UCard>
-          </UContainer>
-
-          <!-- Правая колонка -->
-          <UContainer class="xl:col-span-8 min-w-0 p-px">
-            <UCard class="overflow-visible">
-
-              <UTabs v-model="profileTab" :items="profileTabItems" size="xl" variant="link" class="w-full">
-                <template #account>
-                  <UContainer class="p-4 sm:p-6 pt-6 space-y-6">
-                    <UForm :state="accountForm" class="space-y-5" @submit.prevent="onUpdateAccount">
-                      <UContainer
-                        class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
-                        <UFormField label="Фамилия" name="lastName">
-                          <UInput v-model="accountForm.lastName" size="xl" class="w-full" autocomplete="family-name" :disabled="profileLoading" />
-                        </UFormField>
-                        <UFormField label="Имя" name="firstName">
-                          <UInput v-model="accountForm.firstName" size="xl" class="w-full" autocomplete="given-name" :disabled="profileLoading" />
-                        </UFormField>
-                        <UFormField label="Отчество" name="patronymic">
-                          <UInput v-model="accountForm.patronymic" size="xl" class="w-full" autocomplete="additional-name" :disabled="profileLoading" />
-                        </UFormField>
-                        <UFormField label="Телефон" name="phone">
-                          <UInput v-model="accountForm.phone" size="xl" class="w-full" type="tel" autocomplete="tel" :disabled="profileLoading" />
-                        </UFormField>
-                        <UFormField label="Электронная почта" name="email">
-                          <UInput v-model="accountForm.email" size="xl" class="w-full" type="email"
-                            autocomplete="email" :disabled="profileLoading" />
-                        </UFormField>
-                        <UFormField label="ОФО" name="ofoId" :help="ofoError ? String(ofoError) : undefined">
-                          <OfoSelect v-model="accountForm.ofoId" />
-                        </UFormField>
-                        <UFormField label="Должность" name="positionId">
-                          <USelectMenu
-                            v-model="accountForm.positionId"
-                            :items="positionItems"
-                            value-key="value"
-                            label-key="label"
-                            :placeholder="accountForm.ofoId == null ? 'Сначала выберите ОФО' : 'Выберите должность'"
-                            size="xl"
-                            color="neutral"
-                            class="w-full"
-                            :disabled="accountForm.ofoId == null || positionsLoading"
-                            :loading="positionsLoading"
-                            :content="{ align: 'start', sideOffset: 8 }"
-                          />
-                        </UFormField>
-                      </UContainer>
-
-                      <USeparator />
-
-                      <UContainer class="sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
-                        <h3 class="text-sm font-semibold text-highlighted mb-2">Цвета интерфейса</h3>
-                        <p class="text-sm text-muted mb-4">Выберите палитры. Настройка сохранится в браузере и
-                          применится сразу.</p>
-
-                        <UDropdownMenu :items="themeMenuItems">
-                          <UButton type="button" icon="i-lucide-palette" color="neutral" variant="outline" size="xl"
-                           trailing-icon="i-lucide-chevrons-up-down">
-                            Кастомизация портала
-                          </UButton>
-
-                          <template #chip-leading="{ item }">
-                            <div class="inline-flex items-center justify-center shrink-0 size-5">
-                              <span class="rounded-full ring ring-bg bg-(--chip-light) dark:bg-(--chip-dark) size-2"
-                                :style="{
-                                  '--chip-light': `var(--color-${(item as any).chip}-500)`,
-                                  '--chip-dark': `var(--color-${(item as any).chip}-400)`
-                                }" />
-                            </div>
-                          </template>
-                        </UDropdownMenu>
-                      </UContainer>
-
-                      <USeparator />
-
-                      <UContainer class="flex flex-wrap items-center gap-3 pt-2 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
-                        <UButton type="submit" color="primary" size="xl" :loading="profileSaving" :disabled="profileLoading">Сохранить</UButton>
-                      </UContainer>
-                    </UForm>
-                  </UContainer>
+                  </div>
                 </template>
+              </UDropdownMenu>
+            </div>
 
-                <template #company>
-                  <UContainer class="p-4 sm:p-6 pt-6 text-sm text-muted">
-                    Раздел «Компания» — здесь появятся реквизиты и контакты организации.
-                  </UContainer>
-                </template>
+            <div class="flex flex-wrap items-center gap-3 pt-2">
+              <UButton type="submit" color="primary" size="lg" :loading="profileSaving" :disabled="profileLoading">
+                Сохранить изменения
+              </UButton>
+              <UButton type="button" color="neutral" variant="ghost" size="lg" @click="pageView = 'wall'">
+                Отмена
+              </UButton>
+            </div>
+          </UForm>
+        </UCard>
+      </section>
 
-                <template #documents>
-                  <UContainer class="p-4 sm:p-6 pt-6 text-sm text-muted">
-                    Раздел «Документы» — загрузка и список файлов.
-                  </UContainer>
-                </template>
+      <!-- Сайдбар -->
+      <aside class="profile-sidebar">
+        <UCard v-if="profileInfoLines.length" class="profile-sidebar__card">
+          <template #header>
+            <h3 class="text-sm font-semibold text-highlighted">Информация</h3>
+          </template>
+          <ul class="space-y-2.5">
+            <li v-for="(line, i) in profileInfoLines" :key="i" class="flex items-start gap-2.5 text-sm">
+              <UIcon :name="line.icon" class="size-4 text-dimmed shrink-0 mt-0.5" />
+              <span class="text-muted break-words">{{ line.text }}</span>
+            </li>
+          </ul>
+        </UCard>
 
-                <template #billing>
-                  <UContainer class="p-4 sm:p-6 pt-6 text-sm text-muted">
-                    Раздел «Оплата» — счета и способы оплаты.
-                  </UContainer>
-                </template>
+        <UCard class="profile-sidebar__card">
+          <template #header>
+            <h3 class="text-sm font-semibold text-highlighted">О стене</h3>
+          </template>
+          <p class="text-sm text-muted leading-relaxed">
+            Публикуйте новости, фото и заметки для коллег.
+          </p>
+        </UCard>
+      </aside>
+    </div>
 
-                <template #notifications>
-                  <UContainer class="p-4 sm:p-6 pt-6 text-sm text-muted">
-                    Раздел «Уведомления» — настройки e‑mail и push.
-                  </UContainer>
-                </template>
-              </UTabs>
-            </UCard>
-          </UContainer>
-        </UContainer>
-      </UContainer>
-    </UContainer>
-
+    <ProfileCreatePost
+      v-model:open="postEditorOpen"
+      :post-id="editingPost?.id ?? null"
+      :initial-content="editingPost?.content ?? ''"
+      @submit="onPostSubmit"
+    />
   </UMain>
 </template>
+
+<style scoped>
+.profile-page {
+  --profile-cover-h: 11rem;
+  gap: 0;
+}
+
+@media (min-width: 640px) {
+  .profile-page { --profile-cover-h: 13rem; }
+}
+
+.profile-cover {
+  position: relative;
+  height: var(--profile-cover-h);
+  border-radius: 1rem;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.profile-cover__gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--ui-primary) 70%, #1a1a2e) 0%,
+    color-mix(in srgb, var(--ui-primary) 40%, #16213e) 45%,
+    color-mix(in srgb, var(--ui-primary) 25%, #0f0f14) 100%
+  );
+}
+
+.profile-cover__pattern {
+  position: absolute;
+  inset: 0;
+  opacity: 0.35;
+  background-image:
+    radial-gradient(circle at 18% 42%, rgb(255 255 255 / 0.12) 0%, transparent 42%),
+    radial-gradient(circle at 82% 28%, rgb(255 255 255 / 0.08) 0%, transparent 38%);
+}
+
+.profile-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem 1.5rem;
+  padding: 0 0.25rem;
+  margin-top: -3.25rem;
+  position: relative;
+  z-index: 2;
+}
+
+@media (min-width: 640px) {
+  .profile-header { margin-top: -3.75rem; }
+}
+
+.profile-header__main {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem 1.25rem;
+  min-width: 0;
+}
+
+.profile-header__avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.profile-header__avatar {
+  width: 6.5rem;
+  height: 6.5rem;
+}
+
+@media (min-width: 640px) {
+  .profile-header__avatar {
+    width: 7.5rem;
+    height: 7.5rem;
+  }
+}
+
+.profile-header__avatar-btn {
+  position: absolute;
+  right: 0.25rem;
+  bottom: 0.25rem;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
+}
+
+.profile-header__name {
+  font-size: 1.375rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ui-text-highlighted);
+  letter-spacing: -0.02em;
+}
+
+@media (min-width: 640px) {
+  .profile-header__name { font-size: 1.625rem; }
+}
+
+.profile-header__role {
+  font-size: 0.875rem;
+  color: var(--ui-text-muted);
+  margin-top: 0.2rem;
+}
+
+.profile-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-bottom: 0.25rem;
+}
+
+.profile-body {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin-top: 1.25rem;
+  padding-bottom: 1rem;
+}
+
+@media (min-width: 1024px) {
+  .profile-body {
+    grid-template-columns: minmax(0, 1fr) 17.5rem;
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  .profile-edit {
+    grid-column: 1 / -1;
+    max-width: 48rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  .profile-body {
+    grid-template-columns: minmax(0, 1fr) 20rem;
+  }
+}
+
+.profile-wall {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.profile-wall__composer {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  background: var(--ui-bg-elevated);
+  border: 1px solid color-mix(in srgb, var(--ui-border) 55%, transparent);
+  border-radius: 1rem;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.profile-wall__composer:hover {
+  border-color: color-mix(in srgb, var(--ui-primary) 35%, var(--ui-border));
+  background: color-mix(in srgb, var(--ui-bg-elevated) 92%, var(--ui-primary));
+}
+
+.profile-wall__composer-tools {
+  margin-left: auto;
+  display: flex;
+  gap: 0.125rem;
+}
+
+.profile-wall__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.profile-wall__feed {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.profile-wall__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1.5rem;
+  background: var(--ui-bg-elevated);
+  border: 1px dashed color-mix(in srgb, var(--ui-border) 70%, transparent);
+  border-radius: 1rem;
+  text-align: center;
+}
+
+.profile-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.profile-sidebar__card :deep([data-slot="header"]) {
+  padding-bottom: 0.5rem;
+}
+
+.profile-edit__card {
+  border-radius: 1rem;
+}
+</style>

@@ -23,6 +23,8 @@ declare module 'vue' {
     KioskHeader: typeof import('./src/components/KioskHeader.vue')['default']
     OfoMultiSelect: typeof import('./src/components/OfoMultiSelect.vue')['default']
     OfoSelect: typeof import('./src/components/OfoSelect.vue')['default']
+    ProfileCreatePost: typeof import('./src/components/profile/ProfileCreatePost.vue')['default']
+    ProfileWallPost: typeof import('./src/components/profile/ProfileWallPost.vue')['default']
     QuestionEditor: typeof import('./src/components/tests/QuestionEditor.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
