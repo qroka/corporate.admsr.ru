@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { computed, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { useUsersData } from '../../composables/useUsersData';
 import { useAppToast } from '../../composables/useAppToast';
+import { useTestsStore } from '../../composables/useTestsStore';
 import OfoMultiSelect from '../../components/OfoMultiSelect.vue';
 import ModalTextField from './ModalTextField.vue';
 import QuestionsBuilder from './QuestionsBuilder.vue';
-import { questionTypeLabel, createQuestion, applyTypeDefaults, type Question } from './questionTypes';
+import TestRunner from './TestRunner.vue';
+import { createQuestion, applyTypeDefaults } from './questionTypes';
+import { createEmptyForm, cloneForm, type TestForm } from './testForm';
 
+const emit = defineEmits<{ (e: 'published'): void }>();
 const { toast } = useAppToast();
+const store = useTestsStore();
 
 // ── Разделы конструктора ──────────────────────────────────────────────────────
 const section = ref<'new' | 'drafts'>('new');
@@ -16,45 +21,9 @@ const sectionItems = [
   { label: 'Черновики', value: 'drafts', icon: 'i-lucide-file-clock' },
 ];
 
-const todayISO = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-
-// ── Данные формы нового опроса ────────────────────────────────────────────────
-const form = reactive({
-  title: '',
-  description: '',
-  kind: 'test' as 'test' | 'survey' | 'poll',
-  visibility: 'public' as 'public' | 'private',
-  recipients: [] as number[],
-  // ── Параметры ──
-  shuffle: false,
-  shuffleOptions: false,
-  showProgress: false,
-  freeNavigation: false,
-  anonymous: false,
-  usePassingScore: false,
-  passingScore: 70,
-  showCorrectAnswers: false,
-  allowChangeAnswer: false,
-  liveResults: false,
-  allowRevote: false,
-  completionMessage: '',
-  notifyAdmin: false,
-  // ── Доступ (ограничение по ОФО) ──
-  restrictByOfo: false,
-  ofoIds: [] as number[],
-  questions: [] as Question[],
-  // ── Ограничения ──
-  useTimeLimit: false,
-  timeLimit: '',
-  limitAttempts: false,
-  attempts: 1,
-  useStart: true,
-  startsAt: todayISO,
-  useEnd: false,
-  endsAt: '',
-  showResult: 'after' as 'immediate' | 'after' | 'never',
-  accessByLink: false,
-});
+// ── Данные формы ──────────────────────────────────────────────────────────────
+const form = reactive<TestForm>(createEmptyForm());
+const editingId = ref<number | null>(null); // != null → редактируем существующий черновик
 
 const kindItems = [
   { label: 'Тест', value: 'test' },
@@ -70,8 +39,7 @@ const showResultItems = computed(() => [
   { label: 'После прохождения', value: 'after' },
   { label: 'Не показывать результат', value: 'never' },
 ]);
-const labelOf = (items: { label: string; value: string }[], v: string) =>
-  items.find((i) => i.value === v)?.label ?? v;
+const kindLabel = (k: string) => kindItems.find((i) => i.value === k)?.label ?? k;
 
 // ── Сотрудники (получатели приватного теста) ─────────────────────────────────
 const { users, ensureLoaded: ensureUsersLoaded } = useUsersData();
@@ -154,112 +122,83 @@ function goStep(i: number) { step.value = STEPS[i].key; }
 function nextStep() { if (stepIdx.value < STEPS.length - 1) step.value = STEPS[stepIdx.value + 1].key; }
 function prevStep() { if (stepIdx.value > 0) step.value = STEPS[stepIdx.value - 1].key; }
 
-const recipientNames = computed(() =>
-  form.recipients.map((id) => users.value.find((u) => u.id === id)?.fullName).filter(Boolean) as string[],
-);
+// ── Сохранение / публикация ───────────────────────────────────────────────────
+function resetForm() {
+  Object.assign(form, createEmptyForm());
+  editingId.value = null;
+  step.value = 'settings';
+}
+function onSaveDraft() {
+  if (editingId.value != null) {
+    store.updateDraft(editingId.value, form);
+    toast.add({ title: 'Черновик обновлён', color: 'success', icon: 'i-lucide-check' });
+  } else {
+    store.saveDraft(form);
+    toast.add({ title: 'Черновик сохранён', description: 'Форма перенесена в «Черновики».', color: 'success', icon: 'i-lucide-file-check' });
+  }
+  resetForm();
+  section.value = 'drafts';
+}
+function onPublish() {
+  store.publish(form, editingId.value);
+  toast.add({ title: 'Опубликовано', description: 'Форма доступна во вкладке «Список».', color: 'success', icon: 'i-lucide-send' });
+  resetForm();
+  emit('published');
+}
 
-// ── Предпросмотр: постраничный просмотр (титул + по вопросу на страницу) ──────
-const previewPage = ref(0); // 0 = титульник, 1..N = вопросы
-const previewTotal = computed(() => form.questions.length + 1);
-const ctaLabel = computed(() =>
-  form.kind === 'poll' ? 'Участвовать в голосовании' : form.kind === 'survey' ? 'Пройти опрос' : 'Пройти тест',
-);
-const currentPreviewQuestion = computed(() => form.questions[previewPage.value - 1]);
-function previewNext() { if (previewPage.value < previewTotal.value - 1) previewPage.value++; }
-// На титульник (стр. 0) после старта не возвращаемся — минимум первый вопрос
-function previewPrev() { if (previewPage.value > 1) previewPage.value--; }
-watch(step, (s) => { if (s === 'preview') { previewPage.value = 0; stopPreviewTimer(); } });
-watch(previewTotal, (t) => { if (previewPage.value > t - 1) previewPage.value = t - 1; });
+// ── Черновики: действия ───────────────────────────────────────────────────────
+function editDraft(d: TestForm) {
+  Object.assign(form, cloneForm(d));
+  editingId.value = d.id;
+  section.value = 'new';
+  step.value = 'settings';
+}
+function publishDraft(d: TestForm) {
+  store.publish(d, d.id);
+  toast.add({ title: 'Опубликовано', description: 'Форма доступна во вкладке «Список».', color: 'success', icon: 'i-lucide-send' });
+  emit('published');
+}
 
-const isLastPreviewPage = computed(() => previewPage.value === form.questions.length && form.questions.length > 0);
-const finishLabel = computed(() => (form.kind === 'poll' ? 'Проголосовать' : 'Завершить'));
-const finishOpen = ref(false);
+// Удаление черновика
+const deleteOpen = ref(false);
+const deleteTarget = ref<TestForm | null>(null);
+function askDeleteDraft(d: TestForm) { deleteTarget.value = d; deleteOpen.value = true; }
+function confirmDeleteDraft() {
+  if (deleteTarget.value?.id != null) store.removeDraft(deleteTarget.value.id);
+  deleteOpen.value = false;
+  deleteTarget.value = null;
+}
+
+// Прохождение черновика
+const runOpen = ref(false);
+const runForm = ref<TestForm | null>(null);
+function openRun(d: TestForm) {
+  runForm.value = cloneForm(d);
+  runOpen.value = true;
+}
+
+// Благодарность (после закрытия окна прохождения / предпросмотра)
 const completionOpen = ref(false);
-const completionText = computed(() =>
-  form.completionMessage.trim() ||
-  (form.kind === 'poll' ? 'Спасибо! Ваш голос учтён.' : 'Спасибо за прохождение!'),
-);
-function confirmFinish() {
-  finishOpen.value = false;
-  stopPreviewTimer();
-  completionOpen.value = true; // показываем «Сообщение после завершения»
+const completionForm = ref<TestForm | null>(null);
+const completionText = computed(() => {
+  const f = completionForm.value;
+  if (!f) return '';
+  return f.completionMessage.trim() || (f.kind === 'poll' ? 'Спасибо! Ваш голос учтён.' : 'Спасибо за прохождение!');
+});
+function onPreviewFinish() {
+  completionForm.value = cloneForm(form);
+  completionOpen.value = true;
 }
-function closeCompletion() {
-  completionOpen.value = false;
-  previewPage.value = 0; // возвращаемся на титул
-}
-
-// ── Таймер прохождения (стартует при нажатии CTA) ────────────────────────────
-const previewStartTs = ref<number | null>(null);
-const nowTs = ref(Date.now());
-let previewTimerId: ReturnType<typeof setInterval> | null = null;
-function startPreviewTimer() {
-  previewStartTs.value = Date.now();
-  nowTs.value = Date.now();
-  if (previewTimerId) clearInterval(previewTimerId);
-  previewTimerId = setInterval(() => { nowTs.value = Date.now(); }, 1000);
-}
-function stopPreviewTimer() {
-  if (previewTimerId) { clearInterval(previewTimerId); previewTimerId = null; }
-  previewStartTs.value = null;
-}
-onUnmounted(stopPreviewTimer);
-
-// ── Ответы внутри предпросмотра (чтобы контролы были «живыми») ────────────────
-const previewAnswers = reactive<Record<string, unknown>>({});
-const yesnoItems = [
-  { label: 'Да', value: 'yes' },
-  { label: 'Нет', value: 'no' },
-];
-function optionItems(q: Question) {
-  return (q.options ?? []).map((o, i) => ({ label: o.text || `Вариант ${i + 1}`, value: o.id }));
-}
-function scaleNumbers(q: Question) {
-  const min = Math.min(q.scaleMin, q.scaleMax);
-  const max = Math.max(q.scaleMin, q.scaleMax);
-  const arr: number[] = [];
-  for (let n = min; n <= max && arr.length < 50; n++) arr.push(n);
-  return arr;
+function onDraftRunFinish() {
+  completionForm.value = runForm.value;
+  runOpen.value = false;
+  completionOpen.value = true;
 }
 
-// Старт прохождения по кнопке-CTA на титульнике
-function startPreview() {
-  if (!form.questions.length) return;
-  // сброс ответов предпросмотра; для «несколько из списка» нужен массив
-  for (const k in previewAnswers) delete previewAnswers[k];
-  for (const q of form.questions) if (q.type === 'multiple') previewAnswers[q.id] = [];
-  previewPage.value = 1;
-  startPreviewTimer();
-}
-
-function hmsToSeconds(v: string): number {
-  const [h = 0, m = 0, s = 0] = v.split(':').map(Number);
-  return h * 3600 + m * 60 + s;
-}
-function secondsToHms(total: number): string {
-  const t = Math.max(0, Math.floor(total));
-  const h = Math.floor(t / 3600);
-  const m = Math.floor((t % 3600) / 60);
-  const s = t % 60;
-  return [h, m, s].map((n) => String(n).padStart(2, '0')).join(':');
-}
-const elapsedSec = computed(() =>
-  previewStartTs.value ? Math.floor((nowTs.value - previewStartTs.value) / 1000) : 0,
-);
-const previewTimerLabel = computed(() =>
-  form.useTimeLimit && form.timeLimit
-    ? secondsToHms(hmsToSeconds(form.timeLimit) - elapsedSec.value)
-    : secondsToHms(elapsedSec.value),
-);
-const previewTimeLow = computed(
-  () => form.useTimeLimit && !!form.timeLimit && hmsToSeconds(form.timeLimit) - elapsedSec.value <= 60,
-);
-
-function saveDraft() {
-  toast.add({ title: 'Черновик', description: 'Сохранение черновика будет позже (нужен бэкенд).', color: 'info', icon: 'i-lucide-file-clock' });
-}
-function publish() {
-  toast.add({ title: 'Публикация', description: 'Публикация теста будет позже (нужен бэкенд).', color: 'info', icon: 'i-lucide-send' });
+function fmtDate(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
 }
 </script>
 
@@ -284,8 +223,13 @@ function publish() {
       </div>
     </div>
 
-    <!-- Создать новый: мастер по шагам -->
+    <!-- Создать новый / редактирование: мастер по шагам -->
     <div v-if="section === 'new'" class="flex flex-col flex-1 min-h-0 gap-4">
+      <div v-if="editingId != null" class="shrink-0 -mb-1 flex items-center gap-2 text-sm text-primary">
+        <UIcon name="i-lucide-pencil" class="size-4" />
+        Редактирование черновика #{{ editingId }}
+      </div>
+
       <!-- Прокручиваемая область текущего шага -->
       <div class="flex-1 min-h-0 overflow-y-auto px-0.5 pt-0.5">
       <!-- ШАГ 1: Настройка -->
@@ -437,196 +381,10 @@ function publish() {
         <QuestionsBuilder v-model="form.questions" :kind="form.kind" />
       </div>
 
-      <!-- ШАГ 3: Предпросмотр (слайдер 16:10, одна страница = один вопрос) -->
-      <div v-show="step === 'preview'" class="flex flex-col h-full min-h-0">
-        <p class="text-xs text-dimmed mb-2 flex items-center justify-center gap-1.5 shrink-0">
-          <UIcon name="i-lucide-eye" class="size-3.5" />
-          Так тест увидит сотрудник
-        </p>
-
-        <!-- «Сцена»: вписываем окно 16:10 по высоте и ширине, без скролла -->
-        <div class="flex-1 min-h-0 w-full grid place-items-center [container-type:size]">
-          <div class="aspect-[16/10] w-[min(100%,160cqh)] max-w-4xl rounded-2xl ring-1 ring-default bg-default shadow-2xl overflow-hidden flex flex-col">
-
-            <!-- Прогресс-бар (на страницах вопросов, если включён) -->
-            <div v-if="form.showProgress && previewPage > 0" class="h-1 bg-elevated shrink-0">
-              <div class="h-full bg-primary transition-all" :style="{ width: `${(previewPage / Math.max(form.questions.length, 1)) * 100}%` }" />
-            </div>
-
-            <!-- Область страницы -->
-            <div class="flex-1 min-h-0 overflow-hidden">
-              <!-- Страница 0: титульник -->
-              <div v-if="previewPage === 0" class="h-full flex flex-col items-center justify-center text-center gap-4 px-10 py-6">
-                <UBadge color="primary" variant="subtle" size="lg">{{ labelOf(kindItems, form.kind) }}</UBadge>
-                <h2 class="text-3xl font-semibold text-highlighted leading-tight line-clamp-2">{{ form.title || 'Без названия' }}</h2>
-                <p v-if="form.description" class="text-muted max-w-xl line-clamp-4 whitespace-pre-line">{{ form.description }}</p>
-
-                <div class="flex flex-wrap gap-1.5 justify-center">
-                  <UBadge v-if="form.anonymous" color="neutral" variant="subtle">Анонимно</UBadge>
-                  <UBadge v-if="form.useTimeLimit && form.timeLimit" color="neutral" variant="subtle">⏱ {{ form.timeLimit }}</UBadge>
-                  <UBadge v-if="form.limitAttempts" color="neutral" variant="subtle">Попыток: {{ form.attempts }}</UBadge>
-                  <UBadge v-if="form.usePassingScore && form.kind === 'test'" color="neutral" variant="subtle">Проходной: {{ form.passingScore }}%</UBadge>
-                  <UBadge color="neutral" variant="subtle">Вопросов: {{ form.questions.length }}</UBadge>
-                </div>
-
-                <UButton
-                  size="xl"
-                  class="mt-2"
-                  trailing-icon="i-lucide-arrow-right"
-                  :disabled="!form.questions.length"
-                  @click="startPreview"
-                >
-                  {{ ctaLabel }}
-                </UButton>
-                <p v-if="!form.questions.length" class="text-xs text-dimmed">Добавьте вопросы на шаге «Вопросы».</p>
-              </div>
-
-              <!-- Страница вопроса -->
-              <div v-else-if="currentPreviewQuestion" class="h-full flex flex-col px-10 py-6">
-                <div class="flex items-center justify-between gap-3 shrink-0">
-                  <p class="text-sm text-dimmed tabular-nums">Вопрос {{ previewPage }} из {{ form.questions.length }}</p>
-                  <div
-                    class="flex items-center gap-1.5 text-sm tabular-nums"
-                    :class="previewTimeLow ? 'text-error font-medium' : 'text-dimmed'"
-                  >
-                    <UIcon name="i-lucide-timer" class="size-4" />
-                    {{ previewTimerLabel }}
-                  </div>
-                </div>
-
-                <div class="flex-1 min-h-0 flex flex-col justify-center gap-5 overflow-hidden">
-                  <div class="flex flex-col gap-2">
-                    <h3 class="text-2xl font-medium text-highlighted">
-                      {{ currentPreviewQuestion.title || 'Без названия' }}
-                      <span v-if="currentPreviewQuestion.required" class="text-error">*</span>
-                    </h3>
-                    <p v-if="currentPreviewQuestion.hint" class="text-muted">{{ currentPreviewQuestion.hint }}</p>
-                  </div>
-
-                  <!-- Живая область ответа по типу -->
-                  <div class="w-full max-w-lg overflow-y-auto">
-                    <!-- Один из списка -->
-                    <URadioGroup
-                      v-if="currentPreviewQuestion.type === 'single'"
-                      v-model="previewAnswers[currentPreviewQuestion.id]"
-                      :items="optionItems(currentPreviewQuestion)"
-                      value-key="value"
-                      label-key="label"
-                      size="lg"
-                    />
-
-                    <!-- Несколько из списка -->
-                    <UCheckboxGroup
-                      v-else-if="currentPreviewQuestion.type === 'multiple'"
-                      v-model="(previewAnswers[currentPreviewQuestion.id] as string[])"
-                      :items="optionItems(currentPreviewQuestion)"
-                      value-key="value"
-                      label-key="label"
-                      size="lg"
-                    />
-
-                    <!-- Выпадающий список -->
-                    <USelect
-                      v-else-if="currentPreviewQuestion.type === 'dropdown'"
-                      v-model="previewAnswers[currentPreviewQuestion.id]"
-                      :items="optionItems(currentPreviewQuestion)"
-                      value-key="value"
-                      label-key="label"
-                      size="lg"
-                      class="w-full max-w-sm"
-                      placeholder="Выберите вариант"
-                    />
-
-                    <!-- Шкала -->
-                    <div v-else-if="currentPreviewQuestion.type === 'scale'" class="flex flex-col gap-2">
-                      <div class="flex flex-wrap gap-2">
-                        <button
-                          v-for="n in scaleNumbers(currentPreviewQuestion)"
-                          :key="n"
-                          type="button"
-                          class="size-10 rounded-lg ring-1 text-sm font-medium transition-colors"
-                          :class="previewAnswers[currentPreviewQuestion.id] === n ? 'bg-primary text-inverted ring-primary' : 'ring-default text-muted hover:bg-elevated'"
-                          @click="previewAnswers[currentPreviewQuestion.id] = n"
-                        >
-                          {{ n }}
-                        </button>
-                      </div>
-                      <div v-if="currentPreviewQuestion.scaleMinLabel || currentPreviewQuestion.scaleMaxLabel" class="flex justify-between text-xs text-dimmed">
-                        <span>{{ currentPreviewQuestion.scaleMinLabel }}</span>
-                        <span>{{ currentPreviewQuestion.scaleMaxLabel }}</span>
-                      </div>
-                    </div>
-
-                    <!-- Да / Нет -->
-                    <URadioGroup
-                      v-else-if="currentPreviewQuestion.type === 'yesno'"
-                      v-model="previewAnswers[currentPreviewQuestion.id]"
-                      :items="yesnoItems"
-                      value-key="value"
-                      label-key="label"
-                      orientation="horizontal"
-                      size="lg"
-                    />
-
-                    <!-- Короткий ответ -->
-                    <UInput v-else-if="currentPreviewQuestion.type === 'text'" v-model="previewAnswers[currentPreviewQuestion.id]" size="lg" class="w-full" placeholder="Короткий ответ" />
-                    <!-- Развёрнутый ответ -->
-                    <UTextarea v-else-if="currentPreviewQuestion.type === 'textarea'" v-model="previewAnswers[currentPreviewQuestion.id]" :rows="3" size="lg" class="w-full" placeholder="Развёрнутый ответ" />
-                    <!-- Число -->
-                    <UInput v-else-if="currentPreviewQuestion.type === 'number'" v-model="(previewAnswers[currentPreviewQuestion.id] as number)" type="number" size="lg" class="w-44" placeholder="0" />
-                    <!-- Дата -->
-                    <UInput v-else-if="currentPreviewQuestion.type === 'date'" v-model="previewAnswers[currentPreviewQuestion.id]" type="date" size="lg" class="w-52" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Пейджер окна (только на страницах вопросов; титульник не считается) -->
-            <div v-if="previewPage > 0" class="shrink-0 border-t border-default px-5 py-3 flex items-center justify-between gap-3">
-              <UButton color="neutral" variant="ghost" size="md" leading-icon="i-lucide-arrow-left" :disabled="previewPage <= 1" @click="previewPrev">Назад</UButton>
-              <span class="text-xs text-dimmed tabular-nums">{{ previewPage }} / {{ form.questions.length }}</span>
-              <UButton v-if="isLastPreviewPage" color="primary" size="md" :icon="form.kind === 'poll' ? 'i-lucide-vote' : 'i-lucide-check'" @click="finishOpen = true">{{ finishLabel }}</UButton>
-              <UButton v-else color="neutral" variant="ghost" size="md" trailing-icon="i-lucide-arrow-right" @click="previewNext">Далее</UButton>
-            </div>
-          </div>
-        </div>
-
-        <!-- Подтверждение завершения -->
-        <UModal v-model:open="finishOpen" :title="`${finishLabel}?`" description="">
-          <template #body>
-            <p class="text-default">
-              {{ form.kind === 'poll'
-                ? 'Вы уверены, что хотите отдать голос? После отправки изменить его будет нельзя.'
-                : 'Вы уверены, что хотите завершить и отправить ответы? После отправки изменить их будет нельзя.' }}
-            </p>
-          </template>
-          <template #footer>
-            <div class="flex justify-end gap-3 w-full">
-              <UButton color="neutral" variant="outline" @click="finishOpen = false">Отмена</UButton>
-              <UButton color="primary" :icon="form.kind === 'poll' ? 'i-lucide-vote' : 'i-lucide-check'" @click="confirmFinish">{{ finishLabel }}</UButton>
-            </div>
-          </template>
-        </UModal>
-
-        <!-- Сообщение после завершения -->
-        <UModal v-model:open="completionOpen" :title="form.kind === 'poll' ? 'Голос учтён' : 'Готово'" description="" :dismissible="false">
-          <template #body>
-            <div class="flex flex-col items-center text-center gap-3 py-2">
-              <div class="size-12 rounded-full bg-success/10 flex items-center justify-center">
-                <UIcon name="i-lucide-check" class="size-7 text-success" />
-              </div>
-              <p class="text-default whitespace-pre-line">{{ completionText }}</p>
-            </div>
-          </template>
-          <template #footer>
-            <div class="flex justify-end w-full">
-              <UButton color="primary" @click="closeCompletion">Закрыть</UButton>
-            </div>
-          </template>
-        </UModal>
+      <!-- ШАГ 3: Предпросмотр -->
+      <TestRunner v-if="step === 'preview'" :form="form" preview-hint class="h-full" @finish="onPreviewFinish" />
       </div>
 
-      </div>
       <!-- Навигация по шагам (неподвижный футер) -->
       <div class="shrink-0 flex justify-between items-center gap-3 pt-3 border-t border-default">
         <UButton v-if="stepIdx > 0" color="neutral" variant="outline" size="xl" leading-icon="i-lucide-arrow-left" @click="prevStep">
@@ -636,8 +394,10 @@ function publish() {
 
         <div class="flex gap-3">
           <template v-if="step === 'preview'">
-            <UButton color="neutral" variant="outline" size="xl" icon="i-lucide-save" @click="saveDraft">Сохранить черновик</UButton>
-            <UButton size="xl" icon="i-lucide-send" @click="publish">Опубликовать</UButton>
+            <UButton color="neutral" variant="outline" size="xl" icon="i-lucide-save" @click="onSaveDraft">
+              {{ editingId != null ? 'Обновить черновик' : 'Сохранить черновик' }}
+            </UButton>
+            <UButton size="xl" icon="i-lucide-send" @click="onPublish">Опубликовать</UButton>
           </template>
           <UButton v-else size="xl" trailing-icon="i-lucide-arrow-right" @click="nextStep">Дальше</UButton>
         </div>
@@ -645,13 +405,84 @@ function publish() {
     </div>
 
     <!-- Черновики -->
-    <div v-else-if="section === 'drafts'">
+    <div v-else-if="section === 'drafts'" class="flex-1 min-h-0 overflow-y-auto pt-0.5">
       <UEmpty
+        v-if="!store.drafts.value.length"
         icon="i-lucide-file-clock"
         title="Черновиков пока нет"
-        description="Сохранённые, но не опубликованные тесты появятся здесь."
+        description="Сохранённые, но не опубликованные формы появятся здесь."
         class="py-12"
       />
+
+      <div v-else class="flex flex-col gap-3">
+        <div
+          v-for="d in store.drafts.value"
+          :key="d.id ?? 0"
+          class="rounded-xl ring-1 ring-default p-4 flex flex-col md:flex-row md:items-center gap-3 bg-elevated/30"
+        >
+          <div class="flex-1 min-w-0 flex flex-col gap-1">
+            <div class="flex items-center gap-2 flex-wrap">
+              <UBadge color="neutral" variant="subtle" class="tabular-nums">#{{ d.id }}</UBadge>
+              <UBadge color="primary" variant="subtle">{{ kindLabel(d.kind) }}</UBadge>
+              <span class="font-medium text-highlighted truncate">{{ d.title || 'Без названия' }}</span>
+            </div>
+            <p class="text-xs text-muted">
+              Вопросов: {{ d.questions.length }}<span v-if="d.updatedAt"> · обновлён {{ fmtDate(d.updatedAt) }}</span>
+            </p>
+          </div>
+
+          <div class="flex items-center gap-2 shrink-0 flex-wrap">
+            <UButton color="neutral" variant="outline" size="sm" icon="i-lucide-pencil" @click="editDraft(d)">Редактировать</UButton>
+            <UButton color="neutral" variant="soft" size="sm" :icon="store.hasActiveSession(d) ? 'i-lucide-rotate-ccw' : 'i-lucide-play'" @click="openRun(d)">
+              {{ store.hasActiveSession(d) ? 'Продолжить' : 'Пройти' }}
+            </UButton>
+            <UButton color="primary" size="sm" icon="i-lucide-send" @click="publishDraft(d)">Опубликовать</UButton>
+            <UButton color="error" variant="ghost" size="sm" icon="i-lucide-trash-2" @click="askDeleteDraft(d)" />
+          </div>
+        </div>
+      </div>
     </div>
+
+    <!-- Прохождение черновика (без записи данных) -->
+    <UModal
+      v-model:open="runOpen"
+      fullscreen
+      :title="runForm?.title || 'Прохождение'"
+      :ui="{ content: 'flex flex-col', body: 'flex-1 min-h-0 p-4 sm:p-6' }"
+    >
+      <template #body>
+        <TestRunner v-if="runOpen && runForm" :form="runForm" persist-session class="h-full" @finish="onDraftRunFinish" />
+      </template>
+    </UModal>
+
+    <!-- Сообщение после завершения (после закрытия окна прохождения) -->
+    <UModal v-model:open="completionOpen" :title="completionForm?.kind === 'poll' ? 'Голос учтён' : 'Готово'" description="" :dismissible="false">
+      <template #body>
+        <div class="flex flex-col items-center text-center gap-3 py-2">
+          <div class="size-12 rounded-full bg-success/10 flex items-center justify-center">
+            <UIcon name="i-lucide-check" class="size-7 text-success" />
+          </div>
+          <p class="text-default whitespace-pre-line">{{ completionText }}</p>
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex justify-end w-full">
+          <UButton color="primary" @click="completionOpen = false">Закрыть</UButton>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Подтверждение удаления черновика -->
+    <UModal v-model:open="deleteOpen" title="Удалить черновик?" description="">
+      <template #body>
+        <p class="text-default">Удалить черновик #{{ deleteTarget?.id }} «{{ deleteTarget?.title || 'Без названия' }}»?</p>
+      </template>
+      <template #footer>
+        <div class="flex justify-end gap-3 w-full">
+          <UButton color="neutral" variant="outline" @click="deleteOpen = false">Отмена</UButton>
+          <UButton color="error" icon="i-lucide-trash-2" @click="confirmDeleteDraft">Удалить</UButton>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>

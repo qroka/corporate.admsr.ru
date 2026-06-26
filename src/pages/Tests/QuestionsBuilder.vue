@@ -296,10 +296,10 @@ function scaleNumbers(q: Question): number[] {
 
         <!-- Текст / число / дата -->
         <div v-else class="flex flex-col gap-1.5">
-          <UInput v-if="correctQ.type === 'number'" v-model.number="(correctDraft as number)" type="number" size="lg" class="w-44" placeholder="Правильное число" />
-          <UInput v-else-if="correctQ.type === 'date'" v-model="(correctDraft as string)" type="date" size="lg" class="w-52" />
-          <UTextarea v-else-if="correctQ.type === 'textarea'" v-model="(correctDraft as string)" :rows="3" size="lg" class="w-full" placeholder="Правильный ответ" />
-          <UInput v-else v-model="(correctDraft as string)" size="lg" class="w-full" placeholder="Правильный ответ" />
+          <UInput v-if="correctQ.type === 'number'" v-model.number="correctDraft" type="number" size="lg" class="w-44" placeholder="Правильное число" />
+          <UInput v-else-if="correctQ.type === 'date'" v-model="correctDraft" type="date" size="lg" class="w-52" />
+          <UTextarea v-else-if="correctQ.type === 'textarea'" v-model="correctDraft" :rows="3" size="lg" class="w-full" placeholder="Правильный ответ" />
+          <UInput v-else v-model="correctDraft" size="lg" class="w-full" placeholder="Правильный ответ" />
           <p class="text-xs text-dimmed">Сравнение с ответом сотрудника — без учёта регистра и крайних пробелов.</p>
         </div>
       </div>
