@@ -8,7 +8,7 @@ const props = withDefaults(defineProps<{ form: TestForm; previewHint?: boolean; 
   previewHint: false,
   persistSession: false,
 });
-const emit = defineEmits<{ (e: 'finish'): void }>();
+const emit = defineEmits<{ (e: 'finish', payload: { answers: Record<string, unknown>; durationSec: number }): void }>();
 
 const store = useTestsStore();
 
@@ -175,8 +175,9 @@ function finishNow() {
   stopTimer();
   finishOpen.value = false;
   unansweredOpen.value = false;
+  const durationSec = startTs.value ? Math.floor((Date.now() - startTs.value) / 1000) : 0;
   if (props.persistSession && props.form.id != null) store.clearSession(props.form.id);
-  emit('finish');
+  emit('finish', { answers: { ...answers }, durationSec });
   page.value = 0; // на случай повторного использования (предпросмотр)
   reviewActive.value = false;
 }

@@ -1,134 +1,130 @@
-import { ref, watch } from 'vue';
-import { cloneForm, type TestForm } from '../pages/Tests/testForm';
+import { ref } from 'vue';
+import { type TestForm } from '../pages/Tests/testForm';
 
-const STORAGE_KEY = 'tests-store-v1';
+// ── Текущий пользователь (из auth-user в localStorage) ───────────────────────
+function currentUserId(): number {
+  try {
+    const u = JSON.parse(localStorage.getItem('auth-user') || 'null');
+    const id = Number(u?.id ?? 0);
+    return Number.isFinite(id) && id > 0 ? id : 0;
+  } catch {
+    return 0;
+  }
+}
 
-// Сессия незавершённого прохождения (для «Продолжить»)
-export type TestSession = {
-  page: number;
-  answers: Record<string, unknown>;
-  startTs: number; // момент старта (мс)
-};
+async function api(path: string, body: Record<string, unknown>): Promise<any> {
+  const res = await fetch(`/api/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({ success: false, message: 'Некорректный ответ сервера' }));
+  if (!json.success) throw new Error(json.message || 'Ошибка запроса');
+  return json.data;
+}
 
+// ── Формы (с сервера) ─────────────────────────────────────────────────────────
 const drafts = ref<TestForm[]>([]);
 const published = ref<TestForm[]>([]);
-const sessions = ref<Record<number, TestSession>>({});
-let nextId = 1;
+const loading = ref(false);
 let loaded = false;
 
-function persist() {
+async function refresh(): Promise<void> {
+  loading.value = true;
   try {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ drafts: drafts.value, published: published.value, sessions: sessions.value, nextId }),
-    );
-  } catch {
-    /* localStorage недоступен — игнорируем */
+    const data = await api('tests_list.php', { userId: currentUserId() });
+    drafts.value = Array.isArray(data?.drafts) ? data.drafts : [];
+    published.value = Array.isArray(data?.published) ? data.published : [];
+  } finally {
+    loading.value = false;
   }
 }
-
-function load() {
+async function ensureLoaded(): Promise<void> {
   if (loaded) return;
   loaded = true;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const data = JSON.parse(raw);
-      drafts.value = Array.isArray(data.drafts) ? data.drafts : [];
-      published.value = Array.isArray(data.published) ? data.published : [];
-      sessions.value = data.sessions && typeof data.sessions === 'object' ? data.sessions : {};
-      nextId = typeof data.nextId === 'number' ? data.nextId : 1;
-    }
-  } catch {
-    /* битые данные — начинаем с нуля */
-  }
-  watch([drafts, published, sessions], persist, { deep: true });
+  try { await refresh(); } catch { /* покажем пусто */ }
 }
 
-const nowISO = () => new Date().toISOString();
+async function saveDraft(form: TestForm): Promise<TestForm> {
+  const saved = await api('tests_save.php', { userId: currentUserId(), form });
+  await refresh();
+  return saved;
+}
+async function updateDraft(id: number, form: TestForm): Promise<void> {
+  await api('tests_save.php', { userId: currentUserId(), form: { ...form, id } });
+  await refresh();
+}
+async function publish(form: TestForm, fromDraftId: number | null = null): Promise<TestForm> {
+  const payload = fromDraftId != null ? { ...form, id: fromDraftId } : form;
+  const r = await api('tests_publish.php', { userId: currentUserId(), form: payload });
+  await refresh();
+  return r;
+}
+async function removeDraft(id: number): Promise<void> {
+  await api('tests_delete.php', { userId: currentUserId(), formId: id });
+  clearSession(id);
+  await refresh();
+}
+async function unpublish(id: number): Promise<void> {
+  await api('tests_unpublish.php', { userId: currentUserId(), formId: id });
+  clearSession(id);
+  await refresh();
+}
+// mode: 'ofo' | 'users'. При needConfirm возвращает { needConfirm:true, already:number[] } без изменений.
+async function addDirections(id: number, mode: 'ofo' | 'users', ids: number[], force = false): Promise<any> {
+  const r = await api('tests_direct.php', { userId: currentUserId(), formId: id, mode, ids, force });
+  if (!r?.needConfirm) await refresh();
+  return r;
+}
+async function submitAttempt(formId: number, answers: Record<string, unknown>, durationSec: number): Promise<any> {
+  return api('tests_submit.php', { userId: currentUserId(), formId, answers, durationSec });
+}
+async function loadStats(formId: number): Promise<any> {
+  return api('tests_stats.php', { formId });
+}
 
+// ── Сессии прохождения (для «Продолжить») — клиентские, localStorage ─────────
+export type TestSession = { page: number; answers: Record<string, unknown>; startTs: number };
+const SESSIONS_KEY = 'tests-sessions-v1';
+const sessions = ref<Record<number, TestSession>>(loadSessions());
+
+function loadSessions(): Record<number, TestSession> {
+  try { return JSON.parse(localStorage.getItem(SESSIONS_KEY) || '{}') || {}; } catch { return {}; }
+}
+function persistSessions() {
+  try { localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions.value)); } catch { /* ignore */ }
+}
 function hmsToSeconds(v: string): number {
   const [h = 0, m = 0, s = 0] = v.split(':').map(Number);
   return h * 3600 + m * 60 + s;
 }
-
-function saveDraft(form: TestForm): TestForm {
-  const copy = cloneForm(form);
-  copy.id = nextId++;
-  copy.createdAt = nowISO();
-  copy.updatedAt = copy.createdAt;
-  drafts.value.push(copy);
-  persist();
-  return copy;
-}
-
-function updateDraft(id: number, form: TestForm): void {
-  const i = drafts.value.findIndex((d) => d.id === id);
-  if (i === -1) return;
-  const copy = cloneForm(form);
-  copy.id = id;
-  copy.createdAt = drafts.value[i].createdAt ?? nowISO();
-  copy.updatedAt = nowISO();
-  drafts.value[i] = copy;
-  clearSession(id); // вопросы могли измениться — старое прохождение неактуально
-  persist();
-}
-
-function removeDraft(id: number): void {
-  drafts.value = drafts.value.filter((d) => d.id !== id);
-  clearSession(id);
-  persist();
-}
-
-// Публикация из любого источника (новое создание / редактирование / список черновиков).
-// fromDraftId — если публикуем из черновика, он удаляется.
-function publish(form: TestForm, fromDraftId: number | null = null): TestForm {
-  const copy = cloneForm(form);
-  copy.id = nextId++;
-  copy.createdAt = nowISO();
-  copy.updatedAt = copy.createdAt;
-  published.value.push(copy);
-  if (fromDraftId != null) removeDraft(fromDraftId);
-  persist();
-  return copy;
-}
-
-// ── Сессии прохождения ────────────────────────────────────────────────────────
-function getSession(id: number): TestSession | undefined {
-  return sessions.value[id];
-}
-function saveSession(id: number, s: TestSession): void {
-  sessions.value[id] = s;
-  persist();
-}
-function clearSession(id: number): void {
-  if (sessions.value[id]) {
-    delete sessions.value[id];
-    persist();
-  }
-}
-// Есть ли незавершённое прохождение, которое можно продолжить (время ещё не вышло)
+function getSession(id: number): TestSession | undefined { return sessions.value[id]; }
+function saveSession(id: number, s: TestSession) { sessions.value[id] = s; persistSessions(); }
+function clearSession(id: number) { if (sessions.value[id]) { delete sessions.value[id]; persistSessions(); } }
 function hasActiveSession(form: TestForm): boolean {
   if (form.id == null) return false;
   const s = sessions.value[form.id];
   if (!s) return false;
-  if (form.useTimeLimit && form.timeLimit) {
-    const elapsed = (Date.now() - s.startTs) / 1000;
-    return elapsed < hmsToSeconds(form.timeLimit);
-  }
+  if (form.useTimeLimit && form.timeLimit) return (Date.now() - s.startTs) / 1000 < hmsToSeconds(form.timeLimit);
   return true;
 }
 
 export function useTestsStore() {
-  load();
   return {
     drafts,
     published,
+    loading,
     sessions,
+    ensureLoaded,
+    refresh,
     saveDraft,
     updateDraft,
-    removeDraft,
     publish,
+    removeDraft,
+    unpublish,
+    addDirections,
+    submitAttempt,
+    loadStats,
     getSession,
     saveSession,
     clearSession,

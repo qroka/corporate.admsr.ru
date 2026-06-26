@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useUsersData } from '../../composables/useUsersData';
 import { useAppToast } from '../../composables/useAppToast';
 import { useTestsStore } from '../../composables/useTestsStore';
@@ -13,6 +13,7 @@ import { createEmptyForm, cloneForm, type TestForm } from './testForm';
 const emit = defineEmits<{ (e: 'published'): void }>();
 const { toast } = useAppToast();
 const store = useTestsStore();
+onMounted(() => { store.ensureLoaded(); });
 
 // ── Разделы конструктора ──────────────────────────────────────────────────────
 const section = ref<'new' | 'drafts'>('new');
@@ -128,22 +129,30 @@ function resetForm() {
   editingId.value = null;
   step.value = 'settings';
 }
-function onSaveDraft() {
-  if (editingId.value != null) {
-    store.updateDraft(editingId.value, form);
-    toast.add({ title: 'Черновик обновлён', color: 'success', icon: 'i-lucide-check' });
-  } else {
-    store.saveDraft(form);
-    toast.add({ title: 'Черновик сохранён', description: 'Форма перенесена в «Черновики».', color: 'success', icon: 'i-lucide-file-check' });
+async function onSaveDraft() {
+  try {
+    if (editingId.value != null) {
+      await store.updateDraft(editingId.value, form);
+      toast.add({ title: 'Черновик обновлён', color: 'success', icon: 'i-lucide-check' });
+    } else {
+      await store.saveDraft(form);
+      toast.add({ title: 'Черновик сохранён', description: 'Форма перенесена в «Черновики».', color: 'success', icon: 'i-lucide-file-check' });
+    }
+    resetForm();
+    section.value = 'drafts';
+  } catch (e) {
+    toast.add({ title: 'Не удалось сохранить', description: String((e as Error).message || e), color: 'error', icon: 'i-lucide-x' });
   }
-  resetForm();
-  section.value = 'drafts';
 }
-function onPublish() {
-  store.publish(form, editingId.value);
-  toast.add({ title: 'Опубликовано', description: 'Форма доступна во вкладке «Список».', color: 'success', icon: 'i-lucide-send' });
-  resetForm();
-  emit('published');
+async function onPublish() {
+  try {
+    await store.publish(form, editingId.value);
+    toast.add({ title: 'Опубликовано', description: 'Форма доступна во вкладке «Список».', color: 'success', icon: 'i-lucide-send' });
+    resetForm();
+    emit('published');
+  } catch (e) {
+    toast.add({ title: 'Не удалось опубликовать', description: String((e as Error).message || e), color: 'error', icon: 'i-lucide-x' });
+  }
 }
 
 // ── Черновики: действия ───────────────────────────────────────────────────────
@@ -153,20 +162,28 @@ function editDraft(d: TestForm) {
   section.value = 'new';
   step.value = 'settings';
 }
-function publishDraft(d: TestForm) {
-  store.publish(d, d.id);
-  toast.add({ title: 'Опубликовано', description: 'Форма доступна во вкладке «Список».', color: 'success', icon: 'i-lucide-send' });
-  emit('published');
+async function publishDraft(d: TestForm) {
+  try {
+    await store.publish(d, d.id);
+    toast.add({ title: 'Опубликовано', description: 'Форма доступна во вкладке «Список».', color: 'success', icon: 'i-lucide-send' });
+    emit('published');
+  } catch (e) {
+    toast.add({ title: 'Не удалось опубликовать', description: String((e as Error).message || e), color: 'error', icon: 'i-lucide-x' });
+  }
 }
 
 // Удаление черновика
 const deleteOpen = ref(false);
 const deleteTarget = ref<TestForm | null>(null);
 function askDeleteDraft(d: TestForm) { deleteTarget.value = d; deleteOpen.value = true; }
-function confirmDeleteDraft() {
-  if (deleteTarget.value?.id != null) store.removeDraft(deleteTarget.value.id);
+async function confirmDeleteDraft() {
+  const id = deleteTarget.value?.id;
   deleteOpen.value = false;
   deleteTarget.value = null;
+  if (id != null) {
+    try { await store.removeDraft(id); }
+    catch (e) { toast.add({ title: 'Не удалось удалить', description: String((e as Error).message || e), color: 'error', icon: 'i-lucide-x' }); }
+  }
 }
 
 // Прохождение черновика
@@ -422,7 +439,8 @@ function fmtDate(iso?: string): string {
         >
           <div class="flex-1 min-w-0 flex flex-col gap-1">
             <div class="flex items-center gap-2 flex-wrap">
-              <UBadge color="neutral" variant="subtle" class="tabular-nums">#{{ d.id }}</UBadge>
+              <UBadge v-if="d.listId != null" color="neutral" variant="subtle" class="tabular-nums">#{{ d.listId }}</UBadge>
+              <UBadge v-else color="neutral" variant="outline">Черновик</UBadge>
               <UBadge color="primary" variant="subtle">{{ kindLabel(d.kind) }}</UBadge>
               <span class="font-medium text-highlighted truncate">{{ d.title || 'Без названия' }}</span>
             </div>

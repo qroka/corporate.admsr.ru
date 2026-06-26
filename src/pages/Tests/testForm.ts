@@ -40,6 +40,11 @@ export type TestForm = {
   endsAt: string;
   showResult: ShowResult;
   accessByLink: boolean;
+  // Публикация / владение
+  listId: number | null;      // последовательный id в «Списке» (выдаётся при первой публикации, закрепляется навсегда)
+  mine: boolean;              // создана текущим пользователем
+  directedOfo: number[];     // ОФО, куда направлена форма
+  directedUsers: number[];   // пользователи, кому направлена лично
   // Мета
   createdAt?: string;
   updatedAt?: string;
@@ -80,6 +85,10 @@ export function createEmptyForm(): TestForm {
     endsAt: '',
     showResult: 'after',
     accessByLink: false,
+    listId: null,
+    mine: true,
+    directedOfo: [],
+    directedUsers: [],
   };
 }
 
