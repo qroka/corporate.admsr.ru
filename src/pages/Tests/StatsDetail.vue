@@ -142,10 +142,14 @@ async function openParticipant(p: { id: number; name: string }) {
         <p v-if="stats.participants === null" class="text-sm text-muted">Анонимная форма — участники не отображаются.</p>
         <template v-else>
           <p class="text-xs text-dimmed">Прошли: {{ stats.participants.length }} · нажмите на участника, чтобы посмотреть ответы</p>
-          <div v-if="stats.participants.length" class="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
-            <UButton v-for="p in stats.participants" :key="p.id" color="neutral" variant="outline" size="xs" trailing-icon="i-lucide-eye" @click="openParticipant(p)">{{ p.name }}</UButton>
+          <div v-if="stats.participants.length" class="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto p-0.5">
+            <template v-for="p in stats.participants" :key="p.id">
+              <UButton v-if="!p.guest" color="neutral" variant="outline" size="xs" trailing-icon="i-lucide-eye" @click="openParticipant(p)">{{ p.name }}</UButton>
+              <UBadge v-else color="neutral" variant="subtle">{{ p.name }}</UBadge>
+            </template>
           </div>
           <p v-else class="text-sm text-muted">Пока никто не прошёл.</p>
+          <p v-if="stats.guestCompletions" class="text-xs text-dimmed">По ссылке (гости): {{ stats.guestCompletions }}</p>
         </template>
       </div>
 

@@ -17,7 +17,7 @@ export type QuestionStat = {
   avgNumber?: number;
 };
 export type OfoStat = { name: string; count: number; percent: number };
-export type Participant = { id: number; name: string };
+export type Participant = { id: number; name: string; guest?: boolean };
 export type FormStats = {
   completions: number;
   started: number;
@@ -29,6 +29,7 @@ export type FormStats = {
   hardest: { title: string; correctRate: number } | null;
   byOfo: OfoStat[];
   participants: Participant[] | null; // null = анонимно
+  guestCompletions?: number;
   questions: QuestionStat[];
 };
 

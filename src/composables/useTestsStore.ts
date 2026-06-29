@@ -90,8 +90,8 @@ async function loadParticipant(formId: number, participantId: number): Promise<a
   return api('tests_participant.php', { userId: currentUserId(), formId, participantId });
 }
 // ── Доступ по ссылке ──────────────────────────────────────────────────────────
-async function loadByToken(token: string): Promise<any> {
-  return api('tests_by_token.php', { token, userId: currentUserId() });
+async function loadByToken(token: string, respondentToken?: string): Promise<any> {
+  return api('tests_by_token.php', { token, userId: currentUserId(), respondentToken });
 }
 async function submitByToken(
   token: string,

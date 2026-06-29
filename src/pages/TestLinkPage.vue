@@ -34,7 +34,16 @@ function respondentToken(): string {
   return t;
 }
 
-const showRunner = computed(() => !!form.value && (isAuthed.value || guestStarted.value));
+// Лимит попыток: если ограничение не включено — одна попытка
+const alreadyDone = computed(() => {
+  const f = form.value;
+  if (!f) return false;
+  if (f.kind === 'poll' && f.allowRevote) return false;
+  const allowed = f.limitAttempts ? f.attempts : 1;
+  return (f.attemptsUsed ?? 0) >= allowed;
+});
+
+const showRunner = computed(() => !!form.value && !alreadyDone.value && (isAuthed.value || guestStarted.value));
 
 const completionOpen = ref(false);
 const completionText = computed(() => {
@@ -45,7 +54,7 @@ const completionText = computed(() => {
 
 async function load() {
   loading.value = true; error.value = '';
-  try { form.value = await store.loadByToken(token); }
+  try { form.value = await store.loadByToken(token, respondentToken()); }
   catch (e) { error.value = String((e as Error).message || e); }
   finally { loading.value = false; }
 }
@@ -90,6 +99,15 @@ function onFinish() { completionOpen.value = true; }
         <div class="flex flex-col items-center gap-3">
           <UIcon name="i-lucide-unlink" class="size-10 text-error" />
           <p class="text-error font-medium">{{ error }}</p>
+        </div>
+      </div>
+
+      <!-- Уже пройдено -->
+      <div v-else-if="form && alreadyDone" class="h-full grid place-items-center text-center">
+        <div class="flex flex-col items-center gap-3">
+          <UIcon name="i-lucide-check-circle-2" class="size-10 text-success" />
+          <p class="text-highlighted font-medium">Вы уже проходили эту форму</p>
+          <p class="text-sm text-muted">Повторное прохождение недоступно.</p>
         </div>
       </div>
 

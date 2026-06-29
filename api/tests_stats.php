@@ -41,12 +41,18 @@ $ofoNames = [];
 foreach ($pdo->query('SELECT id, name FROM public.ofo_unit')->fetchAll() as $u) $ofoNames[(int)$u['id']] = $u['name'];
 $byOfo = [];
 $oq = $pdo->prepare(
-    "SELECT u.ofo AS ofo, COUNT(*) AS c
-     FROM public.test_attempts a JOIN public.user_info u ON u.id = a.user_id
-     WHERE a.form_id = :f AND a.status = 'completed' AND a.user_id IS NOT NULL AND u.ofo ~ '^[0-9]+$'
-     GROUP BY u.ofo ORDER BY c DESC"
+    "SELECT ofo, COUNT(*) AS c FROM (
+       SELECT u.ofo::int AS ofo
+       FROM public.test_attempts a JOIN public.user_info u ON u.id = a.user_id
+       WHERE a.form_id = :f1 AND a.status = 'completed' AND a.user_id IS NOT NULL AND u.ofo ~ '^[0-9]+$'
+       UNION ALL
+       SELECT guest_ofo_id AS ofo
+       FROM public.test_attempts
+       WHERE form_id = :f2 AND status = 'completed' AND user_id IS NULL AND guest_ofo_id IS NOT NULL
+     ) t
+     GROUP BY ofo ORDER BY c DESC"
 );
-$oq->execute([':f' => $formId]);
+$oq->execute([':f1' => $formId, ':f2' => $formId]);
 foreach ($oq->fetchAll() as $r) {
     $byOfo[] = ['name' => $ofoNames[(int)$r['ofo']] ?? ('ОФО #' . $r['ofo']), 'count' => (int)$r['c'], 'percent' => $pct((int)$r['c'], $completions)];
 }
@@ -61,8 +67,25 @@ if (!$anonymous) {
          ORDER BY name"
     );
     $pq->execute([':f' => $formId]);
-    $participants = array_map(fn($r) => ['id' => (int)$r['id'], 'name' => $r['name'] ?: ('ID ' . $r['id'])], $pq->fetchAll());
+    $participants = array_map(fn($r) => ['id' => (int)$r['id'], 'name' => $r['name'] ?: ('ID ' . $r['id']), 'guest' => false], $pq->fetchAll());
+
+    // Гости (по ссылке) — по введённому ФИО, без клика
+    $gq = $pdo->prepare(
+        "SELECT guest_name FROM public.test_attempts
+         WHERE form_id = :f AND status = 'completed' AND user_id IS NULL AND guest_name IS NOT NULL
+         ORDER BY guest_name"
+    );
+    $gq->execute([':f' => $formId]);
+    $gi = 0;
+    foreach ($gq->fetchAll() as $g) {
+        $participants[] = ['id' => -(++$gi), 'name' => $g['guest_name'] . ' (гость)', 'guest' => true];
+    }
 }
+
+// Сколько прошло по ссылке как гости (без авторизации)
+$guestCompletions = (int)$pdo->query(
+    "SELECT COUNT(*) FROM public.test_attempts WHERE form_id = " . (int)$formId . " AND status = 'completed' AND user_id IS NULL AND via_link = true"
+)->fetchColumn(0);
 
 // ── По вопросам ───────────────────────────────────────────────────────────────
 $questions = [];
@@ -143,5 +166,6 @@ jsonOk([
     'hardest' => $hardest,
     'byOfo' => $byOfo,
     'participants' => $participants,
+    'guestCompletions' => $guestCompletions,
     'questions' => $questions,
 ]);
