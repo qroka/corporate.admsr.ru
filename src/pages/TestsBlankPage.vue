@@ -31,7 +31,10 @@ const tabItems = computed<TabsItem[]>(() => [
 ]);
 
 watch(isAdmin, (admin) => {
-  if (!admin && (tab.value === 'builder' || tab.value === 'stats')) tab.value = 'list';
+  if (!admin) {
+    if (tab.value === 'builder' || tab.value === 'stats') tab.value = 'list';
+    listSub.value = 'all'; // у обычного пользователя только «Все формы»
+  }
 });
 
 // При переходе на вкладку со списком — подтягиваем свежие данные из БД
@@ -46,7 +49,8 @@ const listSubItems = [
   { label: 'Мои формы', value: 'mine', icon: 'i-lucide-user' },
 ];
 const mineForms = computed(() => store.mine.value);
-const currentList = computed(() => (listSub.value === 'mine' ? mineForms.value : store.published.value));
+// Подвкладки — только у админа; обычный пользователь всегда видит «Все формы»
+const currentList = computed(() => (isAdmin.value && listSub.value === 'mine' ? mineForms.value : store.published.value));
 
 const kindLabel = (k: string) =>
   ({ test: 'Тест', survey: 'Опрос', poll: 'Голосование' } as Record<string, string>)[k] ?? k;
@@ -57,6 +61,14 @@ const runForm = ref<TestForm | null>(null);
 function openRun(f: TestForm) {
   runForm.value = cloneForm(f);
   runOpen.value = true;
+}
+function copyLink(f: TestForm) {
+  if (!f.accessToken) return;
+  const url = `${location.origin}/t/${f.accessToken}`;
+  navigator.clipboard?.writeText(url).then(
+    () => toast.add({ title: 'Ссылка скопирована', description: url, color: 'success', icon: 'i-lucide-link' }),
+    () => toast.add({ title: 'Ссылка формы', description: url, color: 'info', icon: 'i-lucide-link' }),
+  );
 }
 function attemptsAllowed(f: TestForm): number {
   if (f.kind === 'poll' && f.allowRevote) return Infinity;
@@ -170,7 +182,7 @@ function openStats(f: TestForm) {
     <section class="flex-1 min-h-0 flex flex-col">
       <!-- Список опубликованных -->
       <div v-if="tab === 'list'" class="flex-1 min-h-0 flex flex-col gap-3">
-        <UTabs v-model="listSub" :items="listSubItems" size="sm" class="w-fit" />
+        <UTabs v-if="isAdmin" v-model="listSub" :items="listSubItems" size="sm" class="w-fit" />
 
         <div class="flex-1 min-h-0 overflow-y-auto p-1">
           <UEmpty
@@ -191,6 +203,7 @@ function openStats(f: TestForm) {
                   <UBadge color="neutral" variant="subtle" class="tabular-nums">#{{ f.listId }}</UBadge>
                   <UBadge color="primary" variant="subtle">{{ kindLabel(f.kind) }}</UBadge>
                   <UBadge v-if="f.visibility === 'private'" color="warning" variant="subtle">Приватный</UBadge>
+                  <UBadge v-if="f.kind === 'survey'" :color="f.anonymous ? 'neutral' : 'warning'" variant="subtle">{{ f.anonymous ? 'Анонимный' : 'Не анонимный' }}</UBadge>
                   <span class="font-medium text-highlighted truncate">{{ f.title || 'Без названия' }}</span>
                 </div>
                 <p v-if="f.description" class="text-sm text-muted line-clamp-1">{{ f.description }}</p>
@@ -203,15 +216,19 @@ function openStats(f: TestForm) {
               </div>
 
               <div class="shrink-0 flex items-center gap-2 flex-wrap">
+                <!-- свою форму из «Мои формы» проходить нельзя — только через «Тесты для меня» -->
                 <UButton
+                  v-if="listSub === 'all'"
                   color="primary"
-                  :icon="store.hasActiveSession(f) ? 'i-lucide-rotate-ccw' : 'i-lucide-play'"
+                  :disabled="!canTake(f)"
+                  :icon="store.hasActiveSession(f) ? 'i-lucide-rotate-ccw' : (canTake(f) ? 'i-lucide-play' : 'i-lucide-check')"
                   @click="openRun(f)"
                 >
-                  {{ store.hasActiveSession(f) ? 'Продолжить' : 'Пройти' }}
+                  {{ store.hasActiveSession(f) ? 'Продолжить' : (canTake(f) ? 'Пройти' : 'Пройдено') }}
                 </UButton>
 
                 <template v-if="listSub === 'mine'">
+                  <UButton v-if="f.accessByLink && f.accessToken" color="neutral" variant="soft" icon="i-lucide-link" @click="copyLink(f)">Ссылка</UButton>
                   <UButton color="neutral" variant="soft" icon="i-lucide-share-2" @click="openDirect(f)">Направить</UButton>
                   <UButton color="warning" variant="outline" icon="i-lucide-archive" @click="unpublish(f)">Убрать</UButton>
                 </template>
@@ -239,6 +256,7 @@ function openStats(f: TestForm) {
               <div class="flex items-center gap-2 flex-wrap">
                 <UBadge color="neutral" variant="subtle" class="tabular-nums">#{{ f.listId }}</UBadge>
                 <UBadge color="primary" variant="subtle">{{ kindLabel(f.kind) }}</UBadge>
+                <UBadge v-if="f.kind === 'survey'" :color="f.anonymous ? 'neutral' : 'warning'" variant="subtle">{{ f.anonymous ? 'Анонимный' : 'Не анонимный' }}</UBadge>
                 <span class="font-medium text-highlighted truncate">{{ f.title || 'Без названия' }}</span>
               </div>
               <p v-if="f.description" class="text-sm text-muted line-clamp-1">{{ f.description }}</p>

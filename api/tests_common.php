@@ -135,6 +135,9 @@ function tf_assembleForm(PDO $pdo, array $row, int $viewerId): array {
         'endsAt' => $row['ends_at'] ?? '',
         'showResult' => $row['show_result'],
         'accessByLink' => tf_bool($row['access_by_link']),
+        'linkAccess' => $row['link_access'] ?? 'any',
+        // токен ссылки отдаём только владельцу (для кнопки «Ссылка»)
+        'accessToken' => ($viewerId > 0 && (int)$row['owner_id'] === $viewerId) ? $row['access_token'] : null,
         'ownerId' => $row['owner_id'] !== null ? (int)$row['owner_id'] : null,
         'mine' => $viewerId > 0 && (int)$row['owner_id'] === $viewerId,
         'ofoIds' => $initialOfo,
@@ -195,6 +198,7 @@ function tf_persistForm(PDO $pdo, array $data, int $viewerId): int {
         'ends_at' => !empty($data['endsAt']) ? $data['endsAt'] : null,
         'show_result' => $enum($data['showResult'] ?? 'after', ['immediate', 'after', 'never'], 'after'),
         'access_by_link' => $b('accessByLink'),
+        'link_access' => $enum($data['linkAccess'] ?? 'any', ['authorized', 'guest', 'any'], 'any'),
     ];
 
     $pdo->beginTransaction();

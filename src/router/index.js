@@ -26,9 +26,11 @@ import BirthdaysPage from '../pages/BirthdaysPage.vue';
 import LoginPage from '../pages/login.vue';
 import OnboardingPage from '../pages/OnboardingPage.vue';
 import ChatBotPage from '../pages/ChatBotPage.vue';
+import TestLinkPage from '../pages/TestLinkPage.vue';
 import { userNeedsOnboarding } from '../composables/useOnboarding';
 
 const routes = [
+  { path: '/t/:token', name: 'test-link', component: TestLinkPage, meta: { title: 'Прохождение', public: true } },
   { path: '/login', name: 'login', component: LoginPage, meta: { title: 'Вход', layout: 'auth' } },
   { path: '/welcome', name: 'onboarding', component: OnboardingPage, meta: { title: 'Добро пожаловать', layout: 'auth' } },
   { path: '/', name: 'home', component: HomePage, meta: { title: 'Главная' } },
@@ -149,6 +151,9 @@ function needsDbCheck() {
 }
 
 router.beforeEach(async (to, from, next) => {
+  // Публичные страницы (например, прохождение формы по ссылке) — без авторизации
+  if (to.meta?.public) return next();
+
   const toIsKiosk = to.matched?.some((r) => r.meta?.kiosk);
   const fromIsKiosk = from.matched?.some((r) => r.meta?.kiosk);
   const isAuth = to.meta?.layout === 'auth';

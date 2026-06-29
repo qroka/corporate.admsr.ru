@@ -40,19 +40,18 @@ $s = $pdo->prepare("SELECT * FROM public.test_forms WHERE status = 'published' A
 $s->execute([':u' => $viewer]);
 foreach ($s->fetchAll() as $row) $mine[] = tf_assembleForm($pdo, $row, $viewer);
 
-// Тесты для меня: направленные мне лично или в мой ОФО (и не мои)
+// Тесты для меня: направленные мне лично или в мой ОФО (включая собственные формы, если я в получателях/ОФО)
 $forMe = [];
 $s = $pdo->prepare(
     "SELECT f.* FROM public.test_forms f
      WHERE f.status = 'published'
-       AND f.owner_id IS DISTINCT FROM :u1
        AND (
-         EXISTS (SELECT 1 FROM public.test_audience_users au WHERE au.form_id = f.id AND au.user_id = :u2)
+         EXISTS (SELECT 1 FROM public.test_audience_users au WHERE au.form_id = f.id AND au.user_id = :u)
          OR EXISTS (SELECT 1 FROM public.test_audience_ofo ao WHERE ao.form_id = f.id AND ao.ofo_unit_id = :ofo)
        )
      ORDER BY f.list_no"
 );
-$s->execute([':u1' => $viewer, ':u2' => $viewer, ':ofo' => $myOfo]);
+$s->execute([':u' => $viewer, ':ofo' => $myOfo]);
 foreach ($s->fetchAll() as $row) $forMe[] = tf_assembleForm($pdo, $row, $viewer);
 
 jsonOk(['drafts' => $drafts, 'published' => $published, 'mine' => $mine, 'forMe' => $forMe]);

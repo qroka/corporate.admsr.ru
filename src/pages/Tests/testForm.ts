@@ -40,6 +40,8 @@ export type TestForm = {
   endsAt: string;
   showResult: ShowResult;
   accessByLink: boolean;
+  linkAccess: 'authorized' | 'guest' | 'any'; // режим доступа по ссылке
+  accessToken?: string | null;                // токен ссылки (только владельцу)
   // Публикация / владение
   listId: number | null;      // последовательный id в «Списке» (выдаётся при первой публикации, закрепляется навсегда)
   mine: boolean;              // создана текущим пользователем
@@ -86,6 +88,8 @@ export function createEmptyForm(): TestForm {
     endsAt: '',
     showResult: 'after',
     accessByLink: false,
+    linkAccess: 'any',
+    accessToken: null,
     listId: null,
     mine: true,
     directedOfo: [],

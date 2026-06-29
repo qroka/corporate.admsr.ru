@@ -89,6 +89,17 @@ async function loadStats(formId: number): Promise<any> {
 async function loadParticipant(formId: number, participantId: number): Promise<any> {
   return api('tests_participant.php', { userId: currentUserId(), formId, participantId });
 }
+// ── Доступ по ссылке ──────────────────────────────────────────────────────────
+async function loadByToken(token: string): Promise<any> {
+  return api('tests_by_token.php', { token, userId: currentUserId() });
+}
+async function submitByToken(
+  token: string,
+  payload: { answers: Record<string, unknown>; durationSec: number; guestName?: string; guestOfoId?: number; respondentToken?: string },
+): Promise<any> {
+  const uid = currentUserId();
+  return api('tests_submit.php', { token, ...(uid > 0 ? { userId: uid } : {}), ...payload });
+}
 
 // ── Сессии прохождения (для «Продолжить») — клиентские, localStorage ─────────
 export type TestSession = { page: number; answers: Record<string, unknown>; startTs: number };
@@ -135,6 +146,8 @@ export function useTestsStore() {
     submitAttempt,
     loadStats,
     loadParticipant,
+    loadByToken,
+    submitByToken,
     getSession,
     saveSession,
     clearSession,

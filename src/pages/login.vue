@@ -37,6 +37,12 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
 
     if (data.success) {
       localStorage.setItem('auth-user', JSON.stringify(data.user))
+      const redirect = localStorage.getItem('post-login-redirect')
+      if (redirect) {
+        localStorage.removeItem('post-login-redirect')
+        await router.push(redirect)
+        return
+      }
       const needsWelcome = await userNeedsOnboarding(data.user.id)
       await router.push(needsWelcome ? { name: 'onboarding' } : { name: 'home' })
     } else {

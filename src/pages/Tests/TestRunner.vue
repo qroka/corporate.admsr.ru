@@ -4,10 +4,17 @@ import { useTestsStore } from '../../composables/useTestsStore';
 import { type Question } from './questionTypes';
 import { type TestForm } from './testForm';
 
-const props = withDefaults(defineProps<{ form: TestForm; previewHint?: boolean; persistSession?: boolean; record?: boolean }>(), {
+const props = withDefaults(defineProps<{
+  form: TestForm;
+  previewHint?: boolean;
+  persistSession?: boolean;
+  record?: boolean;
+  submit?: (answers: Record<string, unknown>, durationSec: number) => Promise<unknown>;
+}>(), {
   previewHint: false,
   persistSession: false,
   record: false,
+  submit: undefined,
 });
 const emit = defineEmits<{ (e: 'finish', payload: { answers: Record<string, unknown>; durationSec: number }): void }>();
 
@@ -255,9 +262,10 @@ async function finalize() {
   if (props.persistSession && props.form.id != null) store.clearSession(props.form.id);
 
   let recorded = false;
-  if (props.record && props.form.id != null) {
-    try { await store.submitAttempt(props.form.id, { ...answers }, lastDuration); recorded = true; } catch { /* напр. лимит попыток */ }
-  }
+  try {
+    if (props.submit) { await props.submit({ ...answers }, lastDuration); recorded = true; }
+    else if (props.record && props.form.id != null) { await store.submitAttempt(props.form.id, { ...answers }, lastDuration); recorded = true; }
+  } catch { recorded = false; /* напр. лимит попыток */ }
 
   // Живые результаты голосования
   if (isPoll.value && props.form.liveResults && recorded) {

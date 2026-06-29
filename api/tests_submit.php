@@ -10,50 +10,83 @@ require __DIR__ . '/tests_common.php';
 
 $body = tf_body();
 $viewer = tf_viewer($body);
-$formId = (int)($body['formId'] ?? 0);
+$token = trim((string)($body['token'] ?? ''));
 $answers = $body['answers'] ?? [];
 $durationSec = isset($body['durationSec']) ? (int)$body['durationSec'] : null;
-if ($formId <= 0) jsonError(400, 'Не передан formId');
 if (!is_array($answers)) $answers = [];
 
-$st = $pdo->prepare('SELECT * FROM public.test_forms WHERE id = :id');
-$st->execute([':id' => $formId]);
-$form = $st->fetch();
-if (!$form) jsonError(404, 'Форма не найдена');
-if ($form['status'] !== 'published') jsonError(409, 'Форма не опубликована');
+$viaLink = false;
+$respondentToken = null;
+$guestName = null;
+$guestOfo = null;
+$userId = $viewer > 0 ? $viewer : null;
 
-// Доступ к приватной форме: создатель, либо адресат (лично / по ОФО)
-if ($form['visibility'] === 'private') {
-    $allowed = $viewer > 0 && (int)$form['owner_id'] === $viewer;
-    if (!$allowed && $viewer > 0) {
-        $c = $pdo->prepare('SELECT 1 FROM public.test_audience_users WHERE form_id = :f AND user_id = :u LIMIT 1');
-        $c->execute([':f' => $formId, ':u' => $viewer]);
-        if ($c->fetchColumn(0)) $allowed = true;
+if ($token !== '') {
+    // ── Прохождение по ссылке ──
+    $st = $pdo->prepare("SELECT * FROM public.test_forms WHERE access_token = :t AND status = 'published' AND access_by_link = true");
+    $st->execute([':t' => $token]);
+    $form = $st->fetch();
+    if (!$form) jsonError(404, 'Ссылка недействительна');
+    $formId = (int)$form['id'];
+    $viaLink = true;
+    $mode = $form['link_access'] ?? 'any';
+    if ($viewer > 0) {
+        $userId = $viewer; // авторизованный по ссылке — учитываем под аккаунтом
+    } else {
+        if ($mode === 'authorized') jsonError(403, 'Форма доступна только авторизованным — войдите в портал');
+        $userId = null; // гость
+        $respondentToken = isset($body['respondentToken']) ? substr((string)$body['respondentToken'], 0, 100) : null;
+        $guestName = trim((string)($body['guestName'] ?? ''));
+        $guestOfo = (int)($body['guestOfoId'] ?? 0);
+        if ($guestName === '') jsonError(400, 'Укажите ФИО');
+        $guestOfo = $guestOfo > 0 ? $guestOfo : null;
     }
-    if (!$allowed && $viewer > 0) {
-        $o = $pdo->prepare('SELECT ofo FROM public.user_info WHERE id = :u');
-        $o->execute([':u' => $viewer]);
-        $raw = $o->fetchColumn(0);
-        if ($raw !== false && preg_match('/^[0-9]+$/', (string)$raw)) {
-            $c = $pdo->prepare('SELECT 1 FROM public.test_audience_ofo WHERE form_id = :f AND ofo_unit_id = :o LIMIT 1');
-            $c->execute([':f' => $formId, ':o' => (int)$raw]);
+} else {
+    // ── Обычное прохождение из портала ──
+    $formId = (int)($body['formId'] ?? 0);
+    if ($formId <= 0) jsonError(400, 'Не передан formId');
+    $st = $pdo->prepare('SELECT * FROM public.test_forms WHERE id = :id');
+    $st->execute([':id' => $formId]);
+    $form = $st->fetch();
+    if (!$form) jsonError(404, 'Форма не найдена');
+    if ($form['status'] !== 'published') jsonError(409, 'Форма не опубликована');
+
+    // Доступ к приватной форме: создатель, либо адресат (лично / по ОФО)
+    if ($form['visibility'] === 'private') {
+        $allowed = $viewer > 0 && (int)$form['owner_id'] === $viewer;
+        if (!$allowed && $viewer > 0) {
+            $c = $pdo->prepare('SELECT 1 FROM public.test_audience_users WHERE form_id = :f AND user_id = :u LIMIT 1');
+            $c->execute([':f' => $formId, ':u' => $viewer]);
             if ($c->fetchColumn(0)) $allowed = true;
         }
+        if (!$allowed && $viewer > 0) {
+            $o = $pdo->prepare('SELECT ofo FROM public.user_info WHERE id = :u');
+            $o->execute([':u' => $viewer]);
+            $raw = $o->fetchColumn(0);
+            if ($raw !== false && preg_match('/^[0-9]+$/', (string)$raw)) {
+                $c = $pdo->prepare('SELECT 1 FROM public.test_audience_ofo WHERE form_id = :f AND ofo_unit_id = :o LIMIT 1');
+                $c->execute([':f' => $formId, ':o' => (int)$raw]);
+                if ($c->fetchColumn(0)) $allowed = true;
+            }
+        }
+        if (!$allowed) jsonError(403, 'Нет доступа к этой форме');
     }
-    if (!$allowed) jsonError(403, 'Нет доступа к этой форме');
 }
 
 $isTest = $form['kind'] === 'test';
-// Пользователя запоминаем всегда (для блокировки повтора), даже если форма анонимна —
-// в статистике личность скрывается, но повторно пройти нельзя.
-$userId = $viewer > 0 ? $viewer : null;
 
 // Лимит попыток (для голосования с «переголосовать» не ограничиваем)
-if ($viewer > 0 && !($form['kind'] === 'poll' && tf_bool($form['allow_revote']))) {
+if (!($form['kind'] === 'poll' && tf_bool($form['allow_revote']))) {
     $allowedAttempts = tf_bool($form['limit_attempts']) ? max(1, (int)$form['attempts']) : 1;
-    $cnt = $pdo->prepare("SELECT COUNT(*) FROM public.test_attempts WHERE form_id = :f AND user_id = :u AND status = 'completed'");
-    $cnt->execute([':f' => $formId, ':u' => $viewer]);
-    if ((int)$cnt->fetchColumn(0) >= $allowedAttempts) jsonError(409, 'Вы уже прошли эту форму допустимое число раз');
+    if ($userId !== null) {
+        $cnt = $pdo->prepare("SELECT COUNT(*) FROM public.test_attempts WHERE form_id = :f AND user_id = :u AND status = 'completed'");
+        $cnt->execute([':f' => $formId, ':u' => $userId]);
+        if ((int)$cnt->fetchColumn(0) >= $allowedAttempts) jsonError(409, 'Вы уже прошли эту форму допустимое число раз');
+    } elseif ($respondentToken) {
+        $cnt = $pdo->prepare("SELECT COUNT(*) FROM public.test_attempts WHERE form_id = :f AND respondent_token = :r AND status = 'completed'");
+        $cnt->execute([':f' => $formId, ':r' => $respondentToken]);
+        if ((int)$cnt->fetchColumn(0) >= $allowedAttempts) jsonError(409, 'С этого устройства форма уже пройдена');
+    }
 }
 
 // Вопросы + правильные ответы
@@ -67,13 +100,17 @@ $norm = fn($s) => mb_strtolower(trim((string)$s));
 $pdo->beginTransaction();
 try {
     $aIns = $pdo->prepare(
-        "INSERT INTO public.test_attempts (form_id, user_id, status, current_page, started_at, finished_at, duration_sec, ip, user_agent)
-         VALUES (:f, :u, 'completed', 0, now() - make_interval(secs => :dur::int), now(), :dur2, :ip, :ua) RETURNING id"
+        "INSERT INTO public.test_attempts
+           (form_id, user_id, status, current_page, started_at, finished_at, duration_sec, ip, user_agent, via_link, respondent_token, guest_name, guest_ofo_id)
+         VALUES
+           (:f, :u, 'completed', 0, now() - make_interval(secs => :dur::int), now(), :dur2, :ip, :ua, :vl, :rt, :gn, :go) RETURNING id"
     );
     $dur = $durationSec ?? 0;
     $aIns->execute([
         ':f' => $formId, ':u' => $userId, ':dur' => $dur, ':dur2' => $durationSec,
         ':ip' => $_SERVER['REMOTE_ADDR'] ?? null, ':ua' => $_SERVER['HTTP_USER_AGENT'] ?? null,
+        ':vl' => $viaLink ? 't' : 'f', ':rt' => $respondentToken,
+        ':gn' => ($guestName !== null && $guestName !== '') ? $guestName : null, ':go' => $guestOfo,
     ]);
     $attemptId = (int)$aIns->fetchColumn(0);
 

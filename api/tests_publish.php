@@ -14,14 +14,16 @@ if (!is_array($form)) jsonError(400, 'Не передана форма');
 
 try {
     $id = tf_persistForm($pdo, $form, $viewer);
+    $tok = bin2hex(random_bytes(16)); // на случай, если включён доступ по ссылке и токена ещё нет
     $pdo->prepare(
         "UPDATE public.test_forms
          SET status = 'published',
              published_at = COALESCE(published_at, now()),
              list_no = COALESCE(list_no, nextval('public.test_forms_list_no_seq')),
+             access_token = CASE WHEN access_by_link AND access_token IS NULL THEN :tok ELSE access_token END,
              updated_at = now()
          WHERE id = :id"
-    )->execute([':id' => $id]);
+    )->execute([':id' => $id, ':tok' => $tok]);
 } catch (RuntimeException $e) {
     jsonError(403, $e->getMessage());
 } catch (Throwable $e) {

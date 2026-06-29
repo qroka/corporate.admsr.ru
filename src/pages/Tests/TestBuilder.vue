@@ -40,6 +40,11 @@ const showResultItems = computed(() => [
   { label: 'После прохождения', value: 'after' },
   { label: 'Не показывать результат', value: 'never' },
 ]);
+const linkAccessItems = [
+  { label: 'Для всех', value: 'any' },
+  { label: 'Только авторизованные', value: 'authorized' },
+  { label: 'Только внешние (гости)', value: 'guest' },
+];
 const kindLabel = (k: string) => kindItems.find((i) => i.value === k)?.label ?? k;
 
 // ── Сотрудники (получатели приватного теста) ─────────────────────────────────
@@ -400,6 +405,8 @@ function fmtDate(iso?: string): string {
 
           <div class="flex flex-col gap-1.5 min-w-0 transition-colors" :class="suggestLink ? 'rounded-lg ring-1 ring-primary/50 bg-primary/5 p-2' : ''">
             <UCheckbox v-model="form.accessByLink" label="Доступ по ссылке" />
+            <USelect v-if="form.accessByLink" v-model="form.linkAccess" :items="linkAccessItems" size="md" class="w-full min-w-0" />
+            <p v-if="form.accessByLink" class="text-xs text-dimmed">Ссылку можно скопировать в «Мои формы».</p>
             <p v-if="suggestLink" class="text-xs text-primary">
               Приватный тест без выбранных получателей — включите доступ по ссылке, иначе его никто не откроет.
             </p>
