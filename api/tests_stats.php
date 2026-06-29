@@ -72,7 +72,7 @@ $qStmt->execute([':f' => $formId]);
 $answeredStmt = $pdo->prepare('SELECT COUNT(*) FROM public.test_answers WHERE question_id = :q AND answered = true');
 $rateStmt = $pdo->prepare("SELECT COUNT(*) FILTER (WHERE is_correct) c, COUNT(*) FILTER (WHERE is_correct IS NOT NULL) t FROM public.test_answers WHERE question_id = :q");
 $optAggStmt = $pdo->prepare(
-    'SELECT o.text, o.is_correct, COUNT(ao.answer_id) c
+    'SELECT o.id, o.text, o.is_correct, COUNT(ao.answer_id) c
      FROM public.test_options o LEFT JOIN public.test_answer_options ao ON ao.option_id = o.id
      WHERE o.question_id = :q GROUP BY o.id, o.text, o.is_correct, o.position ORDER BY o.position, o.id'
 );
@@ -95,7 +95,7 @@ foreach ($qStmt->fetchAll() as $q) {
     if (in_array($type, ['single', 'multiple', 'dropdown'], true)) {
         $optAggStmt->execute([':q' => $qid]); $options = [];
         foreach ($optAggStmt->fetchAll() as $o) {
-            $options[] = ['label' => $o['text'], 'count' => (int)$o['c'], 'percent' => $pct((int)$o['c'], $completions), 'correct' => tf_bool($o['is_correct'])];
+            $options[] = ['id' => (string)$o['id'], 'label' => $o['text'], 'count' => (int)$o['c'], 'percent' => $pct((int)$o['c'], $completions), 'correct' => tf_bool($o['is_correct'])];
         }
     } elseif ($type === 'yesno') {
         $ynStmt->execute([':q' => $qid]); $cnt = ['yes' => 0, 'no' => 0];

@@ -45,6 +45,7 @@ export type TestForm = {
   mine: boolean;              // создана текущим пользователем
   directedOfo: number[];     // ОФО, куда направлена форма
   directedUsers: number[];   // пользователи, кому направлена лично
+  attemptsUsed?: number;     // сколько раз текущий пользователь уже прошёл (с сервера)
   // Мета
   createdAt?: string;
   updatedAt?: string;

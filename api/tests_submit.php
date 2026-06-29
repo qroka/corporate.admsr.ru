@@ -20,10 +20,41 @@ $st = $pdo->prepare('SELECT * FROM public.test_forms WHERE id = :id');
 $st->execute([':id' => $formId]);
 $form = $st->fetch();
 if (!$form) jsonError(404, 'Форма не найдена');
+if ($form['status'] !== 'published') jsonError(409, 'Форма не опубликована');
+
+// Доступ к приватной форме: создатель, либо адресат (лично / по ОФО)
+if ($form['visibility'] === 'private') {
+    $allowed = $viewer > 0 && (int)$form['owner_id'] === $viewer;
+    if (!$allowed && $viewer > 0) {
+        $c = $pdo->prepare('SELECT 1 FROM public.test_audience_users WHERE form_id = :f AND user_id = :u LIMIT 1');
+        $c->execute([':f' => $formId, ':u' => $viewer]);
+        if ($c->fetchColumn(0)) $allowed = true;
+    }
+    if (!$allowed && $viewer > 0) {
+        $o = $pdo->prepare('SELECT ofo FROM public.user_info WHERE id = :u');
+        $o->execute([':u' => $viewer]);
+        $raw = $o->fetchColumn(0);
+        if ($raw !== false && preg_match('/^[0-9]+$/', (string)$raw)) {
+            $c = $pdo->prepare('SELECT 1 FROM public.test_audience_ofo WHERE form_id = :f AND ofo_unit_id = :o LIMIT 1');
+            $c->execute([':f' => $formId, ':o' => (int)$raw]);
+            if ($c->fetchColumn(0)) $allowed = true;
+        }
+    }
+    if (!$allowed) jsonError(403, 'Нет доступа к этой форме');
+}
 
 $isTest = $form['kind'] === 'test';
-$anonymous = tf_bool($form['anonymous']);
-$userId = (!$anonymous && $viewer > 0) ? $viewer : null;
+// Пользователя запоминаем всегда (для блокировки повтора), даже если форма анонимна —
+// в статистике личность скрывается, но повторно пройти нельзя.
+$userId = $viewer > 0 ? $viewer : null;
+
+// Лимит попыток (для голосования с «переголосовать» не ограничиваем)
+if ($viewer > 0 && !($form['kind'] === 'poll' && tf_bool($form['allow_revote']))) {
+    $allowedAttempts = tf_bool($form['limit_attempts']) ? max(1, (int)$form['attempts']) : 1;
+    $cnt = $pdo->prepare("SELECT COUNT(*) FROM public.test_attempts WHERE form_id = :f AND user_id = :u AND status = 'completed'");
+    $cnt->execute([':f' => $formId, ':u' => $viewer]);
+    if ((int)$cnt->fetchColumn(0) >= $allowedAttempts) jsonError(409, 'Вы уже прошли эту форму допустимое число раз');
+}
 
 // Вопросы + правильные ответы
 $qStmt = $pdo->prepare('SELECT id, type, correct_value FROM public.test_questions WHERE form_id = :f ORDER BY position, id');

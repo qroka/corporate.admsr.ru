@@ -95,6 +95,14 @@ function tf_assembleForm(PDO $pdo, array $row, int $viewerId): array {
     $a->execute([':f' => $fid]);
     foreach ($a->fetchAll() as $r) { $id = (int)$r['user_id']; if ($r['source'] === 'initial') $initialUsers[] = $id; else $directedUsers[] = $id; }
 
+    // Сколько раз текущий пользователь уже завершил эту форму
+    $attemptsUsed = 0;
+    if ($viewerId > 0) {
+        $c = $pdo->prepare("SELECT COUNT(*) FROM public.test_attempts WHERE form_id = :f AND user_id = :u AND status = 'completed'");
+        $c->execute([':f' => $fid, ':u' => $viewerId]);
+        $attemptsUsed = (int)$c->fetchColumn(0);
+    }
+
     return [
         'id' => $fid,
         'listId' => $row['list_no'] !== null ? (int)$row['list_no'] : null,
@@ -133,6 +141,7 @@ function tf_assembleForm(PDO $pdo, array $row, int $viewerId): array {
         'recipients' => $initialUsers,
         'directedOfo' => $directedOfo,
         'directedUsers' => $directedUsers,
+        'attemptsUsed' => $attemptsUsed,
         'questions' => $questions,
         'createdAt' => $row['created_at'],
         'updatedAt' => $row['updated_at'],

@@ -54,6 +54,24 @@ const byOfoItems = computed<ChartItem[]>(() => (stats.value?.byOfo ?? []).map((o
 function optionItems(opts: { label: string; count: number; percent: number; correct?: boolean }[]): ChartItem[] {
   return opts.map((o) => ({ label: (o.correct ? '✓ ' : '') + o.label, count: o.count, percent: o.percent }));
 }
+
+// Ответы конкретного участника (для создателя; только не-анонимные формы)
+const participantOpen = ref(false);
+const participantName = ref('');
+const participantData = ref<any>(null);
+const loadingP = ref(false);
+const errorP = ref('');
+async function openParticipant(p: { id: number; name: string }) {
+  if (props.form.id == null) return;
+  participantName.value = p.name;
+  participantData.value = null;
+  errorP.value = '';
+  participantOpen.value = true;
+  loadingP.value = true;
+  try { participantData.value = await store.loadParticipant(props.form.id, p.id); }
+  catch (e) { errorP.value = String((e as Error).message || e); }
+  finally { loadingP.value = false; }
+}
 </script>
 
 <template>
@@ -123,9 +141,9 @@ function optionItems(opts: { label: string; count: number; percent: number; corr
         <p class="text-sm font-medium text-highlighted">Участники</p>
         <p v-if="stats.participants === null" class="text-sm text-muted">Анонимная форма — участники не отображаются.</p>
         <template v-else>
-          <p class="text-xs text-dimmed">Прошли: {{ stats.participants.length }}</p>
+          <p class="text-xs text-dimmed">Прошли: {{ stats.participants.length }} · нажмите на участника, чтобы посмотреть ответы</p>
           <div v-if="stats.participants.length" class="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
-            <UBadge v-for="p in stats.participants" :key="p.id" color="neutral" variant="outline">{{ p.name }}</UBadge>
+            <UButton v-for="p in stats.participants" :key="p.id" color="neutral" variant="outline" size="xs" trailing-icon="i-lucide-eye" @click="openParticipant(p)">{{ p.name }}</UButton>
           </div>
           <p v-else class="text-sm text-muted">Пока никто не прошёл.</p>
         </template>
@@ -162,5 +180,36 @@ function optionItems(opts: { label: string; count: number; percent: number; corr
         </div>
       </div>
     </template>
+
+    <!-- Ответы участника -->
+    <UModal v-model:open="participantOpen" :title="`Ответы — ${participantName}`" description="" :ui="{ content: 'max-w-2xl' }">
+      <template #body>
+        <div class="max-h-[70vh] overflow-y-auto px-1 py-1 flex flex-col gap-3">
+          <div v-if="loadingP" class="py-8 text-center text-muted text-sm">Загрузка…</div>
+          <div v-else-if="errorP" class="py-8 text-center text-error text-sm">{{ errorP }}</div>
+          <template v-else-if="participantData">
+            <div class="flex items-center gap-2 flex-wrap">
+              <UBadge v-if="participantData.attempt.score != null" :color="participantData.attempt.passed === false ? 'error' : 'success'" variant="subtle" class="tabular-nums">{{ Math.round(participantData.attempt.score) }}%</UBadge>
+              <UBadge v-if="participantData.attempt.passed != null" :color="participantData.attempt.passed ? 'success' : 'error'" variant="subtle">{{ participantData.attempt.passed ? 'Тест пройден' : 'Не пройден' }}</UBadge>
+              <span v-if="participantData.attempt.durationSec != null" class="text-xs text-dimmed">время: {{ fmtDuration(participantData.attempt.durationSec) }}</span>
+            </div>
+            <div
+              v-for="(a, i) in participantData.answers"
+              :key="i"
+              class="rounded-xl ring-1 p-3 flex flex-col gap-1"
+              :class="a.isCorrect === false ? 'ring-red-500/40 bg-red-500/5' : (a.isCorrect === true ? 'ring-green-500/40 bg-green-500/5' : 'ring-default')"
+            >
+              <div class="flex items-center gap-2">
+                <UIcon v-if="a.isCorrect === true" name="i-lucide-check-circle-2" class="size-4 text-success shrink-0" />
+                <UIcon v-else-if="a.isCorrect === false" name="i-lucide-x-circle" class="size-4 text-error shrink-0" />
+                <span class="text-sm text-highlighted">{{ i + 1 }}. {{ a.title || 'Без названия' }}</span>
+              </div>
+              <p class="text-sm text-muted pl-6">Ответ: {{ a.userAnswer }}</p>
+              <p v-if="a.isCorrect === false && a.correctAnswer" class="text-sm text-success pl-6">Правильно: {{ a.correctAnswer }}</p>
+            </div>
+          </template>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>

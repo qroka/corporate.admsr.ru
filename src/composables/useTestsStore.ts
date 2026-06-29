@@ -25,7 +25,9 @@ async function api(path: string, body: Record<string, unknown>): Promise<any> {
 
 // ── Формы (с сервера) ─────────────────────────────────────────────────────────
 const drafts = ref<TestForm[]>([]);
-const published = ref<TestForm[]>([]);
+const published = ref<TestForm[]>([]); // «Все формы» — только публичные
+const mine = ref<TestForm[]>([]);      // «Мои формы» — опубликованные мной (вкл. приватные)
+const forMe = ref<TestForm[]>([]);
 const loading = ref(false);
 let loaded = false;
 
@@ -35,6 +37,8 @@ async function refresh(): Promise<void> {
     const data = await api('tests_list.php', { userId: currentUserId() });
     drafts.value = Array.isArray(data?.drafts) ? data.drafts : [];
     published.value = Array.isArray(data?.published) ? data.published : [];
+    mine.value = Array.isArray(data?.mine) ? data.mine : [];
+    forMe.value = Array.isArray(data?.forMe) ? data.forMe : [];
   } finally {
     loading.value = false;
   }
@@ -82,6 +86,9 @@ async function submitAttempt(formId: number, answers: Record<string, unknown>, d
 async function loadStats(formId: number): Promise<any> {
   return api('tests_stats.php', { formId });
 }
+async function loadParticipant(formId: number, participantId: number): Promise<any> {
+  return api('tests_participant.php', { userId: currentUserId(), formId, participantId });
+}
 
 // ── Сессии прохождения (для «Продолжить») — клиентские, localStorage ─────────
 export type TestSession = { page: number; answers: Record<string, unknown>; startTs: number };
@@ -113,6 +120,8 @@ export function useTestsStore() {
   return {
     drafts,
     published,
+    mine,
+    forMe,
     loading,
     sessions,
     ensureLoaded,
@@ -125,6 +134,7 @@ export function useTestsStore() {
     addDirections,
     submitAttempt,
     loadStats,
+    loadParticipant,
     getSession,
     saveSession,
     clearSession,

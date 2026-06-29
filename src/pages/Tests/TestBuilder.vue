@@ -36,7 +36,7 @@ const visibilityItems = [
   { label: 'Приватный', value: 'private' },
 ];
 const showResultItems = computed(() => [
-  { label: 'Сразу', value: 'immediate', disabled: form.allowChangeAnswer },
+  { label: 'Сразу', value: 'immediate', disabled: form.allowChangeAnswer || !form.showCorrectAnswers },
   { label: 'После прохождения', value: 'after' },
   { label: 'Не показывать результат', value: 'never' },
 ]);
@@ -105,9 +105,23 @@ function onToggleShowCorrect(value: boolean) {
   form.showCorrectAnswers = value;
 }
 
-// Подсветка «Доступ по ссылке»: приватный без получателей
+// «Разрешить изменять ответ» ↔ «Свободный переход между вопросами»
+watch(() => form.allowChangeAnswer, (v) => { if (v) form.freeNavigation = true; });
+watch(() => form.freeNavigation, (v) => { if (!v) form.allowChangeAnswer = false; });
+
+// Голосование: «Разрешить переголосовать» снимает ограничение времени
+watch(() => form.allowRevote, (v) => { if (v && form.kind === 'poll') form.useTimeLimit = false; });
+
+// «Сразу» доступно только при «Показывать правильные ответы»
+watch(() => form.showCorrectAnswers, (v) => { if (!v && form.showResult === 'immediate') form.showResult = 'after'; });
+
+// Подсветка «Доступ по ссылке»: приватный, у которого не выбраны ни получатели, ни ОФО
 const suggestLink = computed(
-  () => form.visibility === 'private' && form.recipients.length === 0 && !form.accessByLink,
+  () =>
+    form.visibility === 'private' &&
+    form.recipients.length === 0 &&
+    !(form.restrictByOfo && form.ofoIds.length > 0) &&
+    !form.accessByLink,
 );
 
 // ── Шаги мастера ──────────────────────────────────────────────────────────────
@@ -172,11 +186,14 @@ async function publishDraft(d: TestForm) {
   }
 }
 
-// Удаление черновика
+// Удаление черновика (с защитой от случайного удаления — ввод названия)
 const deleteOpen = ref(false);
 const deleteTarget = ref<TestForm | null>(null);
-function askDeleteDraft(d: TestForm) { deleteTarget.value = d; deleteOpen.value = true; }
+const deleteConfirmText = ref('');
+const deleteExpected = computed(() => (deleteTarget.value?.title?.trim() || 'Без названия'));
+function askDeleteDraft(d: TestForm) { deleteTarget.value = d; deleteConfirmText.value = ''; deleteOpen.value = true; }
 async function confirmDeleteDraft() {
+  if (deleteConfirmText.value.trim() !== deleteExpected.value) return;
   const id = deleteTarget.value?.id;
   deleteOpen.value = false;
   deleteTarget.value = null;
@@ -304,10 +321,10 @@ function fmtDate(iso?: string): string {
           <div class="flex flex-col gap-2">
             <h4 class="text-sm font-medium text-highlighted">Параметры</h4>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 items-start">
-              <UCheckbox v-model="form.shuffle" label="Перемешивать вопросы" />
-              <UCheckbox v-model="form.shuffleOptions" label="Перемешивать варианты ответов" />
-              <UCheckbox v-model="form.showProgress" label="Показывать прогресс-бар" />
-              <UCheckbox v-model="form.freeNavigation" label="Свободный переход между вопросами" />
+              <UCheckbox v-if="form.kind !== 'poll'" v-model="form.shuffle" label="Перемешивать вопросы" />
+              <UCheckbox v-model="form.shuffleOptions" :label="form.kind === 'poll' ? 'Перемешивать кандидатов' : 'Перемешивать варианты ответов'" />
+              <UCheckbox v-if="form.kind !== 'poll'" v-model="form.showProgress" label="Показывать прогресс-бар" />
+              <UCheckbox v-if="form.kind !== 'poll'" v-model="form.freeNavigation" label="Свободный переход между вопросами" />
               <UCheckbox v-model="form.anonymous" :disabled="anonymousLocked" label="Анонимные ответы" />
               <UCheckbox
                 v-if="form.kind === 'test'"
@@ -339,10 +356,11 @@ function fmtDate(iso?: string): string {
 
           <div class="flex flex-col gap-2 min-w-0">
             <div class="flex items-center justify-between gap-2">
-              <UCheckbox v-model="form.useTimeLimit" label="Время для прохождения" />
+              <UCheckbox v-model="form.useTimeLimit" :disabled="form.kind === 'poll' && form.allowRevote" label="Время для прохождения" />
               <span class="text-xs text-dimmed">чч:мм:сс</span>
             </div>
             <UInput v-model="form.timeLimit" type="time" :step="1" size="lg" class="w-full min-w-0 transition-opacity" :class="form.useTimeLimit ? '' : 'opacity-50'" :disabled="!form.useTimeLimit" />
+            <p v-if="form.kind === 'poll' && form.allowRevote" class="text-xs text-dimmed">Недоступно при «переголосовать до закрытия».</p>
           </div>
 
           <div v-if="form.kind !== 'poll'" class="flex flex-col gap-2 min-w-0">
@@ -389,6 +407,7 @@ function fmtDate(iso?: string): string {
 
           <UFormField v-if="form.kind === 'test'" label="Показать результат" name="showResult">
             <USelect v-model="form.showResult" :items="showResultItems" size="lg" class="w-full min-w-0" />
+            <template v-if="!form.showCorrectAnswers" #hint><span class="text-xs text-dimmed">«Сразу» — при «Показывать правильные ответы»</span></template>
           </UFormField>
         </div>
       </div>
@@ -422,7 +441,7 @@ function fmtDate(iso?: string): string {
     </div>
 
     <!-- Черновики -->
-    <div v-else-if="section === 'drafts'" class="flex-1 min-h-0 overflow-y-auto pt-0.5">
+    <div v-else-if="section === 'drafts'" class="flex-1 min-h-0 overflow-y-auto p-1">
       <UEmpty
         v-if="!store.drafts.value.length"
         icon="i-lucide-file-clock"
@@ -490,15 +509,19 @@ function fmtDate(iso?: string): string {
       </template>
     </UModal>
 
-    <!-- Подтверждение удаления черновика -->
+    <!-- Подтверждение удаления черновика (с вводом названия) -->
     <UModal v-model:open="deleteOpen" title="Удалить черновик?" description="">
       <template #body>
-        <p class="text-default">Удалить черновик #{{ deleteTarget?.id }} «{{ deleteTarget?.title || 'Без названия' }}»?</p>
+        <div class="flex flex-col gap-3">
+          <p class="text-default">Действие необратимо. Чтобы удалить, введите название формы:</p>
+          <p class="text-sm font-medium text-highlighted">«{{ deleteExpected }}»</p>
+          <UInput v-model="deleteConfirmText" size="lg" class="w-full" placeholder="Введите название формы" @keyup.enter="confirmDeleteDraft" />
+        </div>
       </template>
       <template #footer>
         <div class="flex justify-end gap-3 w-full">
           <UButton color="neutral" variant="outline" @click="deleteOpen = false">Отмена</UButton>
-          <UButton color="error" icon="i-lucide-trash-2" @click="confirmDeleteDraft">Удалить</UButton>
+          <UButton color="error" icon="i-lucide-trash-2" :disabled="deleteConfirmText.trim() !== deleteExpected" @click="confirmDeleteDraft">Удалить</UButton>
         </div>
       </template>
     </UModal>

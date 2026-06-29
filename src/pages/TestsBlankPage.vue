@@ -34,13 +34,18 @@ watch(isAdmin, (admin) => {
   if (!admin && (tab.value === 'builder' || tab.value === 'stats')) tab.value = 'list';
 });
 
+// При переходе на вкладку со списком — подтягиваем свежие данные из БД
+watch(tab, (t) => {
+  if (t === 'list' || t === 'forme' || t === 'stats') store.refresh().catch(() => {});
+});
+
 // Подвкладки списка
 const listSub = ref<'all' | 'mine'>('all');
 const listSubItems = [
   { label: 'Все формы', value: 'all', icon: 'i-lucide-list' },
   { label: 'Мои формы', value: 'mine', icon: 'i-lucide-user' },
 ];
-const mineForms = computed(() => store.published.value.filter((f) => f.mine));
+const mineForms = computed(() => store.mine.value);
 const currentList = computed(() => (listSub.value === 'mine' ? mineForms.value : store.published.value));
 
 const kindLabel = (k: string) =>
@@ -53,6 +58,13 @@ function openRun(f: TestForm) {
   runForm.value = cloneForm(f);
   runOpen.value = true;
 }
+function attemptsAllowed(f: TestForm): number {
+  if (f.kind === 'poll' && f.allowRevote) return Infinity;
+  return f.limitAttempts ? f.attempts : 1;
+}
+function canTake(f: TestForm): boolean {
+  return store.hasActiveSession(f) || (f.attemptsUsed ?? 0) < attemptsAllowed(f);
+}
 
 const completionOpen = ref(false);
 const completionForm = ref<TestForm | null>(null);
@@ -61,16 +73,12 @@ const completionText = computed(() => {
   if (!f) return '';
   return f.completionMessage.trim() || (f.kind === 'poll' ? 'Спасибо! Ваш голос учтён.' : 'Спасибо за прохождение!');
 });
-async function onRunFinish(payload: { answers: Record<string, unknown>; durationSec: number }) {
-  const f = runForm.value;
-  completionForm.value = f;
+function onRunFinish() {
+  // запись прохождения делает сам TestRunner (record); здесь — благодарность + обновление списков
+  completionForm.value = runForm.value;
   runOpen.value = false;
   completionOpen.value = true;
-  // запись прохождения опубликованной формы
-  if (f?.id != null && payload) {
-    try { await store.submitAttempt(f.id, payload.answers, payload.durationSec); }
-    catch { /* прохождение не записалось — тихо */ }
-  }
+  store.refresh().catch(() => {});
 }
 
 // ── Снятие с публикации ───────────────────────────────────────────────────────
@@ -164,7 +172,7 @@ function openStats(f: TestForm) {
       <div v-if="tab === 'list'" class="flex-1 min-h-0 flex flex-col gap-3">
         <UTabs v-model="listSub" :items="listSubItems" size="sm" class="w-fit" />
 
-        <div class="flex-1 min-h-0 overflow-y-auto">
+        <div class="flex-1 min-h-0 overflow-y-auto p-1">
           <UEmpty
             v-if="!currentList.length"
             :icon="listSub === 'mine' ? 'i-lucide-user' : 'i-lucide-list'"
@@ -213,25 +221,58 @@ function openStats(f: TestForm) {
         </div>
       </div>
 
-      <div v-else-if="tab === 'forme'" class="flex-1 min-h-0 overflow-y-auto">
-        <!-- Тесты для меня -->
+      <div v-else-if="tab === 'forme'" class="flex-1 min-h-0 overflow-y-auto p-1">
+        <UEmpty
+          v-if="!store.forMe.value.length"
+          icon="i-lucide-clipboard-check"
+          title="Вам пока ничего не направлено"
+          description="Здесь появятся формы, которые направили лично вам или в ваш ОФО."
+          class="py-12"
+        />
+        <div v-else class="flex flex-col gap-3">
+          <div
+            v-for="f in store.forMe.value"
+            :key="f.id ?? 0"
+            class="rounded-xl ring-1 ring-default p-4 flex flex-col md:flex-row md:items-center gap-3 bg-elevated/30"
+          >
+            <div class="flex-1 min-w-0 flex flex-col gap-1">
+              <div class="flex items-center gap-2 flex-wrap">
+                <UBadge color="neutral" variant="subtle" class="tabular-nums">#{{ f.listId }}</UBadge>
+                <UBadge color="primary" variant="subtle">{{ kindLabel(f.kind) }}</UBadge>
+                <span class="font-medium text-highlighted truncate">{{ f.title || 'Без названия' }}</span>
+              </div>
+              <p v-if="f.description" class="text-sm text-muted line-clamp-1">{{ f.description }}</p>
+              <p class="text-xs text-dimmed">Вопросов: {{ f.questions.length }}</p>
+            </div>
+            <div class="shrink-0">
+              <UButton
+                color="primary"
+                :disabled="!canTake(f)"
+                :icon="store.hasActiveSession(f) ? 'i-lucide-rotate-ccw' : (canTake(f) ? 'i-lucide-play' : 'i-lucide-check')"
+                @click="openRun(f)"
+              >
+                {{ store.hasActiveSession(f) ? 'Продолжить' : (canTake(f) ? 'Пройти' : 'Пройдено') }}
+              </UButton>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div v-else-if="tab === 'builder' && isAdmin" class="flex-1 min-h-0 flex">
         <TestBuilder @published="tab = 'list'" />
       </div>
 
-      <div v-else-if="tab === 'stats' && isAdmin" class="flex-1 min-h-0 overflow-y-auto">
+      <div v-else-if="tab === 'stats' && isAdmin" class="flex-1 min-h-0 overflow-y-auto p-1">
         <UEmpty
-          v-if="!store.published.value.length"
+          v-if="!mineForms.length"
           icon="i-lucide-bar-chart-3"
           title="Пока нет опубликованных форм"
-          description="Статистика появляется по опубликованным формам."
+          description="Статистика появляется по опубликованным вами формам."
           class="py-12"
         />
         <div v-else class="flex flex-col gap-3">
           <div
-            v-for="f in store.published.value"
+            v-for="f in mineForms"
             :key="f.id ?? 0"
             class="rounded-xl ring-1 ring-default p-4 flex flex-col md:flex-row md:items-center gap-3 bg-elevated/30"
           >
@@ -260,7 +301,7 @@ function openStats(f: TestForm) {
       :ui="{ content: 'flex flex-col', body: 'flex-1 min-h-0 p-4 sm:p-6' }"
     >
       <template #body>
-        <TestRunner v-if="runOpen && runForm" :form="runForm" persist-session class="h-full" @finish="onRunFinish" />
+        <TestRunner v-if="runOpen && runForm" :form="runForm" persist-session record class="h-full" @finish="onRunFinish" />
       </template>
     </UModal>
 
@@ -335,7 +376,7 @@ function openStats(f: TestForm) {
       :ui="{ content: 'max-w-3xl' }"
     >
       <template #body>
-        <div class="max-h-[72vh] overflow-y-auto pr-1">
+        <div class="max-h-[72vh] overflow-y-auto p-1">
           <StatsDetail v-if="statsOpen && statsForm" :form="statsForm" />
         </div>
       </template>
