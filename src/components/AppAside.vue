@@ -1,10 +1,9 @@
 <script setup>
 import { onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { currentRole, setRole } from '../stores/role';
+import { currentRole } from '../stores/role';
 import { attachAbsenceStorageSync, hasActiveAbsence } from '../stores/absenceJournal';
 import { clearAuthStorage } from '../composables/useAuthSession';
-import { useHeaderUser } from '../composables/useHeaderUser';
 
 defineProps({
   isDark: {
@@ -16,26 +15,9 @@ defineProps({
 const emit = defineEmits(['toggle-theme']);
 const route = useRoute();
 const router = useRouter();
-const { canToggleAdminRole } = useHeaderUser();
 
 function navigate(name) {
   router.push({ name });
-}
-
-/** В режиме администратора — конструктор курсов, иначе «Мои курсы». */
-function openCourses() {
-  if (currentRole.value === 'admin') {
-    navigate('admin-courses');
-    return;
-  }
-  navigate('courses');
-}
-
-/** Включить админ-режим UI и открыть управление курсами. */
-async function openAdminCourses() {
-  if (canToggleAdminRole.value) setRole('admin');
-  await Promise.resolve();
-  navigate('admin-courses');
 }
 
 const isNewsActive = () =>
@@ -44,9 +26,6 @@ const isNewsActive = () =>
 const isCoursesActive = () =>
   typeof route.name === 'string'
   && (route.name === 'courses' || route.name.startsWith('course-') || route.name.startsWith('admin-course'));
-
-const isAdminCoursesActive = () =>
-  typeof route.name === 'string' && route.name.startsWith('admin-course');
 
 async function logout() {
   try {
@@ -190,11 +169,7 @@ onMounted(() => {
           />
         </UTooltip>
 
-        <UTooltip
-          arrow
-          :content="{side: 'right'}"
-          :text="currentRole === 'admin' ? 'Управление курсами' : 'Мои курсы'"
-        >
+        <UTooltip arrow :content="{side: 'right'}" text="Мои курсы">
           <UButton
             type="button"
             color="neutral"
@@ -205,8 +180,8 @@ onMounted(() => {
               : ''"
             size="xl"
             icon="i-lucide-graduation-cap"
-            aria-label="Курсы"
-            @click="openCourses"
+            aria-label="Мои курсы"
+            @click="navigate('courses')"
           />
         </UTooltip>
       </UContainer>
@@ -288,27 +263,6 @@ onMounted(() => {
             : ''"
           icon="i-lucide-layout-dashboard"
           @click="navigate('admin')"
-        />
-      </UTooltip>
-
-      <UTooltip
-        v-if="canToggleAdminRole || currentRole === 'admin'"
-        arrow
-        :content="{side: 'right'}"
-        text="Управление курсами"
-      >
-        <UButton
-          type="button"
-          color="neutral"
-          square
-          size="xl"
-          class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
-          :class="isAdminCoursesActive()
-            ? 'z-10 bg-primary text-neutral-50 shadow-none dark:shadow-brand [&_svg]:text-neutral-50 hover:bg-primary hover:text-neutral-50 active:bg-primary active:text-neutral-50 active:[&_svg]:text-neutral-50'
-            : ''"
-          icon="i-lucide-library-big"
-          aria-label="Управление курсами"
-          @click="openAdminCourses"
         />
       </UTooltip>
 

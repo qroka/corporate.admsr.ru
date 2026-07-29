@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { BreadcrumbItem } from '@nuxt/ui';
@@ -24,7 +24,7 @@ const readiness = computed(() => course.value?.readiness);
 const isDraft = computed(() => version.value?.status === 'draft');
 
 const crumbs = computed<BreadcrumbItem[]>(() => [
-  { label: 'Курсы', to: { name: 'admin-courses' } },
+  { label: 'Курсы', to: { name: 'courses', query: { tab: 'manage' } } },
   { label: course.value?.title || 'Курс' },
 ]);
 

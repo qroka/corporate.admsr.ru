@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import type { BreadcrumbItem } from '@nuxt/ui';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
+import { currentRole } from '../../../stores/role';
 import CourseStatusBadge from '../components/CourseStatusBadge.vue';
 
+const router = useRouter();
 const store = useCoursesStore();
 const { toast } = useAppToast();
 const loading = ref(true);
@@ -15,7 +18,16 @@ const crumbs: BreadcrumbItem[] = [
   { label: 'История' },
 ];
 
+watch(
+  currentRole,
+  (role) => {
+    if (role !== 'admin') router.replace({ name: 'courses' });
+  },
+  { immediate: true },
+);
+
 onMounted(async () => {
+  if (currentRole.value !== 'admin') return;
   try {
     const data = (await store.loadHistory()) as any;
     items.value = Array.isArray(data) ? data : data?.items || data?.history || data?.completed || [];

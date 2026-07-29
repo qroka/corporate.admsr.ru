@@ -1043,10 +1043,11 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
         <div class="flex flex-wrap items-center justify-between gap-3">
           <p class="text-sm text-dimmed">Пользователи, ОФО и служебные настройки</p>
           <UButton
+            v-if="isAdmin"
             color="primary"
             icon="i-lucide-graduation-cap"
             size="lg"
-            :to="{ name: 'admin-courses' }"
+            :to="{ name: 'courses', query: { tab: 'manage' } }"
           >
             Управление курсами
           </UButton>

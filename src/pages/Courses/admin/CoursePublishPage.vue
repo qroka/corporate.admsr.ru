@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { BreadcrumbItem } from '@nuxt/ui';
@@ -16,7 +16,7 @@ const confirmChecked = ref(false);
 const report = ref<{ ready: boolean; errors: string[]; warnings: string[] } | null>(null);
 
 const crumbs = computed<BreadcrumbItem[]>(() => [
-  { label: 'Курсы', to: { name: 'admin-courses' } },
+  { label: 'Курсы', to: { name: 'courses', query: { tab: 'manage' } } },
   { label: store.current.value?.title || 'Курс', to: { name: 'admin-course-workspace', params: { courseId: courseId.value } } },
   { label: 'Публикация' },
 ]);

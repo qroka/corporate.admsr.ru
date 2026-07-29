@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import type { BreadcrumbItem } from '@nuxt/ui';
@@ -19,7 +19,7 @@ const form = reactive({
 });
 
 const crumbs: BreadcrumbItem[] = [
-  { label: 'Курсы', to: { name: 'admin-courses' } },
+  { label: 'Курсы', to: { name: 'courses', query: { tab: 'manage' } } },
   { label: 'Новый курс' },
 ];
 
@@ -79,7 +79,7 @@ async function onSave() {
         <UButton color="primary" size="lg" :loading="saving" icon="i-lucide-check" @click="onSave">
           Создать и открыть
         </UButton>
-        <UButton color="neutral" variant="ghost" size="lg" :to="{ name: 'admin-courses' }">
+        <UButton color="neutral" variant="ghost" size="lg" :to="{ name: 'courses', query: { tab: 'manage' } }">
           Отмена
         </UButton>
       </div>
