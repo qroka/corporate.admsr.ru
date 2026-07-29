@@ -8,6 +8,7 @@ import { useNewsReactions } from '../composables/useNewsReactions';
 import { useBirthdayColleagues } from '../composables/useBirthdayColleagues';
 import { attachAbsenceStorageSync, hasActiveAbsence } from '../stores/absenceJournal';
 import { currentRole } from '../stores/role';
+import LearningHomeWidget from './Courses/components/LearningHomeWidget.vue';
 
 const eventsLinks = <ButtonProps[]>([
   {
@@ -385,6 +386,7 @@ watch(birthdayFile, async (val) => {
       </UScrollArea>
     </UContainer>
     <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-96 shrink-0">
+      <LearningHomeWidget v-if="!isAdmin" class="shrink-0" />
       <UPageHeader title="" :links="birthdayLinks" class="border-none p-0">
         <template #title>
           <h1 class="text-2xl font-medium">Дни рождения коллег</h1>

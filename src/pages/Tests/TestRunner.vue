@@ -9,11 +9,14 @@ const props = withDefaults(defineProps<{
   previewHint?: boolean;
   persistSession?: boolean;
   record?: boolean;
+  /** Восстановление ответов (например, из course attemptGet) */
+  initialAnswers?: Record<string, unknown> | null;
   submit?: (answers: Record<string, unknown>, durationSec: number) => Promise<unknown>;
 }>(), {
   previewHint: false,
   persistSession: false,
   record: false,
+  initialAnswers: null,
   submit: undefined,
 });
 const emit = defineEmits<{ (e: 'finish', payload: { answers: Record<string, unknown>; durationSec: number }): void }>();
@@ -181,6 +184,7 @@ initSession();
 function start() {
   if (!props.form.questions.length) return;
   for (const k in answers) delete answers[k];
+  if (props.initialAnswers) Object.assign(answers, props.initialAnswers);
   lockedIds.value = new Set();
   revealing.value = false;
   resultsView.value = null;

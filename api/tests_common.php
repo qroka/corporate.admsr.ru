@@ -21,7 +21,7 @@ $allowedOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://127
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 header('Access-Control-Allow-Origin: ' . (in_array($origin, $allowedOrigins, true) ? $origin : $allowedOrigins[0]));
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Session-Token');
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') { http_response_code(204); exit; }
 
 function jsonOk($d, $m = 'OK') { echo json_encode(['success' => true, 'message' => $m, 'data' => $d], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); exit; }
@@ -156,6 +156,136 @@ function tf_loadForm(PDO $pdo, int $id, int $viewerId): ?array {
     $s->execute([':id' => $id]);
     $row = $s->fetch();
     return $row ? tf_assembleForm($pdo, $row, $viewerId) : null;
+}
+
+/**
+ * Убрать поля correct из вопросов (для прохождения сотрудником).
+ */
+function tf_strip_correct(array $form): array
+{
+    foreach ($form['questions'] ?? [] as $i => $q) {
+        unset($form['questions'][$i]['correct']);
+    }
+    return $form;
+}
+
+/**
+ * Оценка ответов по вопросам формы.
+ * $questions: rows from test_questions (id, type, correct_value)
+ * $answers: map questionId => value (как в tests_submit)
+ *
+ * @return array{score:?float,passed:?bool,correctCount:int,scorable:int,details:array}
+ */
+function tf_evaluate_answers(PDO $pdo, array $formRow, array $questions, array $answers): array
+{
+    $isTest = ($formRow['kind'] ?? '') === 'test';
+    $optStmt = $pdo->prepare('SELECT id, is_correct FROM public.test_options WHERE question_id = :q');
+    $norm = static fn($s) => mb_strtolower(trim((string)$s));
+
+    $scorable = 0;
+    $correctCount = 0;
+    $details = [];
+
+    foreach ($questions as $q) {
+        $qid = (int)$q['id'];
+        $type = (string)$q['type'];
+        $val = $answers[(string)$qid] ?? ($answers[$qid] ?? null);
+
+        $textVal = null;
+        $numVal = null;
+        $selected = [];
+        $answered = false;
+
+        if (in_array($type, ['single', 'dropdown'], true)) {
+            if ($val !== null && $val !== '') {
+                $selected = [(int)$val];
+                $answered = true;
+            }
+        } elseif ($type === 'multiple') {
+            if (is_array($val) && count($val)) {
+                $selected = array_map('intval', $val);
+                $answered = true;
+            }
+        } elseif ($type === 'scale' || $type === 'number') {
+            if ($val !== null && $val !== '') {
+                $numVal = 0 + $val;
+                $textVal = (string)$val;
+                $answered = true;
+            }
+        } else {
+            if ($val !== null && $val !== '') {
+                $textVal = (string)$val;
+                $answered = true;
+            }
+        }
+
+        $isCorrect = null;
+        if ($isTest) {
+            $hasCorrect = false;
+            $correctOptIds = [];
+            $cv = $q['correct_value'] ?? null;
+            if (in_array($type, ['single', 'multiple', 'dropdown'], true)) {
+                $optStmt->execute([':q' => $qid]);
+                foreach ($optStmt->fetchAll() as $o) {
+                    if (tf_bool($o['is_correct'])) {
+                        $correctOptIds[] = (int)$o['id'];
+                    }
+                }
+                $hasCorrect = count($correctOptIds) > 0;
+                if ($hasCorrect) {
+                    sort($correctOptIds);
+                    $sel = $selected;
+                    sort($sel);
+                    $isCorrect = $type === 'multiple'
+                        ? ($sel === $correctOptIds)
+                        : (count($sel) === 1 && in_array($sel[0], $correctOptIds, true));
+                }
+            } elseif ($cv !== null && $cv !== '') {
+                $hasCorrect = true;
+                if ($type === 'scale' || $type === 'number') {
+                    $isCorrect = ($numVal !== null) && (0 + $cv == $numVal);
+                } else {
+                    $isCorrect = $norm($textVal) === $norm($cv);
+                }
+            }
+            if ($hasCorrect) {
+                $scorable++;
+                if ($isCorrect) {
+                    $correctCount++;
+                }
+            }
+            if (!$hasCorrect) {
+                $isCorrect = null;
+            }
+        }
+
+        $details[] = [
+            'questionId' => $qid,
+            'type' => $type,
+            'textValue' => $textVal,
+            'numberValue' => $numVal,
+            'selected' => $selected,
+            'answered' => $answered,
+            'isCorrect' => $isCorrect,
+        ];
+    }
+
+    $score = null;
+    $passed = null;
+    if ($isTest && $scorable > 0) {
+        $score = round($correctCount / $scorable * 100, 2);
+        if (tf_bool($formRow['use_passing_score'] ?? false)) {
+            $passed = $score >= (int)($formRow['passing_score'] ?? 0);
+        }
+    }
+
+    return [
+        'score' => $score,
+        'passed' => $passed,
+        'correctCount' => $correctCount,
+        'scorable' => $scorable,
+        'details' => $details,
+    ];
 }
 
 /**

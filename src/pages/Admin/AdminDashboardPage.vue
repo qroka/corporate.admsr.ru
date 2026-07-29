@@ -1040,6 +1040,18 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
       />
 
       <div v-else class="flex flex-col gap-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <p class="text-sm text-dimmed">Пользователи, ОФО и служебные настройки</p>
+          <UButton
+            color="primary"
+            icon="i-lucide-graduation-cap"
+            size="lg"
+            :to="{ name: 'admin-courses' }"
+          >
+            Управление курсами
+          </UButton>
+        </div>
+
         <UTabs v-model="tab" :items="tabItems" size="xl" />
 
         <div v-if="tab === 'users'" class="flex flex-col gap-4 overflow-visible">

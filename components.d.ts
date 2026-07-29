@@ -35,6 +35,7 @@ declare module 'vue' {
     UAvatarGroup: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/AvatarGroup.vue')['default']
     UBadge: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Badge.vue')['default']
     UBlogPost: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/BlogPost.vue')['default']
+    UBreadcrumb: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Breadcrumb.vue')['default']
     UButton: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Button.vue')['default']
     UCalendar: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Calendar.vue')['default']
     UCard: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Card.vue')['default']

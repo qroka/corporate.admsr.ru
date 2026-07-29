@@ -213,12 +213,45 @@ build_frontend() {
 
 # --- 6. Каталоги данных ------------------------------------------------------
 ensure_data_dirs() {
-  run "sudo mkdir -p '${DATA_DIR}/uploads/img' '${BACKUP_DIR}'"
+  run "sudo mkdir -p '${DATA_DIR}/uploads/img' '${DATA_DIR}/uploads/courses' '${BACKUP_DIR}'"
   run "sudo chown -R www-data:www-data '${DATA_DIR}'"
   # Загрузки галереи/аватаров — вне git (public/img в .gitignore)
   if [[ "$DRY_RUN" -eq 0 ]] && [[ ! -e public/img ]]; then
     run "ln -sfn '${DATA_DIR}/uploads/img' public/img"
   fi
+}
+
+# --- 6b. Миграции PostgreSQL (идемпотентные V*.sql) --------------------------
+apply_migrations() {
+  if [[ -z "${PGPASSWORD:-}" ]]; then
+    warn "PGPASSWORD не задан — миграции БД пропущены. Примените вручную: db/migration/V4__courses_module.sql"
+    return 0
+  fi
+  if ! command -v psql >/dev/null 2>&1; then
+    warn "psql не найден — миграции пропущены."
+    return 0
+  fi
+
+  local mig_dir="${APP_DIR}/db/migration"
+  if [[ ! -d "$mig_dir" ]]; then
+    warn "Каталог миграций не найден: ${mig_dir}"
+    return 0
+  fi
+
+  log "Применение SQL-миграций из ${mig_dir}"
+  local f
+  for f in "$mig_dir"/V*.sql; do
+    [[ -f "$f" ]] || continue
+    log "Миграция: $(basename "$f")"
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+      PGPASSWORD="$PGPASSWORD" psql -h "${PGHOST:-localhost}" -p "${PGPORT:-5432}" \
+        -U "${PGUSER:-myuser}" -d "${PGDATABASE:-corporate_portal}" \
+        -v ON_ERROR_STOP=1 -f "$f"
+    else
+      log "(dry-run) psql -f $f"
+    fi
+  done
+  ok "Миграции применены (идемпотентно)."
 }
 
 # --- 7. Перезапуск PHP-FPM ---------------------------------------------------
@@ -268,6 +301,7 @@ git_update
 install_deps
 build_frontend
 ensure_data_dirs
+apply_migrations
 restart_service
 health_check
 ok "Деплой завершён успешно."

@@ -27,6 +27,25 @@ import LoginPage from '../pages/login.vue';
 import OnboardingPage from '../pages/OnboardingPage.vue';
 import ChatBotPage from '../pages/ChatBotPage.vue';
 import TestLinkPage from '../pages/TestLinkPage.vue';
+import CoursesListPage from '../pages/Courses/admin/CoursesListPage.vue';
+import CourseCreatePage from '../pages/Courses/admin/CourseCreatePage.vue';
+import CourseWorkspacePage from '../pages/Courses/admin/CourseWorkspacePage.vue';
+import CourseSettingsPage from '../pages/Courses/admin/CourseSettingsPage.vue';
+import TopicFormPage from '../pages/Courses/admin/TopicFormPage.vue';
+import MaterialFormPage from '../pages/Courses/admin/MaterialFormPage.vue';
+import TopicTestPage from '../pages/Courses/admin/TopicTestPage.vue';
+import FinalTestPage from '../pages/Courses/admin/FinalTestPage.vue';
+import CoursePreviewPage from '../pages/Courses/admin/CoursePreviewPage.vue';
+import CourseReviewPage from '../pages/Courses/admin/CourseReviewPage.vue';
+import CoursePublishPage from '../pages/Courses/admin/CoursePublishPage.vue';
+import CourseAssignPage from '../pages/Courses/admin/CourseAssignPage.vue';
+import CourseResultsPage from '../pages/Courses/admin/CourseResultsPage.vue';
+import MyCoursesPage from '../pages/Courses/employee/MyCoursesPage.vue';
+import CourseEnrollmentPage from '../pages/Courses/employee/CourseEnrollmentPage.vue';
+import CourseTopicPage from '../pages/Courses/employee/CourseTopicPage.vue';
+import CourseTestPage from '../pages/Courses/employee/CourseTestPage.vue';
+import CourseResultPage from '../pages/Courses/employee/CourseResultPage.vue';
+import CourseHistoryPage from '../pages/Courses/employee/CourseHistoryPage.vue';
 import { userNeedsOnboarding } from '../composables/useOnboarding';
 
 const routes = [
@@ -87,6 +106,35 @@ const routes = [
   { path: '/development-motivation', name: 'development-motivation', component: DevelopmentMotivationDepartmentPage, meta: { title: 'Отдел развития и мотивации' } },
   { path: '/admin', name: 'admin', component: AdminDashboardPage, meta: { title: 'Дэшборд администратора', requiresAdmin: true } },
   { path: '/chatbot', name: 'chatbot', component: ChatBotPage, meta: { title: 'AI Ассистент' } },
+
+  // ── Курсы: админ ───────────────────────────────────────────────────────────
+  { path: '/admin/courses', name: 'admin-courses', component: CoursesListPage, meta: { title: 'Управление курсами', requiresAdmin: true } },
+  { path: '/admin/courses/create', name: 'admin-course-create', component: CourseCreatePage, meta: { title: 'Новый курс', requiresAdmin: true } },
+  { path: '/admin/courses/:courseId', name: 'admin-course-workspace', component: CourseWorkspacePage, meta: { title: 'Курс', requiresAdmin: true } },
+  { path: '/admin/courses/:courseId/settings', name: 'admin-course-settings', component: CourseSettingsPage, meta: { title: 'Настройки курса', requiresAdmin: true } },
+  { path: '/admin/courses/:courseId/topics/create', name: 'admin-course-topic-create', component: TopicFormPage, meta: { title: 'Новая тема', requiresAdmin: true } },
+  { path: '/admin/courses/:courseId/topics/:topicId', name: 'admin-course-topic-edit', component: TopicFormPage, meta: { title: 'Тема', requiresAdmin: true } },
+  { path: '/admin/courses/:courseId/topics/:topicId/materials/create', name: 'admin-course-material-create', component: MaterialFormPage, meta: { title: 'Новый материал', requiresAdmin: true } },
+  { path: '/admin/courses/:courseId/topics/:topicId/materials/:materialId', name: 'admin-course-material-edit', component: MaterialFormPage, meta: { title: 'Материал', requiresAdmin: true } },
+  { path: '/admin/courses/:courseId/topics/:topicId/test', name: 'admin-course-topic-test', component: TopicTestPage, meta: { title: 'Тест темы', requiresAdmin: true } },
+  { path: '/admin/courses/:courseId/topics/:topicId/test/questions/create', name: 'admin-course-topic-test-q-create', component: TopicTestPage, meta: { title: 'Тест темы', requiresAdmin: true } },
+  { path: '/admin/courses/:courseId/topics/:topicId/test/questions/:questionId', name: 'admin-course-topic-test-q-edit', component: TopicTestPage, meta: { title: 'Тест темы', requiresAdmin: true } },
+  { path: '/admin/courses/:courseId/final-test', name: 'admin-course-final-test', component: FinalTestPage, meta: { title: 'Итоговый тест', requiresAdmin: true } },
+  { path: '/admin/courses/:courseId/final-test/questions/create', name: 'admin-course-final-test-q-create', component: FinalTestPage, meta: { title: 'Итоговый тест', requiresAdmin: true } },
+  { path: '/admin/courses/:courseId/final-test/questions/:questionId', name: 'admin-course-final-test-q-edit', component: FinalTestPage, meta: { title: 'Итоговый тест', requiresAdmin: true } },
+  { path: '/admin/courses/:courseId/preview', name: 'admin-course-preview', component: CoursePreviewPage, meta: { title: 'Превью курса', requiresAdmin: true } },
+  { path: '/admin/courses/:courseId/review', name: 'admin-course-review', component: CourseReviewPage, meta: { title: 'Проверка курса', requiresAdmin: true } },
+  { path: '/admin/courses/:courseId/publish', name: 'admin-course-publish', component: CoursePublishPage, meta: { title: 'Публикация курса', requiresAdmin: true } },
+  { path: '/admin/courses/:courseId/assign', name: 'admin-course-assign', component: CourseAssignPage, meta: { title: 'Назначение курса', requiresAdmin: true } },
+  { path: '/admin/courses/:courseId/results', name: 'admin-course-results', component: CourseResultsPage, meta: { title: 'Результаты курса', requiresAdmin: true } },
+
+  // ── Курсы: сотрудник ───────────────────────────────────────────────────────
+  { path: '/courses', name: 'courses', component: MyCoursesPage, meta: { title: 'Мои курсы' } },
+  { path: '/courses/history', name: 'course-history', component: CourseHistoryPage, meta: { title: 'История обучения' } },
+  { path: '/courses/:enrollmentId', name: 'course-enrollment', component: CourseEnrollmentPage, meta: { title: 'Курс' } },
+  { path: '/courses/:enrollmentId/topics/:topicId', name: 'course-topic', component: CourseTopicPage, meta: { title: 'Тема курса' } },
+  { path: '/courses/:enrollmentId/tests/:courseTestLinkId', name: 'course-test', component: CourseTestPage, meta: { title: 'Тест курса' } },
+  { path: '/courses/:enrollmentId/result', name: 'course-result', component: CourseResultPage, meta: { title: 'Результат курса' } },
 ];
 
 export const router = createRouter({

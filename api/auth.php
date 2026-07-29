@@ -105,7 +105,7 @@ $allowedOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://127
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 header('Access-Control-Allow-Origin: ' . (in_array($origin, $allowedOrigins, true) ? $origin : $allowedOrigins[0]));
 header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Session-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 
@@ -177,6 +177,15 @@ if (!(bool)$user['status']) {
 $pdo->prepare('UPDATE public.user_info SET auth = true, last_activity = now() WHERE id = :id')
     ->execute([':id' => $user['id']]);
 
+$sessionToken = null;
+try {
+    require_once __DIR__ . '/auth_context.php';
+    $sessionToken = auth_create_session($pdo, (int)$user['id']);
+} catch (Throwable $e) {
+    // Миграция V4 ещё не применена — вход не ломаем; модуль курсов потребует sessionToken.
+    $sessionToken = null;
+}
+
 $fio = implode(' ', array_filter([
     $user['surname'],
     $user['firstname'],
@@ -186,10 +195,11 @@ $fio = implode(' ', array_filter([
 echo json_encode([
     'success' => true,
     'user' => [
-        'id'         => (int)$user['id'],
-        'fio'        => $fio,
-        'ofo'        => $user['ofo'],
-        'user_group' => $user['user_group'],
-        'role'       => $user['role'] ?? '',
+        'id'           => (int)$user['id'],
+        'fio'          => $fio,
+        'ofo'          => $user['ofo'],
+        'user_group'   => $user['user_group'],
+        'role'         => $user['role'] ?? '',
+        'sessionToken' => $sessionToken,
     ],
 ]);

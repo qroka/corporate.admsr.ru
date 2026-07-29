@@ -4,6 +4,7 @@ import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { FormSubmitEvent } from '@nuxt/ui'
 import { userNeedsOnboarding } from '../composables/useOnboarding'
+import { setSessionToken } from '../composables/useAuthSession'
 
 const router = useRouter()
 
@@ -37,6 +38,9 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
 
     if (data.success) {
       localStorage.setItem('auth-user', JSON.stringify(data.user))
+      if (data.user?.sessionToken) {
+        setSessionToken(data.user.sessionToken)
+      }
       const redirect = localStorage.getItem('post-login-redirect')
       if (redirect) {
         localStorage.removeItem('post-login-redirect')

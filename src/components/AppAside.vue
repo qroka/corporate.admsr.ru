@@ -1,8 +1,10 @@
 <script setup>
 import { onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { currentRole } from '../stores/role';
+import { currentRole, setRole } from '../stores/role';
 import { attachAbsenceStorageSync, hasActiveAbsence } from '../stores/absenceJournal';
+import { clearAuthStorage } from '../composables/useAuthSession';
+import { useHeaderUser } from '../composables/useHeaderUser';
 
 defineProps({
   isDark: {
@@ -14,13 +16,37 @@ defineProps({
 const emit = defineEmits(['toggle-theme']);
 const route = useRoute();
 const router = useRouter();
+const { canToggleAdminRole } = useHeaderUser();
 
 function navigate(name) {
   router.push({ name });
 }
 
+/** В режиме администратора — конструктор курсов, иначе «Мои курсы». */
+function openCourses() {
+  if (currentRole.value === 'admin') {
+    navigate('admin-courses');
+    return;
+  }
+  navigate('courses');
+}
+
+/** Включить админ-режим UI и открыть управление курсами. */
+async function openAdminCourses() {
+  if (canToggleAdminRole.value) setRole('admin');
+  await Promise.resolve();
+  navigate('admin-courses');
+}
+
 const isNewsActive = () =>
   route.name === 'news' || route.name === 'news-details';
+
+const isCoursesActive = () =>
+  typeof route.name === 'string'
+  && (route.name === 'courses' || route.name.startsWith('course-') || route.name.startsWith('admin-course'));
+
+const isAdminCoursesActive = () =>
+  typeof route.name === 'string' && route.name.startsWith('admin-course');
 
 async function logout() {
   try {
@@ -33,8 +59,7 @@ async function logout() {
       });
     }
   } finally {
-    localStorage.removeItem('auth-user');
-    localStorage.removeItem('auth-last-check');
+    clearAuthStorage();
     router.push({ name: 'login' });
   }
 }
@@ -164,6 +189,26 @@ onMounted(() => {
             @click="navigate('tests')"
           />
         </UTooltip>
+
+        <UTooltip
+          arrow
+          :content="{side: 'right'}"
+          :text="currentRole === 'admin' ? 'Управление курсами' : 'Мои курсы'"
+        >
+          <UButton
+            type="button"
+            color="neutral"
+            square
+            class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
+            :class="isCoursesActive()
+              ? 'z-10 bg-primary text-neutral-50 shadow-none dark:shadow-brand [&_svg]:text-neutral-50 hover:bg-primary hover:text-neutral-50 active:bg-primary active:text-neutral-50 active:[&_svg]:text-neutral-50'
+              : ''"
+            size="xl"
+            icon="i-lucide-graduation-cap"
+            aria-label="Курсы"
+            @click="openCourses"
+          />
+        </UTooltip>
       </UContainer>
 
       <!-- Блок ссылок на подразделения HR -->
@@ -238,8 +283,32 @@ onMounted(() => {
           square
           size="xl"
           class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
+          :class="route.name === 'admin'
+            ? 'z-10 bg-primary text-neutral-50 shadow-none dark:shadow-brand [&_svg]:text-neutral-50 hover:bg-primary hover:text-neutral-50 active:bg-primary active:text-neutral-50 active:[&_svg]:text-neutral-50'
+            : ''"
           icon="i-lucide-layout-dashboard"
           @click="navigate('admin')"
+        />
+      </UTooltip>
+
+      <UTooltip
+        v-if="canToggleAdminRole || currentRole === 'admin'"
+        arrow
+        :content="{side: 'right'}"
+        text="Управление курсами"
+      >
+        <UButton
+          type="button"
+          color="neutral"
+          square
+          size="xl"
+          class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
+          :class="isAdminCoursesActive()
+            ? 'z-10 bg-primary text-neutral-50 shadow-none dark:shadow-brand [&_svg]:text-neutral-50 hover:bg-primary hover:text-neutral-50 active:bg-primary active:text-neutral-50 active:[&_svg]:text-neutral-50'
+            : ''"
+          icon="i-lucide-library-big"
+          aria-label="Управление курсами"
+          @click="openAdminCourses"
         />
       </UTooltip>
 
