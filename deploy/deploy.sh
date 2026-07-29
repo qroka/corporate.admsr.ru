@@ -13,7 +13,7 @@ BACKUP_DIR="${BACKUP_DIR:-${DATA_DIR}/backups}"
 BACKUP_KEEP="${BACKUP_KEEP:-7}"
 DOMAIN="${DOMAIN:-corporate.admsr.ru}"
 SERVICE_NAME="${SERVICE_NAME:-php8.3-fpm}"
-HEALTH_URL="${HEALTH_URL:-http://127.0.0.1/api/health.php}"
+HEALTH_URL="${HEALTH_URL:-https://127.0.0.1/api/health.php}"
 HEALTH_HOST="${HEALTH_HOST:-${DOMAIN}}"
 PACKAGE_MANAGER="${PACKAGE_MANAGER:-npm}"
 GIT_BRANCH="${GIT_BRANCH:-main}"
@@ -271,7 +271,15 @@ restart_service() {
 # --- 8. Health-check ---------------------------------------------------------
 health_check() {
   local i curl_args=(-fsS)
+  # HTTP на :80 уходит в 301→HTTPS (см. nginx) — для localhost используем HTTPS + -k.
   if [[ "$HEALTH_URL" == http://127.0.0.1/* ]] || [[ "$HEALTH_URL" == http://localhost/* ]]; then
+    HEALTH_URL="${HEALTH_URL/http:/https:}"
+  fi
+  if [[ "$HEALTH_URL" == https://127.0.0.1/* ]] || [[ "$HEALTH_URL" == https://localhost/* ]] \
+     || [[ "${HEALTH_INSECURE:-0}" == "1" ]]; then
+    curl_args+=(-k)
+  fi
+  if [[ "$HEALTH_URL" == *127.0.0.1* ]] || [[ "$HEALTH_URL" == *localhost* ]]; then
     curl_args+=(-H "Host: ${HEALTH_HOST}")
   fi
 
@@ -281,15 +289,21 @@ health_check() {
       ok "(dry-run) health-check пропущен"
       return 0
     fi
-    if curl "${curl_args[@]}" "$HEALTH_URL" | grep -q '"ok"[[:space:]]*:[[:space:]]*true'; then
+    local body
+    body="$(curl "${curl_args[@]}" "$HEALTH_URL" 2>/dev/null || true)"
+    if printf '%s' "$body" | grep -q '"ok"[[:space:]]*:[[:space:]]*true'; then
       ok "Health-check OK (попытка ${i}/${HEALTH_RETRIES})"
       return 0
+    fi
+    if [[ -n "$body" ]]; then
+      warn "Ответ health: ${body:0:200}"
     fi
     warn "Health-check не прошёл (попытка ${i}/${HEALTH_RETRIES}), ждём ${HEALTH_SLEEP}s…"
     sleep "$HEALTH_SLEEP"
   done
 
   err "Health-check не прошёл после ${HEALTH_RETRIES} попыток: ${HEALTH_URL}"
+  warn "Сборка и миграции уже применены. Проверьте вручную: curl -sk -H \"Host: ${HEALTH_HOST}\" https://127.0.0.1/api/health.php"
   exit 1
 }
 
