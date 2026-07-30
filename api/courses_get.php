@@ -1,9 +1,9 @@
-<?php
+﻿<?php
 /** POST /api/courses_get.php — полный курс + версия. Body: {courseId, versionId?} */
 require_once __DIR__ . '/courses_common.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonError(405, 'Метод не поддерживается');
 
-auth_require_admin($pdo);
+auth_require_section(\, 'courses');
 $body = cs_body();
 $courseId = (int)($body['courseId'] ?? 0);
 if ($courseId <= 0) jsonError(400, 'Не передан courseId');

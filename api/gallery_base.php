@@ -26,7 +26,7 @@ $allowedOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://127
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 header('Access-Control-Allow-Origin: ' . (in_array($origin, $allowedOrigins, true) ? $origin : $allowedOrigins[0]));
 header('Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Session-Token');
 header('Access-Control-Max-Age: 86400');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
@@ -105,6 +105,8 @@ try {
     jsonError(500, 'Ошибка подключения к БД');
 }
 
+require_once __DIR__ . '/auth_context.php';
+
 $method = $_SERVER['REQUEST_METHOD'];
 
 // ── GET: список фото альбома ──────────────────────────────────────────────────
@@ -124,6 +126,7 @@ if ($method === 'GET') {
 
 // ── POST: загрузить фото ──────────────────────────────────────────────────────
 if ($method === 'POST') {
+    auth_require_section($pdo, 'gallery');
     // Если запрос превысил post_max_size, PHP обнуляет $_POST и $_FILES.
     $contentLen = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
     if ($contentLen > 0 && empty($_POST) && empty($_FILES)) {
@@ -198,6 +201,7 @@ if ($method === 'POST') {
 
 // ── DELETE: удалить фото ──────────────────────────────────────────────────────
 if ($method === 'DELETE') {
+    auth_require_section($pdo, 'gallery');
     $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
     if ($id <= 0) jsonError(400, 'Укажите ?id=...');
     $pdo->prepare('DELETE FROM public.gallery_base WHERE id = :id')->execute([':id' => $id]);

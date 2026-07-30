@@ -4,6 +4,10 @@ import { useRoute, useRouter } from 'vue-router';
 import type { BreadcrumbItem } from '@nuxt/ui';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
+import { newsEditorToolbarItems } from '../../../composables/newsEditorToolbar';
+import { newsEditorExtensions, newsEditorEmojiMenuItems } from '../../../composables/newsEditorExtensions';
+import { newsEditorHandlers } from '../../../composables/newsEditorHandlers';
+import { newsEditorSlideoverUi } from '../../../composables/newsEditorSlideoverUi';
 
 const route = useRoute();
 const router = useRouter();
@@ -19,17 +23,17 @@ const materialId = computed(() => {
 const isEdit = computed(() => materialId.value != null);
 
 const typeItems = [
-  { label: 'Текст (HTML)', value: 'rich_text' },
+  { label: 'Текст', value: 'rich_text' },
   { label: 'Файл', value: 'file' },
-  { label: 'PDF', value: 'pdf' },
-  { label: 'Изображение', value: 'image' },
-  { label: 'Видео', value: 'video' },
   { label: 'Ссылка', value: 'link' },
 ];
 
 const loading = ref(true);
 const saving = ref(false);
 const file = ref<File | null>(null);
+
+/** Меню эмодзи поверх формы */
+const appendEditorEmojiTo = () => document.body;
 
 const form = reactive({
   type: 'rich_text' as string,
@@ -48,9 +52,18 @@ const crumbs = computed<BreadcrumbItem[]>(() => [
   { label: isEdit.value ? 'Материал' : 'Новый материал' },
 ]);
 
-const needsFile = computed(() => ['file', 'pdf', 'image', 'video'].includes(form.type));
+const FILE_TYPES = new Set(['file', 'pdf', 'image', 'video']);
+
+function normalizeMaterialType(type?: string | null) {
+  const t = String(type || 'rich_text');
+  if (FILE_TYPES.has(t)) return 'file';
+  if (t === 'link' || t === 'rich_text') return t;
+  return 'rich_text';
+}
+
+const needsFile = computed(() => form.type === 'file');
 const needsUrl = computed(() => form.type === 'link');
-const needsHtml = computed(() => form.type === 'rich_text');
+const needsRichText = computed(() => form.type === 'rich_text');
 
 onMounted(async () => {
   loading.value = true;
@@ -60,7 +73,7 @@ onMounted(async () => {
       const topic = store.topics.value.find((t) => t.id === topicId.value);
       const m = topic?.materials?.find((x) => x.id === materialId.value);
       if (m) {
-        form.type = m.type;
+        form.type = normalizeMaterialType(m.type);
         form.title = m.title;
         form.description = m.description || '';
         form.contentHtml = m.contentHtml || '';
@@ -140,7 +153,7 @@ async function onSave() {
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full h-full min-h-0 gap-4 max-w-3xl">
+  <UMain class="flex flex-1 flex-col w-full max-w-3xl mx-auto min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
     <UBreadcrumb :items="crumbs" />
     <h1 class="text-2xl font-medium text-highlighted">
       {{ isEdit ? 'Редактирование материала' : 'Новый материал' }}
@@ -150,7 +163,7 @@ async function onSave() {
       <USkeleton v-for="n in 5" :key="n" class="h-12 w-full rounded-lg" />
     </div>
 
-    <div v-else class="flex flex-col gap-4">
+    <div v-else class="flex flex-col gap-4 min-w-0">
       <UFormField label="Тип">
         <USelect
           v-model="form.type"
@@ -165,12 +178,32 @@ async function onSave() {
         <UInput v-model="form.title" size="lg" class="w-full" />
       </UFormField>
 
-      <UFormField label="Описание">
+      <UFormField label="Краткое описание">
         <UTextarea v-model="form.description" :rows="2" class="w-full" />
       </UFormField>
 
-      <UFormField v-if="needsHtml" label="Содержимое (HTML)">
-        <UTextarea v-model="form.contentHtml" :rows="10" class="w-full font-mono text-sm" placeholder="<p>Текст…</p>" />
+      <UFormField v-if="needsRichText" label="Содержимое" name="content">
+        <UEditor
+          v-slot="{ editor }"
+          v-model="form.contentHtml"
+          content-type="html"
+          :extensions="newsEditorExtensions"
+          :handlers="newsEditorHandlers"
+          :ui="newsEditorSlideoverUi"
+          placeholder="Текст материала…"
+          class="w-full min-h-56 rounded-lg border border-default overflow-hidden"
+        >
+          <UEditorEmojiMenu
+            :editor="editor"
+            :items="newsEditorEmojiMenuItems"
+            :append-to="appendEditorEmojiTo"
+          />
+          <UEditorToolbar
+            :editor="editor"
+            :items="newsEditorToolbarItems"
+            class="sticky top-0 z-10 border-b border-default bg-default/95 backdrop-blur-sm px-2 py-1.5 overflow-x-auto"
+          />
+        </UEditor>
       </UFormField>
 
       <UFormField v-if="needsUrl" label="URL">

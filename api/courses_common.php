@@ -62,8 +62,9 @@ function cs_sanitize_html(?string $html): string
         return '';
     }
 
-    $allowed = '<p><br><strong><b><em><i><ul><ol><li><a><h1><h2><h3><h4>'
-        . '<img><table><thead><tbody><tr><td><th><blockquote><code><pre><span><div>';
+    // Теги как у TipTap/UEditor (новости): underline, strike, выравнивание через style
+    $allowed = '<p><br><strong><b><em><i><u><s><ul><ol><li><a><h1><h2><h3><h4>'
+        . '<img><table><thead><tbody><tr><td><th><blockquote><code><pre><span><div><hr>';
     $clean = strip_tags($html, $allowed);
 
     if (!class_exists('DOMDocument')) {
@@ -83,16 +84,16 @@ function cs_sanitize_html(?string $html): string
     libxml_use_internal_errors($prev);
 
     $allowedTags = [
-        'p', 'br', 'strong', 'b', 'em', 'i', 'ul', 'ol', 'li', 'a',
+        'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'ul', 'ol', 'li', 'a',
         'h1', 'h2', 'h3', 'h4', 'img', 'table', 'thead', 'tbody', 'tr', 'td', 'th',
-        'blockquote', 'code', 'pre', 'span', 'div',
+        'blockquote', 'code', 'pre', 'span', 'div', 'hr',
     ];
     $allowedAttrs = [
         'a' => ['href', 'title', 'target', 'rel'],
         'img' => ['src', 'alt', 'title', 'width', 'height'],
         'td' => ['colspan', 'rowspan'],
         'th' => ['colspan', 'rowspan'],
-        '*' => ['class'],
+        '*' => ['class', 'style'],
     ];
 
     $walk = function (DOMNode $node) use (&$walk, $allowedTags, $allowedAttrs): void {
@@ -132,6 +133,13 @@ function cs_sanitize_html(?string $html): string
                 }
                 if ($name === 'href' && preg_match('/^\s*data:/i', $val)) {
                     $toRemove[] = $attr->name;
+                    continue;
+                }
+                // style только для text-align (UEditor TextAlign)
+                if ($name === 'style') {
+                    if (!preg_match('/^\s*text-align\s*:\s*(left|center|right|justify)\s*;?\s*$/i', $val)) {
+                        $toRemove[] = $attr->name;
+                    }
                 }
             }
             foreach ($toRemove as $n) {
@@ -246,7 +254,7 @@ function cs_get_version(PDO $pdo, int $versionId): ?array
  */
 function cs_require_course_admin(PDO $pdo, int $courseId): array
 {
-    $user = auth_require_admin($pdo);
+    $user = auth_require_section($pdo, 'courses');
     $course = cs_get_course($pdo, $courseId);
     if (!$course) {
         jsonError(404, 'Курс не найден');
@@ -256,13 +264,15 @@ function cs_require_course_admin(PDO $pdo, int $courseId): array
 
 function cs_version_editable(array $version): bool
 {
-    return ($version['status'] ?? '') === 'draft';
+    // "Версионность": позволяем редактировать не только черновик, но и опубликованную версию.
+    // Архивированные версии остаются недоступными для правок.
+    return in_array((string)($version['status'] ?? ''), ['draft', 'published'], true);
 }
 
 function cs_assert_version_editable(array $version): void
 {
     if (!cs_version_editable($version)) {
-        jsonError(409, 'Версия недоступна для редактирования (только черновик)');
+        jsonError(409, 'Версия недоступна для редактирования (архивирована)');
     }
 }
 
@@ -377,7 +387,9 @@ function cs_assemble_version(PDO $pdo, int $versionId, bool $withContent = true)
                 'type' => (string)$m['type'],
                 'title' => (string)$m['title'],
                 'description' => (string)($m['description'] ?? ''),
-                'fileUrl' => $m['file_url'] ?? null,
+                'fileUrl' => !empty($m['file_url'])
+                    ? '/api/course_file.php?path=' . rawurlencode((string)$m['file_url'])
+                    : null,
                 'externalUrl' => $m['external_url'] ?? null,
                 'mimeType' => $m['mime_type'] ?? null,
                 'fileSize' => $m['file_size'] !== null ? (int)$m['file_size'] : null,
@@ -877,8 +889,8 @@ function cs_create_topic_test(PDO $pdo, int $topicId, array $user, array $testDa
     if (!$topic) {
         jsonError(404, 'Тема не найдена');
     }
-    if ($topic['version_status'] !== 'draft') {
-        jsonError(409, 'Версия недоступна для редактирования (только черновик)');
+    if (!in_array((string)$topic['version_status'], ['draft', 'published'], true)) {
+        jsonError(409, 'Версия недоступна для редактирования (архивирована)');
     }
 
     $exist = $pdo->prepare(
@@ -1006,11 +1018,6 @@ function cs_publish_version(PDO $pdo, int $versionId, array $user): array
         jsonError(409, 'Архивная версия не может быть опубликована');
     }
 
-    $ready = cs_readiness($pdo, $versionId);
-    if (!$ready['ready']) {
-        jsonError(422, 'Версия не готова к публикации: ' . implode('; ', $ready['errors']));
-    }
-
     $uid = (int)$user['id'];
     $pdo->beginTransaction();
     try {
@@ -1047,7 +1054,6 @@ function cs_publish_version(PDO $pdo, int $versionId, array $user): array
         cs_audit($pdo, $uid, 'course.version.publish', 'course_version', $versionId, [
             'courseId' => $version['courseId'],
             'formIds' => $formIds,
-            'warnings' => $ready['warnings'],
         ]);
 
         $pdo->commit();

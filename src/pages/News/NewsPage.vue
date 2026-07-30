@@ -9,7 +9,8 @@ import { newsEditorExtensions, newsEditorEmojiMenuItems } from '../../composable
 import { newsEditorHandlers } from '../../composables/newsEditorHandlers';
 import { newsEditorSlideoverUi } from '../../composables/newsEditorSlideoverUi';
 import { useAppToast } from '../../composables/useAppToast';
-import { currentRole } from '../../stores/role';
+import { useSectionAccess } from '../../composables/useSectionAccess';
+import { apiSessionFetch } from '../../composables/useAuthSession';
 
 type NewsPost = BlogPostProps & { id: string; rawDate: string; likes: number; views: number };
 
@@ -37,7 +38,9 @@ watch(
   { immediate: true },
 );
 
-const isAdmin = computed(() => currentRole.value === 'admin');
+const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
+ensureSectionAccess();
+const isAdmin = computed(() => canEditSection('news'));
 
 /** Меню эмодзи поверх slideover / z-index */
 const appendEditorEmojiTo = () => document.body;
@@ -267,18 +270,16 @@ async function handleCreateSubmit() {
       imagePath = uploadJson.data.image as string;
     }
 
-    const res = await fetch('/api/news.php', {
+    const json = await apiSessionFetch('/api/news.php', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      json: {
         title:       createState.title.trim(),
         category:    createState.category || '',
         description: createState.description.trim(),
         date:        createState.date,
         image_path:  imagePath,
-      }),
+      },
     });
-    const json = await res.json();
     if (!json.success) throw new Error(json.message || 'Ошибка создания');
 
     toast.add({ title: 'Новость создана', color: 'success', icon: 'i-lucide-check-circle' });

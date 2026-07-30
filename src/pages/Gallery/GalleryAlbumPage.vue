@@ -3,7 +3,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, 
 import { useRoute, useRouter } from 'vue-router';
 import { useGalleryData } from '../../composables/useGalleryData';
 import { useAppToast } from '../../composables/useAppToast';
-import { currentRole } from '../../stores/role';
+import { useSectionAccess } from '../../composables/useSectionAccess';
+import { apiSessionFetch, apiSessionUpload } from '../../composables/useAuthSession';
 
 type Photo = { id: string; thumbSrc: string; fullSrc: string };
 type DbPhoto = { id: number; album_id: number; image_full_url: string; image_small_url: string };
@@ -18,7 +19,9 @@ const { albums, ensureLoaded } = useGalleryData();
 ensureLoaded();
 
 const { toast } = useAppToast();
-const isAdmin   = computed(() => currentRole.value === 'admin');
+const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
+ensureSectionAccess();
+const isAdmin   = computed(() => canEditSection('gallery'));
 
 // ── Данные альбома ────────────────────────────────────────────────────────────
 const albumData    = ref<{ id: number; name: string; description: string; date: string } | null>(null);
@@ -138,8 +141,7 @@ async function handleAddPhotos() {
       const fd = new FormData();
       fd.append('image',    file);
       fd.append('album_id', albumId.value);
-      const res  = await fetch('/api/gallery_base.php', { method: 'POST', body: fd });
-      const json = await res.json();
+      const json = await apiSessionUpload('/api/gallery_base.php', fd);
       if (!json.success) throw new Error(json.message || 'Ошибка загрузки файла');
     }
     await loadPhotos();
@@ -159,7 +161,7 @@ const deletingPhotoId = ref<string | null>(null);
 async function deletePhoto(photoId: string) {
   deletingPhotoId.value = photoId;
   try {
-    await fetch(`/api/gallery_base.php?id=${photoId}`, { method: 'DELETE' });
+    await apiSessionFetch(`/api/gallery_base.php?id=${photoId}`, { method: 'DELETE' });
     photos.value = photos.value.filter((p) => String(p.id) !== photoId);
     delete thumbLoaded[photoId];
     if (visibleCount.value > items.value.length) {
@@ -182,18 +184,16 @@ async function handleEditSubmit() {
   editSubmitting.value = true;
   editError.value      = null;
   try {
-    const res  = await fetch(`/api/gallery.php?id=${albumId.value}`, {
-      method:  'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
+    const json = await apiSessionFetch(`/api/gallery.php?id=${albumId.value}`, {
+      method: 'PUT',
+      json: {
         name:        editState.value.title.trim(),
         description: editState.value.description.trim() || null,
         date:        editState.value.date || null,
-      }),
+      },
     });
-    const json = await res.json();
     if (!json.success) throw new Error(json.message);
-    albumData.value  = json.data;
+    albumData.value  = json.data as any;
     editOpen.value   = false;
     toast.add({ title: 'Альбом обновлён', color: 'success', icon: 'i-lucide-check-circle' });
   } catch (e: any) {
@@ -214,8 +214,7 @@ async function handleDelete() {
   deleteSubmitting.value = true;
   deleteError.value      = null;
   try {
-    const res  = await fetch(`/api/gallery.php?id=${albumId.value}`, { method: 'DELETE' });
-    const json = await res.json();
+    const json = await apiSessionFetch(`/api/gallery.php?id=${albumId.value}`, { method: 'DELETE' });
     if (!json.success) throw new Error(json.message);
     deleteConfirmOpen.value = false;
     await router.push(isKiosk.value ? '/kiosk/gallery' : '/gallery');

@@ -12,14 +12,29 @@ const props = withDefaults(defineProps<{
   /** Восстановление ответов (например, из course attemptGet) */
   initialAnswers?: Record<string, unknown> | null;
   submit?: (answers: Record<string, unknown>, durationSec: number) => Promise<unknown>;
+  /** Показать «Пройти ещё раз» на экране результата */
+  allowRetake?: boolean;
 }>(), {
   previewHint: false,
   persistSession: false,
   record: false,
   initialAnswers: null,
   submit: undefined,
+  allowRetake: true,
 });
-const emit = defineEmits<{ (e: 'finish', payload: { answers: Record<string, unknown>; durationSec: number }): void }>();
+const emit = defineEmits<{
+  (e: 'finish', payload: {
+    answers: Record<string, unknown>;
+    durationSec: number;
+    result?: {
+      score: number | null;
+      passed: boolean | null;
+      correctCount?: number;
+      scorable?: number;
+    } | null;
+  }): void;
+  (e: 'retake'): void;
+}>();
 
 const store = useTestsStore();
 
@@ -250,13 +265,36 @@ function goToUnanswered() {
   if (first) page.value = first.page;
 }
 
-// Результат теста (по правильным ответам)
-const scoreInfo = computed(() => {
+// Результат теста (по правильным ответам на клиенте или с сервера)
+const clientScoreInfo = computed(() => {
   let scorable = 0, correct = 0;
   for (const it of view.value) if (hasCorrect(it.q)) { scorable++; if (answeredCorrectly(it)) correct++; }
   return { scorable, correct, percent: scorable > 0 ? Math.round((correct / scorable) * 100) : 0 };
 });
-const passed = computed(() => (props.form.usePassingScore ? scoreInfo.value.percent >= props.form.passingScore : null));
+const serverResult = ref<{
+  score: number | null;
+  passed: boolean | null;
+  correctCount: number;
+  scorable: number;
+} | null>(null);
+
+const scoreInfo = computed(() => {
+  if (serverResult.value && (serverResult.value.scorable > 0 || serverResult.value.score != null)) {
+    const scorable = serverResult.value.scorable || 0;
+    const correct = serverResult.value.correctCount || 0;
+    const percent = serverResult.value.score != null
+      ? Math.round(Number(serverResult.value.score))
+      : (scorable > 0 ? Math.round((correct / scorable) * 100) : 0);
+    return { scorable, correct, percent };
+  }
+  return clientScoreInfo.value;
+});
+const passed = computed(() => {
+  if (serverResult.value && serverResult.value.passed !== undefined) {
+    return serverResult.value.passed;
+  }
+  return props.form.usePassingScore ? scoreInfo.value.percent >= props.form.passingScore : null;
+});
 
 async function finalize() {
   stopTimer();
@@ -266,9 +304,23 @@ async function finalize() {
   if (props.persistSession && props.form.id != null) store.clearSession(props.form.id);
 
   let recorded = false;
+  serverResult.value = null;
   try {
-    if (props.submit) { await props.submit({ ...answers }, lastDuration); recorded = true; }
-    else if (props.record && props.form.id != null) { await store.submitAttempt(props.form.id, { ...answers }, lastDuration); recorded = true; }
+    if (props.submit) {
+      const raw = await props.submit({ ...answers }, lastDuration) as any;
+      recorded = true;
+      if (raw && typeof raw === 'object' && ('score' in raw || 'passed' in raw || 'scorable' in raw)) {
+        serverResult.value = {
+          score: raw.score != null ? Number(raw.score) : null,
+          passed: raw.passed === true ? true : raw.passed === false ? false : null,
+          correctCount: Number(raw.correctCount ?? 0),
+          scorable: Number(raw.scorable ?? 0),
+        };
+      }
+    } else if (props.record && props.form.id != null) {
+      await store.submitAttempt(props.form.id, { ...answers }, lastDuration);
+      recorded = true;
+    }
   } catch { recorded = false; /* напр. лимит попыток */ }
 
   // Живые результаты голосования
@@ -284,19 +336,52 @@ async function finalize() {
     } catch { /* без живых — просто завершаем */ }
   }
 
-  // Результат теста в конце (если показ результата включён)
-  if (isTest.value && props.form.showResult !== 'never' && scoreInfo.value.scorable > 0) {
-    resultsView.value = (props.form.showCorrectAnswers && props.form.showResult === 'after') ? 'review' : 'score';
+  // Результат теста: клиентский разбор или серверный балл (когда correct снят с формы)
+  const canShowScore = scoreInfo.value.scorable > 0
+    || (serverResult.value != null && (serverResult.value.scorable > 0 || serverResult.value.score != null));
+  if (isTest.value && props.form.showResult !== 'never' && canShowScore) {
+    const canReview = props.form.showCorrectAnswers
+      && props.form.showResult === 'after'
+      && clientScoreInfo.value.scorable > 0;
+    resultsView.value = canReview ? 'review' : 'score';
     return;
   }
 
   emitFinish();
 }
 function emitFinish() {
-  emit('finish', { answers: { ...answers }, durationSec: lastDuration });
+  emit('finish', {
+    answers: { ...answers },
+    durationSec: lastDuration,
+    result: serverResult.value
+      ? {
+          score: serverResult.value.score,
+          passed: serverResult.value.passed,
+          correctCount: serverResult.value.correctCount,
+          scorable: serverResult.value.scorable,
+        }
+      : {
+          score: scoreInfo.value.percent,
+          passed: passed.value,
+          correctCount: scoreInfo.value.correct,
+          scorable: scoreInfo.value.scorable,
+        },
+  });
   page.value = 0;
   resultsView.value = null;
   reviewActive.value = false;
+  serverResult.value = null;
+}
+
+function onRetake() {
+  if (props.submit) {
+    emit('retake');
+    return;
+  }
+  serverResult.value = null;
+  reviewActive.value = false;
+  stopTimer();
+  start();
 }
 
 // форматирование для экрана разбора
@@ -389,8 +474,16 @@ function pollPercent(id: string): number { return pollResults.value[id]?.percent
             <div class="size-24 rounded-full flex items-center justify-center ring-4" :class="passed === false ? 'ring-error/30 bg-error/10' : 'ring-success/30 bg-success/10'">
               <span class="text-3xl font-bold tabular-nums" :class="passed === false ? 'text-error' : 'text-success'">{{ scoreInfo.percent }}%</span>
             </div>
-            <p class="text-lg font-semibold text-highlighted">Правильных ответов: {{ scoreInfo.correct }} из {{ scoreInfo.scorable }}</p>
-            <UBadge v-if="passed !== null" :color="passed ? 'success' : 'error'" variant="subtle" size="lg">{{ passed ? 'Тест пройден' : 'Тест не пройден' }} · порог {{ form.passingScore }}%</UBadge>
+            <p v-if="scoreInfo.scorable > 0" class="text-lg font-semibold text-highlighted">
+              Правильных ответов: {{ scoreInfo.correct }} из {{ scoreInfo.scorable }}
+            </p>
+            <p v-else class="text-lg font-semibold text-highlighted">Ваш результат</p>
+            <UBadge v-if="passed !== null" :color="passed ? 'success' : 'error'" variant="subtle" size="lg">
+              {{ passed ? 'Тест пройден' : 'Тест не пройден' }} · порог {{ form.passingScore }}%
+            </UBadge>
+            <p v-if="passed === false" class="text-sm text-muted max-w-sm">
+              Результат ниже проходного балла. Закройте экран и попробуйте пройти тест снова.
+            </p>
           </div>
 
           <!-- Страница вопроса -->
@@ -501,7 +594,16 @@ function pollPercent(id: string): number { return pollResults.value[id]?.percent
         </div>
 
         <!-- Пейджер финального экрана -->
-        <div v-if="resultsView" class="shrink-0 border-t border-default px-5 py-3 flex items-center justify-end">
+        <div v-if="resultsView" class="shrink-0 border-t border-default px-5 py-3 flex items-center justify-end gap-2 flex-wrap">
+          <UButton
+            v-if="allowRetake && (resultsView === 'score' || resultsView === 'review')"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-rotate-cw"
+            @click="onRetake"
+          >
+            Пройти ещё раз
+          </UButton>
           <UButton color="primary" :icon="finishIcon" @click="emitFinish">Закрыть</UButton>
         </div>
 

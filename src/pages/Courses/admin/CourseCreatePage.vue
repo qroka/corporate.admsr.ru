@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import type { BreadcrumbItem } from '@nuxt/ui';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
+import { COURSE_CATEGORY_ITEMS } from '../courseCategories';
 
 const router = useRouter();
 const store = useCoursesStore();
@@ -12,7 +13,7 @@ const saving = ref(false);
 
 const form = reactive({
   title: '',
-  category: '',
+  category: '' as string,
   shortDescription: '',
   fullDescription: '',
   sequentialProgress: true,
@@ -28,11 +29,15 @@ async function onSave() {
     toast.add({ title: 'Укажите название', color: 'warning', icon: 'i-lucide-alert-triangle' });
     return;
   }
+  if (!form.category) {
+    toast.add({ title: 'Выберите категорию', color: 'warning', icon: 'i-lucide-alert-triangle' });
+    return;
+  }
   saving.value = true;
   try {
     const created = await store.createCourse({
       title: form.title.trim(),
-      category: form.category.trim() || null,
+      category: form.category,
       shortDescription: form.shortDescription,
       fullDescription: form.fullDescription,
       sequentialProgress: form.sequentialProgress,
@@ -50,7 +55,7 @@ async function onSave() {
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full h-full min-h-0 gap-4 max-w-3xl">
+  <UMain class="flex flex-1 flex-col w-full max-w-3xl mx-auto min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
     <UBreadcrumb :items="crumbs" />
     <h1 class="text-2xl font-medium text-highlighted">Новый курс</h1>
 
@@ -59,8 +64,19 @@ async function onSave() {
         <UInput v-model="form.title" size="lg" class="w-full" placeholder="Например: Онбординг новых сотрудников" />
       </UFormField>
 
-      <UFormField label="Категория">
-        <UInput v-model="form.category" size="lg" class="w-full" placeholder="Опционально" />
+      <UFormField label="Категория" required>
+        <USelectMenu
+          v-model="form.category"
+          :items="[...COURSE_CATEGORY_ITEMS]"
+          value-key="value"
+          label-key="label"
+          placeholder="Выберите категорию"
+          size="lg"
+          color="neutral"
+          :search-input="false"
+          class="w-full"
+          :content="{ align: 'start', sideOffset: 8 }"
+        />
       </UFormField>
 
       <UFormField label="Краткое описание">

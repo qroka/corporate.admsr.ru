@@ -12,8 +12,6 @@ const { toast } = useAppToast();
 const courseId = computed(() => Number(route.params.courseId));
 const loading = ref(true);
 const publishing = ref(false);
-const confirmChecked = ref(false);
-const report = ref<{ ready: boolean; errors: string[]; warnings: string[] } | null>(null);
 
 const crumbs = computed<BreadcrumbItem[]>(() => [
   { label: 'Курсы', to: { name: 'courses', query: { tab: 'manage' } } },
@@ -21,10 +19,11 @@ const crumbs = computed<BreadcrumbItem[]>(() => [
   { label: 'Публикация' },
 ]);
 
+const title = computed(() => store.current.value?.title || 'Курс');
+
 onMounted(async () => {
   try {
     await store.loadCourse(courseId.value);
-    report.value = await store.readiness(courseId.value);
   } catch (e: any) {
     toast.add({ title: 'Ошибка', description: e?.message, color: 'error', icon: 'i-lucide-alert-circle' });
   } finally {
@@ -33,7 +32,6 @@ onMounted(async () => {
 });
 
 async function onPublish() {
-  if (!report.value?.ready || !confirmChecked.value) return;
   publishing.value = true;
   try {
     await store.publishCourse(courseId.value);
@@ -48,7 +46,7 @@ async function onPublish() {
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full h-full min-h-0 gap-4 max-w-3xl">
+  <UMain class="flex flex-1 flex-col w-full max-w-3xl mx-auto min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
     <UBreadcrumb :items="crumbs" />
     <h1 class="text-2xl font-medium text-highlighted">Публикация курса</h1>
 
@@ -57,25 +55,9 @@ async function onPublish() {
     </div>
 
     <template v-else>
-      <UAlert
-        v-if="report"
-        :color="report.ready ? 'success' : 'error'"
-        variant="subtle"
-        :title="report.ready ? 'Готов к публикации' : 'Есть блокирующие ошибки'"
-        :description="report.ready
-          ? `Предупреждений: ${report.warnings.length}`
-          : `Ошибок: ${report.errors.length}. Исправьте их на странице проверки.`"
-      />
-
-      <ul v-if="report?.errors.length" class="text-sm text-error list-disc pl-5">
-        <li v-for="(e, i) in report.errors" :key="i">{{ e }}</li>
-      </ul>
-
-      <UCheckbox
-        v-model="confirmChecked"
-        :disabled="!report?.ready"
-        label="Подтверждаю публикацию текущей версии. После публикации правки контента потребуют новой версии."
-      />
+      <p class="text-sm text-muted">
+        Опубликовать «{{ title }}»? После публикации курс можно назначать сотрудникам.
+      </p>
 
       <div class="flex gap-2">
         <UButton
@@ -83,7 +65,6 @@ async function onPublish() {
           size="lg"
           icon="i-lucide-send"
           :loading="publishing"
-          :disabled="!report?.ready || !confirmChecked"
           @click="onPublish"
         >
           Опубликовать
@@ -92,9 +73,9 @@ async function onPublish() {
           color="neutral"
           variant="ghost"
           size="lg"
-          :to="{ name: 'admin-course-review', params: { courseId } }"
+          :to="{ name: 'admin-course-workspace', params: { courseId } }"
         >
-          К проверке
+          Назад
         </UButton>
       </div>
     </template>

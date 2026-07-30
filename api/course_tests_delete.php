@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * POST /api/course_tests_delete.php — Body: {courseTestLinkId}
  * Удаляет link; форму удаляет только если draft и нет attempts.
@@ -6,7 +6,7 @@
 require_once __DIR__ . '/courses_common.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonError(405, 'Метод не поддерживается');
 
-$user = auth_require_admin($pdo);
+$user = auth_require_section(\, 'courses');
 $body = cs_body();
 $linkId = (int)($body['courseTestLinkId'] ?? 0);
 if ($linkId <= 0) jsonError(400, 'Не передан courseTestLinkId');

@@ -1,9 +1,9 @@
-<?php
+﻿<?php
 /** POST /api/course_materials_update.php — Body: {materialId, ...} */
 require_once __DIR__ . '/courses_common.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonError(405, 'Метод не поддерживается');
 
-$user = auth_require_admin($pdo);
+$user = auth_require_section(\, 'courses');
 $body = cs_body();
 $materialId = (int)($body['materialId'] ?? 0);
 if ($materialId <= 0) jsonError(400, 'Не передан materialId');
@@ -11,8 +11,8 @@ if ($materialId <= 0) jsonError(400, 'Не передан materialId');
 $m = cs_material_version_row($pdo, $materialId);
 if (!$m) jsonError(404, 'Материал не найден');
 cs_require_course_admin($pdo, (int)$m['course_id']);
-if ($m['version_status'] !== 'draft') {
-    jsonError(409, 'Версия недоступна для редактирования (только черновик)');
+if (!in_array((string)$m['version_status'], ['draft', 'published'], true)) {
+    jsonError(409, 'Версия недоступна для редактирования (только черновик/опубликовано)');
 }
 
 $map = [
@@ -69,10 +69,12 @@ if (array_key_exists('minimumActiveSeconds', $body)) {
     $params[':min'] = max(0, (int)$body['minimumActiveSeconds']);
 }
 if (isset($body['type'])) {
-    $allowed = ['rich_text', 'file', 'pdf', 'image', 'video', 'link'];
-    if (!in_array($body['type'], $allowed, true)) jsonError(400, 'Недопустимый тип');
+    $allowed = ['rich_text', 'file', 'link'];
+    $type = (string)$body['type'];
+    if (in_array($type, ['pdf', 'image', 'video'], true)) $type = 'file';
+    if (!in_array($type, $allowed, true)) jsonError(400, 'Недопустимый тип');
     $sets[] = 'type = :type';
-    $params[':type'] = $body['type'];
+    $params[':type'] = $type;
 }
 if (!$sets) jsonError(400, 'Нет полей для обновления');
 

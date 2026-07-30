@@ -1,9 +1,9 @@
-<?php
+﻿<?php
 /** POST /api/course_topics_order.php — Body: {versionId, topicIds: number[]} */
 require_once __DIR__ . '/courses_common.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonError(405, 'Метод не поддерживается');
 
-$user = auth_require_admin($pdo);
+$user = auth_require_section(\, 'courses');
 $body = cs_body();
 $versionId = (int)($body['versionId'] ?? 0);
 $topicIds = $body['topicIds'] ?? [];

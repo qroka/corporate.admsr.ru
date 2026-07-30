@@ -5,12 +5,14 @@
  */
 import { onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { currentRole } from '../../../stores/role';
+import { useSectionAccess } from '../../../composables/useSectionAccess';
 
 const router = useRouter();
+const { canEditSection, ensureLoaded } = useSectionAccess();
 
-onMounted(() => {
-  if (currentRole.value === 'admin') {
+onMounted(async () => {
+  await ensureLoaded();
+  if (canEditSection('courses')) {
     router.replace({ name: 'courses', query: { tab: 'manage' } });
   } else {
     router.replace({ name: 'courses' });

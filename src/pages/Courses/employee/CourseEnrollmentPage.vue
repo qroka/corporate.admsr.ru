@@ -1,10 +1,9 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { BreadcrumbItem } from '@nuxt/ui';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
-import CourseStatusBadge from '../components/CourseStatusBadge.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -28,6 +27,8 @@ const topicsDone = computed(() => progress.value?.topicsCompleted ?? 0);
 const topicsTotal = computed(() => progress.value?.topicsTotal ?? 0);
 const next = computed(() => data.value?.nextAction || progress.value?.nextAction);
 const topics = computed(() => data.value?.version?.topics || []);
+const enrollmentStatus = computed(() => String(data.value?.enrollment?.status || ''));
+const isReview = computed(() => ['completed', 'failed'].includes(enrollmentStatus.value));
 
 onMounted(async () => {
   loading.value = true;
@@ -45,10 +46,16 @@ function topicStatus(t: any) {
 }
 
 function isLocked(t: any) {
+  if (isReview.value) return false;
   return topicStatus(t) === 'locked';
 }
 
 async function continueLearning() {
+  if (isReview.value) {
+    const first = topics.value[0];
+    if (first) openTopic(first);
+    return;
+  }
   acting.value = true;
   try {
     const status = data.value?.enrollment?.status;
@@ -91,24 +98,26 @@ function openTopic(t: any) {
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full h-full min-h-0 gap-4 max-w-3xl">
+  <UMain class="flex flex-1 flex-col w-full max-w-3xl mx-auto min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
     <UBreadcrumb :items="crumbs" />
 
-    <div v-if="loading" class="flex flex-col gap-3">
+    <div v-if="loading" class="flex flex-col gap-3 p-1">
       <USkeleton class="h-10 w-2/3 rounded-lg" />
       <USkeleton class="h-24 w-full rounded-xl" />
     </div>
 
     <template v-else-if="data">
-      <div class="flex flex-col gap-2">
-        <CourseStatusBadge :status="data.enrollment?.status" />
-        <h1 class="text-2xl font-medium text-highlighted">{{ title }}</h1>
-        <p v-if="data.version?.shortDescription" class="text-sm text-muted">
+      <div class="flex flex-col gap-2 min-w-0 p-1">
+        <h1 class="text-2xl font-medium text-highlighted break-words">{{ title }}</h1>
+        <p v-if="data.version?.shortDescription" class="text-sm text-muted break-words whitespace-pre-wrap">
           {{ data.version.shortDescription }}
+        </p>
+        <p v-if="isReview" class="text-sm text-muted">
+          Можно снова открыть темы и материалы курса.
         </p>
       </div>
 
-      <div class="flex flex-col gap-2">
+      <div class="flex flex-col gap-2 p-1">
         <UProgress
           :model-value="percent"
           size="md"
@@ -120,35 +129,48 @@ function openTopic(t: any) {
         </p>
       </div>
 
-      <UButton
-        color="primary"
-        size="lg"
-        class="w-fit"
-        :loading="acting"
-        :icon="data.enrollment?.status === 'not_started' ? 'i-lucide-play' : 'i-lucide-arrow-right'"
-        @click="continueLearning"
-      >
-        {{ data.enrollment?.status === 'not_started' ? 'Начать курс' : (next?.label || 'Продолжить') }}
-      </UButton>
+      <div class="flex flex-wrap gap-2 p-1">
+        <UButton
+          color="primary"
+          size="lg"
+          class="w-fit"
+          :loading="acting"
+          :icon="isReview ? 'i-lucide-book-open' : (data.enrollment?.status === 'not_started' ? 'i-lucide-play' : 'i-lucide-arrow-right')"
+          @click="continueLearning"
+        >
+          <template v-if="isReview">Смотреть материалы</template>
+          <template v-else-if="data.enrollment?.status === 'not_started'">Начать курс</template>
+          <template v-else>{{ next?.label || 'Продолжить' }}</template>
+        </UButton>
+        <UButton
+          v-if="isReview"
+          color="neutral"
+          variant="soft"
+          size="lg"
+          icon="i-lucide-award"
+          :to="{ name: 'course-result', params: { enrollmentId } }"
+        >
+          Результат
+        </UButton>
+      </div>
 
-      <section class="flex flex-col gap-2">
+      <section class="flex flex-col gap-2 min-w-0 p-1">
         <h2 class="text-lg font-medium">Темы</h2>
-        <ul class="flex flex-col gap-2 list-none p-0 m-0">
+        <ul class="flex flex-col gap-2 list-none p-0 m-0 min-w-0">
           <li
             v-for="(t, idx) in topics"
             :key="t.id"
-            class="rounded-xl ring-1 ring-default p-4 flex items-center gap-3"
+            class="rounded-xl ring-1 ring-default p-4 flex items-center gap-3 min-w-0"
             :class="isLocked(t) ? 'opacity-60' : 'cursor-pointer hover:bg-elevated/40'"
             @click="openTopic(t)"
           >
-            <span class="text-dimmed tabular-nums text-sm w-6">{{ idx + 1 }}</span>
+            <span class="text-dimmed tabular-nums text-sm w-6 shrink-0">{{ idx + 1 }}</span>
             <div class="flex-1 min-w-0">
-              <p class="font-medium truncate">{{ t.title }}</p>
-              <CourseStatusBadge :status="topicStatus(t)" class="mt-1" />
+              <p class="font-medium break-words">{{ t.title }}</p>
             </div>
             <UIcon
               :name="isLocked(t) ? 'i-lucide-lock' : (topicStatus(t) === 'completed' ? 'i-lucide-check-circle' : 'i-lucide-chevron-right')"
-              class="size-5 text-dimmed"
+              class="size-5 text-dimmed shrink-0"
             />
           </li>
         </ul>

@@ -1,9 +1,9 @@
-<?php
+﻿<?php
 /** POST /api/courses_list.php — список курсов (админ). */
 require_once __DIR__ . '/courses_common.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonError(405, 'Метод не поддерживается');
 
-auth_require_admin($pdo);
+auth_require_section(\, 'courses');
 
 $st = $pdo->query(
     "SELECT c.*, v.status AS ver_status, v.short_description, v.published_at, v.version_number

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import type { BreadcrumbItem } from '@nuxt/ui';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
+import { COURSE_CATEGORY_ITEMS } from '../courseCategories';
 
 const route = useRoute();
 const router = useRouter();
@@ -16,12 +17,10 @@ const saving = ref(false);
 
 const form = reactive({
   title: '',
-  category: '',
+  category: '' as string,
   shortDescription: '',
-  fullDescription: '',
   sequentialProgress: true,
   requireFinalTest: true,
-  defaultDeadlineDays: null as number | null,
 });
 
 const crumbs = computed<BreadcrumbItem[]>(() => [
@@ -30,7 +29,7 @@ const crumbs = computed<BreadcrumbItem[]>(() => [
   { label: 'Настройки' },
 ]);
 
-const isDraft = computed(() => store.version.value?.status === 'draft');
+const isEditable = computed(() => store.version.value?.status !== 'archived');
 
 onMounted(async () => {
   loading.value = true;
@@ -44,10 +43,8 @@ onMounted(async () => {
     }
     if (v) {
       form.shortDescription = v.shortDescription || '';
-      form.fullDescription = v.fullDescription || '';
       form.sequentialProgress = v.sequentialProgress !== false;
       form.requireFinalTest = v.requireFinalTest !== false;
-      form.defaultDeadlineDays = v.defaultDeadlineDays ?? null;
     }
   } catch (e: any) {
     toast.add({ title: 'Ошибка загрузки', description: e?.message, color: 'error', icon: 'i-lucide-alert-circle' });
@@ -57,8 +54,12 @@ onMounted(async () => {
 });
 
 async function onSave() {
-  if (!isDraft.value) {
-    toast.add({ title: 'Только черновик можно редактировать', color: 'warning', icon: 'i-lucide-alert-triangle' });
+  if (!isEditable.value) {
+    toast.add({ title: 'Архивированную версию нельзя редактировать', color: 'warning', icon: 'i-lucide-alert-triangle' });
+    return;
+  }
+  if (!form.category) {
+    toast.add({ title: 'Выберите категорию', color: 'warning', icon: 'i-lucide-alert-triangle' });
     return;
   }
   saving.value = true;
@@ -66,12 +67,10 @@ async function onSave() {
     await store.updateCourse({
       courseId: courseId.value,
       title: form.title.trim(),
-      category: form.category.trim() || null,
+      category: form.category,
       shortDescription: form.shortDescription,
-      fullDescription: form.fullDescription,
       sequentialProgress: form.sequentialProgress,
       requireFinalTest: form.requireFinalTest,
-      defaultDeadlineDays: form.defaultDeadlineDays,
     });
     toast.add({ title: 'Сохранено', color: 'success', icon: 'i-lucide-check' });
     await router.push({ name: 'admin-course-workspace', params: { courseId: courseId.value } });
@@ -84,17 +83,17 @@ async function onSave() {
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full h-full min-h-0 gap-4 max-w-3xl">
+  <UMain class="flex flex-1 flex-col w-full max-w-3xl mx-auto min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
     <UBreadcrumb :items="crumbs" />
     <h1 class="text-2xl font-medium text-highlighted">Настройки курса</h1>
 
     <UAlert
-      v-if="!loading && !isDraft"
+      v-if="!loading && !isEditable"
       color="warning"
       variant="subtle"
       icon="i-lucide-lock"
-      title="Опубликованная версия"
-      description="Изменение настроек доступно только для черновика."
+      title="В архиве"
+      description="Изменение настроек доступно только для черновика/публикации."
     />
 
     <div v-if="loading" class="flex flex-col gap-3">
@@ -103,29 +102,35 @@ async function onSave() {
 
     <div v-else class="flex flex-col gap-4">
       <UFormField label="Название" required>
-        <UInput v-model="form.title" size="lg" class="w-full" :disabled="!isDraft" />
+        <UInput v-model="form.title" size="lg" class="w-full" :disabled="!isEditable" />
       </UFormField>
-      <UFormField label="Категория">
-        <UInput v-model="form.category" size="lg" class="w-full" :disabled="!isDraft" />
+      <UFormField label="Категория" required>
+        <USelectMenu
+          v-model="form.category"
+          :items="[...COURSE_CATEGORY_ITEMS]"
+          value-key="value"
+          label-key="label"
+          placeholder="Выберите категорию"
+          size="lg"
+          color="neutral"
+          :search-input="false"
+          class="w-full"
+          :disabled="!isEditable"
+          :content="{ align: 'start', sideOffset: 8 }"
+        />
       </UFormField>
       <UFormField label="Краткое описание">
-        <UTextarea v-model="form.shortDescription" :rows="3" class="w-full" :disabled="!isDraft" />
-      </UFormField>
-      <UFormField label="Полное описание">
-        <UTextarea v-model="form.fullDescription" :rows="6" class="w-full" :disabled="!isDraft" />
+        <UTextarea v-model="form.shortDescription" :rows="3" class="w-full" :disabled="!isEditable" />
       </UFormField>
       <UFormField label="Последовательное прохождение">
-        <USwitch v-model="form.sequentialProgress" label="Темы открываются по порядку" :disabled="!isDraft" />
+        <USwitch v-model="form.sequentialProgress" label="Темы открываются по порядку" :disabled="!isEditable" />
       </UFormField>
       <UFormField label="Итоговый тест">
-        <USwitch v-model="form.requireFinalTest" label="Требовать итоговый тест" :disabled="!isDraft" />
-      </UFormField>
-      <UFormField label="Срок по умолчанию (дней)">
-        <UInput v-model.number="form.defaultDeadlineDays" type="number" :min="1" size="lg" class="w-full" :disabled="!isDraft" placeholder="Например, 14" />
+        <USwitch v-model="form.requireFinalTest" label="Требовать итоговый тест" :disabled="!isEditable" />
       </UFormField>
 
       <div class="flex gap-2 pt-2">
-        <UButton color="primary" size="lg" :loading="saving" :disabled="!isDraft" icon="i-lucide-check" @click="onSave">
+        <UButton color="primary" size="lg" :loading="saving" :disabled="!isEditable" icon="i-lucide-check" @click="onSave">
           Сохранить
         </UButton>
         <UButton color="neutral" variant="ghost" size="lg" :to="{ name: 'admin-course-workspace', params: { courseId } }">

@@ -44,8 +44,9 @@ async function doLoad(): Promise<void> {
 
 export function useOfoTree() {
   function ensureLoaded() {
-    if (loaded) return;
+    if (loaded) return Promise.resolve();
     if (!loadPromise) loadPromise = doLoad();
+    return loadPromise;
   }
   async function reload() {
     loaded = false;
@@ -81,6 +82,24 @@ export function useOfoTree() {
   }
   function hasChildren(unitId: number): boolean {
     return childrenOf(unitId).length > 0;
+  }
+
+  /** Корневое подразделение (поднимаемся по parent_id). */
+  function rootUnitOf(unitId: number | null | undefined): OfoUnit | null {
+    if (unitId == null) return null;
+    let u = unitById.value.get(Number(unitId));
+    if (!u) return null;
+    while (u.parent_id != null) {
+      const p = unitById.value.get(u.parent_id);
+      if (!p) break;
+      u = p;
+    }
+    return u;
+  }
+
+  /** Название корневого ОФО — как в фильтре результатов. */
+  function rootLabelOf(unitId: number | null | undefined): string {
+    return rootUnitOf(unitId)?.name ?? '';
   }
 
   /** Хлебные крошки: «Категория / … / Подразделение». */
@@ -127,6 +146,8 @@ export function useOfoTree() {
     rootUnitsOf,
     childrenOf,
     hasChildren,
+    rootUnitOf,
+    rootLabelOf,
     pathLabel,
     unitNumberOf,
     fetchPositions,

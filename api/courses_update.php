@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * POST /api/courses_update.php
  * Обновить title/category курса и/или поля draft-версии.
@@ -7,7 +7,7 @@
 require_once __DIR__ . '/courses_common.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonError(405, 'Метод не поддерживается');
 
-$user = auth_require_admin($pdo);
+$user = auth_require_section(\, 'courses');
 $body = cs_body();
 $courseId = (int)($body['courseId'] ?? 0);
 if ($courseId <= 0) jsonError(400, 'Не передан courseId');
@@ -33,7 +33,7 @@ foreach ($contentKeys as $k) {
 }
 
 if ($wantsContent && !cs_version_editable($version)) {
-    jsonError(409, 'Опубликованная версия недоступна для правки контента. Создайте новую версию.');
+    jsonError(409, 'Архивированная версия недоступна для правки контента.');
 }
 
 $pdo->beginTransaction();

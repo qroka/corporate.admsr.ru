@@ -1,10 +1,9 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import type { BreadcrumbItem } from '@nuxt/ui';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
-import CourseStatusBadge from '../components/CourseStatusBadge.vue';
 
 const route = useRoute();
 const store = useCoursesStore();
@@ -34,18 +33,19 @@ onMounted(async () => {
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full h-full min-h-0 gap-4 max-w-2xl">
+  <UMain class="flex flex-1 flex-col w-full max-w-2xl mx-auto min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
     <UBreadcrumb :items="crumbs" />
-    <h1 class="text-2xl font-medium text-highlighted">{{ title }}</h1>
+    <h1 class="text-2xl font-medium text-highlighted break-words">{{ title }}</h1>
 
-    <div v-if="loading" class="flex flex-col gap-3">
+    <div v-if="loading" class="flex flex-col gap-3 p-1">
       <USkeleton v-for="n in 3" :key="n" class="h-16 w-full rounded-xl" />
     </div>
 
     <template v-else-if="result">
-      <CourseStatusBadge :status="result.enrollment?.status || result.status || 'completed'" />
+      <div class="min-w-0 p-1 flex flex-col gap-4">
+      <h1 class="text-2xl font-medium text-highlighted break-words">{{ title }}</h1>
 
-      <div class="rounded-xl ring-1 ring-default p-5 flex flex-col gap-3">
+      <div class="rounded-xl ring-1 ring-default p-5 flex flex-col gap-3 min-w-0">
         <p v-if="result.finalScore != null || result.enrollment?.finalScore != null" class="text-3xl font-medium text-highlighted">
           {{ result.finalScore ?? result.enrollment?.finalScore }}%
         </p>
@@ -66,9 +66,16 @@ onMounted(async () => {
         </p>
       </div>
 
-      <div class="flex gap-2">
-        <UButton color="primary" :to="{ name: 'courses' }">К моим курсам</UButton>
-        <UButton color="neutral" variant="ghost" :to="{ name: 'course-history' }">История</UButton>
+      <div class="flex gap-2 flex-wrap">
+        <UButton
+          color="primary"
+          icon="i-lucide-book-open"
+          :to="{ name: 'course-enrollment', params: { enrollmentId } }"
+        >
+          Смотреть материалы
+        </UButton>
+        <UButton color="neutral" variant="ghost" :to="{ name: 'courses' }">К моим курсам</UButton>
+      </div>
       </div>
     </template>
   </UMain>

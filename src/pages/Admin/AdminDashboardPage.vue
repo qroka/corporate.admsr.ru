@@ -8,6 +8,7 @@ import { useOfoTree } from '../../composables/useOfoTree';
 import { useGroupsData } from '../../composables/useGroupsData';
 import { useUsersData, type AdminUserRow } from '../../composables/useUsersData';
 import { currentRole } from '../../stores/role';
+import { PORTAL_SECTIONS, portalSectionLabel } from './portalSections';
 
 const { toast, adminUserSaved, adminOfoSaved } = useAppToast();
 
@@ -48,8 +49,128 @@ onUnmounted(() => {
   if (usersPollTimer) clearInterval(usersPollTimer);
 });
 
-const { loading: groupsLoading, error: groupsError, groups } = useGroupsData();
+const {
+  loading: groupsLoading,
+  error: groupsError,
+  groups,
+  load: loadGroups,
+  getGroup,
+  createGroup,
+  updateGroup,
+  deleteGroup,
+} = useGroupsData();
 
+const groupEditorOpen = ref(false);
+const groupDeleteOpen = ref(false);
+const groupSaving = ref(false);
+const groupDeleting = ref(false);
+const groupEditId = ref<number | null>(null);
+const groupForm = reactive({
+  name: '',
+  description: '',
+  permissions: [] as string[],
+  memberIds: [] as number[],
+});
+
+const userSelectItems = computed(() =>
+  users.value
+    .map((u) => ({
+      label: u.fullName || u.login || String(u.id),
+      value: u.id,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'ru')),
+);
+
+function resetGroupForm() {
+  groupEditId.value = null;
+  groupForm.name = '';
+  groupForm.description = '';
+  groupForm.permissions = [];
+  groupForm.memberIds = [];
+}
+
+function openCreateGroup() {
+  resetGroupForm();
+  ensureUsersLoaded();
+  groupEditorOpen.value = true;
+}
+
+async function openEditGroup(id: number) {
+  ensureUsersLoaded();
+  try {
+    const g = await getGroup(id);
+    groupEditId.value = g.id;
+    groupForm.name = g.name;
+    groupForm.description = g.description || '';
+    groupForm.permissions = [...(g.permissions || [])];
+    groupForm.memberIds = [...(g.memberIds || [])];
+    groupEditorOpen.value = true;
+  } catch (e: any) {
+    toast.add({ title: 'Не удалось открыть группу', description: e?.message, color: 'error', icon: 'i-lucide-x' });
+  }
+}
+
+function toggleGroupPermission(key: string, on: boolean | 'indeterminate') {
+  const set = new Set(groupForm.permissions);
+  if (on === true) set.add(key);
+  else set.delete(key);
+  groupForm.permissions = [...set];
+}
+
+async function saveGroup() {
+  if (!groupForm.name.trim()) {
+    toast.add({ title: 'Укажите название группы', color: 'warning', icon: 'i-lucide-alert-triangle' });
+    return;
+  }
+  groupSaving.value = true;
+  try {
+    const payload = {
+      name: groupForm.name.trim(),
+      description: groupForm.description.trim(),
+      permissions: groupForm.permissions,
+      memberIds: groupForm.memberIds,
+    };
+    if (groupEditId.value) {
+      await updateGroup(groupEditId.value, payload);
+      toast.add({ title: 'Группа сохранена', color: 'success', icon: 'i-lucide-check' });
+    } else {
+      await createGroup(payload);
+      toast.add({ title: 'Группа создана', color: 'success', icon: 'i-lucide-check' });
+    }
+    groupEditorOpen.value = false;
+    resetGroupForm();
+  } catch (e: any) {
+    toast.add({ title: 'Не удалось сохранить', description: e?.message, color: 'error', icon: 'i-lucide-x' });
+  } finally {
+    groupSaving.value = false;
+  }
+}
+
+function askDeleteGroup(id: number) {
+  groupEditId.value = id;
+  groupDeleteOpen.value = true;
+}
+
+async function confirmDeleteGroup() {
+  if (!groupEditId.value) return;
+  groupDeleting.value = true;
+  try {
+    await deleteGroup(groupEditId.value);
+    toast.add({ title: 'Группа удалена', color: 'success', icon: 'i-lucide-check' });
+    groupDeleteOpen.value = false;
+    groupEditorOpen.value = false;
+    resetGroupForm();
+  } catch (e: any) {
+    toast.add({ title: 'Не удалось удалить', description: e?.message, color: 'error', icon: 'i-lucide-x' });
+  } finally {
+    groupDeleting.value = false;
+  }
+}
+
+function groupPermissionsLabel(perms: string[] | undefined) {
+  if (!perms?.length) return 'Без прав на разделы';
+  return perms.map(portalSectionLabel).join(', ');
+}
 watch(
   usersError,
   (val) => {
@@ -424,6 +545,10 @@ watch(
       // Needed to render OFO titles in users table immediately.
       ensureOfoDirectoryLoaded();
     }
+    if (t === 'groups') {
+      void loadGroups();
+      ensureUsersLoaded();
+    }
     if (t === 'ofo') {
       ensureOfoDirectoryLoaded();
       ensureOfoSeatsLoaded();
@@ -645,6 +770,8 @@ const editForm = reactive<AdminUserRow>({
 
 function openEdit(user: AdminUserRow) {
   Object.assign(editForm, { ...user });
+  const g = String(user.user_group ?? '').trim().toLowerCase();
+  editForm.user_group = g === 'admin' ? 'admin' : 'user';
   editOpen.value = true;
 }
 
@@ -820,7 +947,7 @@ const userColumns: TableColumn<AdminUserRow>[] = [
   },
   { accessorKey: 'login', header: 'Логин' },
   { accessorKey: 'fullName', header: 'ФИО' },
-  { accessorKey: 'role', header: 'Роль' },
+  { accessorKey: 'role', header: 'Должность' },
   {
     accessorKey: 'ofo',
     header: 'ОФО',
@@ -1134,7 +1261,7 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
 
         <div v-else-if="tab === 'groups'" class="flex flex-col gap-4">
           <div class="flex items-center justify-between gap-3 mb-2">
-            <UButton color="neutral" variant="outline" size="lg" icon="i-lucide-users">
+            <UButton color="neutral" variant="outline" size="lg" icon="i-lucide-plus" @click="openCreateGroup">
               Создать группу
             </UButton>
           </div>
@@ -1151,14 +1278,36 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
             Загрузка групп...
           </div>
 
+          <UEmpty
+            v-else-if="!groups.length"
+            icon="i-lucide-users"
+            title="Групп пока нет"
+            description="Создайте группу и выдайте права на разделы."
+            class="py-10"
+          />
+
           <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            <UCard v-for="g in groups" :key="g.name" class="w-full">
+            <UCard
+              v-for="g in groups"
+              :key="g.id"
+              class="w-full cursor-pointer hover:ring-1 hover:ring-primary/40"
+              @click="openEditGroup(g.id)"
+            >
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
                   <div class="font-medium text-highlighted truncate">{{ g.name }}</div>
-                  <div class="text-sm text-muted">{{ g.members }} участников</div>
+                  <div class="text-sm text-muted">{{ g.memberCount }} участников</div>
+                  <p class="text-xs text-dimmed mt-1 line-clamp-2">{{ groupPermissionsLabel(g.permissions) }}</p>
                 </div>
-                <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-chevron-right" square />
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  icon="i-lucide-pencil"
+                  square
+                  aria-label="Редактировать"
+                  @click.stop="openEditGroup(g.id)"
+                />
               </div>
             </UCard>
           </div>
@@ -1390,6 +1539,85 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
       </template>
     </UModal>
 
+    <USlideover
+      v-model:open="groupEditorOpen"
+      side="right"
+      :title="groupEditId ? 'Редактирование группы' : 'Новая группа'"
+      description="Права на разделы объединяются, если пользователь в нескольких группах."
+    >
+      <template #body>
+        <UForm class="flex flex-col gap-4">
+          <UFormField label="Название" name="name" required>
+            <UInput v-model="groupForm.name" size="xl" class="w-full" placeholder="Например: Редакторы новостей" />
+          </UFormField>
+          <UFormField label="Описание" name="description">
+            <UTextarea v-model="groupForm.description" :rows="3" autoresize class="w-full" />
+          </UFormField>
+          <UFormField label="Права на разделы" name="permissions">
+            <div class="flex flex-col gap-2">
+              <UCheckbox
+                v-for="s in PORTAL_SECTIONS"
+                :key="s.key"
+                :model-value="groupForm.permissions.includes(s.key)"
+                :label="s.label"
+                @update:model-value="(v) => toggleGroupPermission(s.key, v)"
+              />
+            </div>
+          </UFormField>
+          <UFormField label="Участники" name="members">
+            <USelectMenu
+              v-model="groupForm.memberIds"
+              :items="userSelectItems"
+              multiple
+              value-key="value"
+              label-key="label"
+              placeholder="Выберите пользователей"
+              size="xl"
+              class="w-full"
+              :search-input="{ placeholder: 'Поиск…' }"
+              :content="{ align: 'start', sideOffset: 8 }"
+            />
+          </UFormField>
+        </UForm>
+      </template>
+      <template #footer>
+        <div class="flex justify-between gap-3 w-full">
+          <UButton
+            v-if="groupEditId"
+            color="error"
+            variant="outline"
+            size="xl"
+            icon="i-lucide-trash-2"
+            @click="askDeleteGroup(groupEditId)"
+          >
+            Удалить
+          </UButton>
+          <div v-else />
+          <div class="flex gap-3">
+            <UButton color="neutral" variant="outline" size="xl" @click="groupEditorOpen = false">
+              Отмена
+            </UButton>
+            <UButton size="xl" :loading="groupSaving" @click="saveGroup">
+              Сохранить
+            </UButton>
+          </div>
+        </div>
+      </template>
+    </USlideover>
+
+    <UModal v-model:open="groupDeleteOpen" title="Удалить группу?" description="Участники потеряют права этой группы. Действие необратимо.">
+      <template #footer>
+        <div class="flex justify-end gap-3 w-full">
+          <UButton color="neutral" variant="outline" size="xl" @click="groupDeleteOpen = false">
+            Отмена
+          </UButton>
+          <UButton color="error" size="xl" :loading="groupDeleting" @click="confirmDeleteGroup">
+            Удалить
+          </UButton>
+        </div>
+      </template>
+    </UModal>
+
     <USlideover v-model:open="editOpen" side="right" title="Редактирование пользователя" description="">
       <template #body>
         <UForm :state="editForm" class="space-y-4" @submit.prevent="saveEdit">
@@ -1418,9 +1646,17 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
             <UInput v-model="editForm.phone" size="xl" class="w-full" />
           </UFormField>
           <UFormField label="Группа пользователей" name="user_group">
-            <UInput v-model="editForm.user_group" size="xl" class="w-full" />
+            <USelect
+              v-model="editForm.user_group"
+              :items="[
+                { value: 'user', label: 'user (сотрудник)' },
+                { value: 'admin', label: 'admin (суперadmin)' },
+              ]"
+              size="xl"
+              class="w-full"
+            />
           </UFormField>
-          <UFormField label="Роль" name="role">
+          <UFormField label="Должность" name="role">
             <UInput v-model="editForm.role" size="xl" class="w-full" />
           </UFormField>
           <UFormField label="Аватар (URL)" name="avatar_url">

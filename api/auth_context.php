@@ -229,6 +229,75 @@ function auth_is_admin(array $user): bool
     return ($user['user_group'] ?? '') === 'admin';
 }
 
+/** Разделы портала, которыми можно управлять через группы. */
+const AUTH_PORTAL_SECTIONS = [
+    'news',
+    'events',
+    'gallery',
+    'courses',
+    'tests',
+    'absence_journal',
+    'birthdays',
+];
+
+/**
+ * Уникальные section_key пользователя по членству в группах.
+ * @return string[]
+ */
+function auth_user_sections(PDO $pdo, array $user): array
+{
+    if (auth_is_admin($user)) {
+        return AUTH_PORTAL_SECTIONS;
+    }
+    $uid = (int)($user['id'] ?? 0);
+    if ($uid <= 0) {
+        return [];
+    }
+    try {
+        $st = $pdo->prepare(
+            'SELECT DISTINCT p.section_key
+             FROM public.portal_group_members m
+             JOIN public.portal_group_permissions p ON p.group_id = m.group_id
+             WHERE m.user_id = :u'
+        );
+        $st->execute([':u' => $uid]);
+        $out = [];
+        foreach ($st->fetchAll() as $r) {
+            $key = (string)($r['section_key'] ?? '');
+            if ($key !== '' && in_array($key, AUTH_PORTAL_SECTIONS, true)) {
+                $out[] = $key;
+            }
+        }
+        return array_values(array_unique($out));
+    } catch (Throwable $e) {
+        // Таблицы V5 ещё не применены
+        return [];
+    }
+}
+
+function auth_can_edit_section(PDO $pdo, array $user, string $section): bool
+{
+    if (!in_array($section, AUTH_PORTAL_SECTIONS, true)) {
+        return false;
+    }
+    if (auth_is_admin($user)) {
+        return true;
+    }
+    return in_array($section, auth_user_sections($pdo, $user), true);
+}
+
+function auth_require_section(PDO $pdo, string $section): array
+{
+    $u = auth_require_user($pdo);
+    if (!auth_can_edit_section($pdo, $u, $section)) {
+        http_response_code(403);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'message' => 'Недостаточно прав для этого раздела', 'data' => null], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    return $u;
+}
+
 function auth_ofo_unit_id(array $user): ?int
 {
     $raw = $user['ofo'] ?? null;

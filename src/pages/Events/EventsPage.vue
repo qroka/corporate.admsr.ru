@@ -2,7 +2,8 @@
 <script setup lang="ts">
 import { computed, ref, watch, reactive, onMounted, onUnmounted } from 'vue';
 import type { BlogPostProps } from '@nuxt/ui';
-import { currentRole } from '../../stores/role';
+import { useSectionAccess } from '../../composables/useSectionAccess';
+import { apiSessionFetch } from '../../composables/useAuthSession';
 import { formatDateRuLong } from '../../utils/date';
 
 type EventPost = BlogPostProps & {
@@ -12,6 +13,9 @@ type EventPost = BlogPostProps & {
 };
 
 // ─── State ───────────────────────────────────────────────────────────────────
+const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
+ensureSectionAccess();
+
 const posts = ref<EventPost[]>([]);
 const loading = ref(false);
 const fetchError = ref<string | null>(null);
@@ -136,7 +140,7 @@ const createSubmitting = ref(false);
 const createError = ref<string | null>(null);
 
 const headerLinks = computed(() => {
-  if (currentRole.value !== 'admin') return [];
+  if (!canEditSection('events')) return [];
   return [
     {
       label: 'Добавить мероприятие',
@@ -202,19 +206,17 @@ async function handleCreateSubmit() {
       imageFullPath = uploadJson.data.image_full;
     }
 
-    const res = await fetch('/api/events.php', {
+    const json = await apiSessionFetch('/api/events.php', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      json: {
         title:       createState.title.trim(),
         description: createState.description.trim() || null,
         badge:       createState.badge || null,
         date:        createState.date,
         image:       imagePath,
         image_full:  imageFullPath,
-      }),
+      },
     });
-    const json = await res.json();
     if (!json.success) throw new Error(json.message || 'Ошибка создания');
 
     createOpen.value = false;

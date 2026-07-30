@@ -44,7 +44,7 @@ $allowedOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://127
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 header('Access-Control-Allow-Origin: ' . (in_array($origin, $allowedOrigins, true) ? $origin : $allowedOrigins[0]));
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Session-Token');
 header('Access-Control-Max-Age: 86400');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
@@ -114,6 +114,8 @@ try {
     jsonError(500, 'Ошибка подключения к БД');
 }
 
+require_once __DIR__ . '/auth_context.php';
+
 $method = $_SERVER['REQUEST_METHOD'];
 $id     = isset($_GET['id']) ? (int)$_GET['id'] : null;
 
@@ -139,8 +141,9 @@ if ($method === 'GET') {
         $params[':user_id'] = (int)$_GET['user_id'];
     }
 
-    // Фильтр по ОФО
+    // Фильтр по ОФО — админский просмотр
     if (!empty($_GET['ofo'])) {
+        auth_require_section($pdo, 'absence_journal');
         $where[]       = 'ofo = :ofo';
         $params[':ofo'] = (int)$_GET['ofo'];
     }
@@ -214,6 +217,13 @@ if ($method === 'POST') {
     if ($start === '')       jsonError(400, 'start_datetime обязателен');
     if (!validDatetime($start)) jsonError(400, 'Некорректный формат start_datetime');
 
+    $actor = auth_current_user($pdo);
+    if ($actor) {
+        $canManage = auth_can_edit_section($pdo, $actor, 'absence_journal');
+        if (!$canManage && (int)$actor['id'] !== $userId) {
+            jsonError(403, 'Недостаточно прав');
+        }
+    }
     // Опциональные поля
     $end    = isset($body['end_datetime']) && trim($body['end_datetime']) !== ''
               ? normDt($body['end_datetime']) : null;
@@ -257,6 +267,13 @@ if ($method === 'PUT') {
     $existing = $stmt->fetch();
     if (!$existing) jsonError(404, 'Запись не найдена');
 
+    $actor = auth_current_user($pdo);
+    if ($actor) {
+        $canManage = auth_can_edit_section($pdo, $actor, 'absence_journal');
+        if (!$canManage && (int)$actor['id'] !== (int)$existing['user_id']) {
+            jsonError(403, 'Недостаточно прав');
+        }
+    }
     // Собираем поля для обновления
     $sets   = [];
     $params = [':id' => $id];

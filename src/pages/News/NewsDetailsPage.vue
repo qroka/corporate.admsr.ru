@@ -10,7 +10,8 @@ import { newsEditorHandlers } from '../../composables/newsEditorHandlers';
 import { newsEditorSlideoverUi } from '../../composables/newsEditorSlideoverUi';
 import { newsEditorHtmlClass } from '../../composables/newsEditorHtmlClass';
 import { useAppToast } from '../../composables/useAppToast';
-import { currentRole } from '../../stores/role';
+import { useSectionAccess } from '../../composables/useSectionAccess';
+import { apiSessionFetch } from '../../composables/useAuthSession';
 
 const route  = useRoute();
 const router = useRouter();
@@ -32,7 +33,9 @@ const imageSrc = computed(() => resolveNewsImageSrc(item.value?.imagePath ?? nul
 
 const isKiosk      = computed(() => route.matched?.some((r) => r.meta?.kiosk));
 const newsListPath = computed(() => (isKiosk.value ? '/kiosk/news' : '/news'));
-const isAdmin      = computed(() => currentRole.value === 'admin');
+const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
+ensureSectionAccess();
+const isAdmin      = computed(() => canEditSection('news'));
 
 const appendEditorEmojiTo = () => document.body;
 
@@ -215,31 +218,30 @@ async function handleEditSubmit() {
       imagePatch = { image_path: uploadJson.data.image };
     }
 
-    const res  = await fetch(`/api/news.php?id=${item.value.id}`, {
-      method:  'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
+    const json = await apiSessionFetch(`/api/news.php?id=${item.value.id}`, {
+      method: 'PUT',
+      json: {
         title:       editState.title.trim(),
         category:    editState.category || '',
         description: editState.description.trim(),
         date:        editState.date,
         image_path:  item.value.imagePath,
         ...imagePatch,
-      }),
+      },
     });
-    const json = await res.json();
     if (!json.success) throw new Error(json.message || 'Ошибка сохранения');
 
+    const data = json.data as any;
     patchItem({
-      id:          String(json.data.id),
-      title:       String(json.data.title       ?? ''),
-      category:    String(json.data.category    ?? ''),
-      description: String(json.data.description ?? ''),
-      date:        String(json.data.date        ?? ''),
-      imagePath:   json.data.image_path ?? null,
-      createdAt:   json.data.created_at ?? null,
-      likes:       Number(json.data.likes ?? 0) || 0,
-      views:       Number(json.data.views ?? 0) || 0,
+      id:          String(data.id),
+      title:       String(data.title       ?? ''),
+      category:    String(data.category    ?? ''),
+      description: String(data.description ?? ''),
+      date:        String(data.date        ?? ''),
+      imagePath:   data.image_path ?? null,
+      createdAt:   data.created_at ?? null,
+      likes:       Number(data.likes ?? 0) || 0,
+      views:       Number(data.views ?? 0) || 0,
     });
     editOpen.value = false;
   } catch (e: any) {
@@ -269,8 +271,7 @@ async function handleDelete() {
   deleteSubmitting.value = true;
   deleteError.value      = null;
   try {
-    const res  = await fetch(`/api/news.php?id=${item.value.id}`, { method: 'DELETE' });
-    const json = await res.json();
+    const json = await apiSessionFetch(`/api/news.php?id=${item.value.id}`, { method: 'DELETE' });
     if (!json.success) throw new Error(json.message || 'Ошибка удаления');
     deleteConfirmOpen.value = false;
     await reload();

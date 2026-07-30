@@ -81,7 +81,6 @@ export type CourseDetail = {
   ownerId?: number;
   currentVersionId?: number | null;
   version?: CourseVersion | null;
-  readiness?: { ready: boolean; errors: string[]; warnings: string[] };
 };
 
 export type EnrollmentSummary = {
@@ -121,7 +120,6 @@ function normalizeCourseDetail(data: any): CourseDetail {
       ownerId: course.ownerId,
       currentVersionId: course.currentVersionId ?? version?.id ?? null,
       version: version ?? null,
-      readiness: data.readiness ?? course.readiness,
     };
   }
   return data as CourseDetail;
@@ -209,12 +207,12 @@ export function useCoursesStore() {
     return unwrap(res, 'Не удалось опубликовать');
   }
 
-  async function readiness(courseId: number) {
-    const res = await apiSessionFetch<{ ready: boolean; errors: string[]; warnings: string[] }>(
-      '/api/courses_readiness.php',
-      { method: 'POST', json: { courseId } },
-    );
-    return unwrap(res, 'Не удалось проверить готовность');
+  async function unpublishCourse(courseId: number) {
+    const res = await apiSessionFetch('/api/courses_unpublish.php', {
+      method: 'POST',
+      json: { courseId },
+    });
+    return unwrap(res, 'Не удалось снять публикацию');
   }
 
   async function createTopic(payload: Record<string, unknown>) {
@@ -346,6 +344,14 @@ export function useCoursesStore() {
     return unwrap(res, 'Не удалось загрузить карточку');
   }
 
+  async function resetEnrollment(enrollmentId: number) {
+    const res = await apiSessionFetch('/api/course_enrollment_reset.php', {
+      method: 'POST',
+      json: { enrollmentId },
+    });
+    return unwrap(res, 'Не удалось обнулить результат');
+  }
+
   // Employee
   async function loadMyCourses() {
     loading.value = true;
@@ -453,14 +459,6 @@ export function useCoursesStore() {
     return unwrap(res, 'Не удалось определить шаг');
   }
 
-  async function loadHistory() {
-    const res = await apiSessionFetch('/api/course_history.php', {
-      method: 'POST',
-      json: {},
-    });
-    return unwrap(res, 'Не удалось загрузить историю');
-  }
-
   async function loadResult(enrollmentId: number) {
     const res = await apiSessionFetch('/api/course_result.php', {
       method: 'POST',
@@ -519,7 +517,7 @@ export function useCoursesStore() {
     updateCourse,
     deleteCourse,
     publishCourse,
-    readiness,
+    unpublishCourse,
     createTopic,
     updateTopic,
     deleteTopic,
@@ -536,6 +534,7 @@ export function useCoursesStore() {
     assign,
     loadResults,
     loadParticipant,
+    resetEnrollment,
     loadMyCourses,
     getEnrollment,
     startCourse,
@@ -544,7 +543,6 @@ export function useCoursesStore() {
     heartbeat,
     completeMaterial,
     nextAction,
-    loadHistory,
     loadResult,
     attemptStart,
     attemptSave,

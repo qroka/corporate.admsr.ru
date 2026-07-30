@@ -5,8 +5,8 @@ import type { BreadcrumbItem } from '@nuxt/ui';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
 import { createEmptyForm, type TestForm } from '../../Tests/testForm';
-import QuestionsBuilder from '../../Tests/QuestionsBuilder.vue';
-import TestSettingsForm, { type TestSettingsModel } from '../../Tests/components/TestSettingsForm.vue';
+import type { TestSettingsModel } from '../../Tests/components/TestSettingsForm.vue';
+import CourseTestEditor from '../components/CourseTestEditor.vue';
 
 const route = useRoute();
 const store = useCoursesStore();
@@ -110,50 +110,21 @@ async function onSave() {
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full h-full min-h-0 gap-4">
+  <UMain class="flex flex-1 flex-col w-full max-w-full min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
     <UBreadcrumb :items="crumbs" />
-
-    <div class="flex flex-col gap-1">
-      <p class="text-sm text-muted">Курс: {{ store.current.value?.title || '—' }}</p>
-      <h1 class="text-2xl font-medium text-highlighted">Итоговый тест</h1>
-    </div>
 
     <div v-if="loading" class="flex flex-col gap-3">
       <USkeleton v-for="n in 4" :key="n" class="h-16 w-full rounded-xl" />
     </div>
 
-    <template v-else>
-      <UFormField label="Название теста">
-        <UInput v-model="form.title" size="lg" class="w-full max-w-xl" />
-      </UFormField>
-
-      <UFormField label="Описание">
-        <UTextarea v-model="form.description" :rows="2" class="w-full max-w-xl" />
-      </UFormField>
-
-      <section class="flex flex-col gap-2">
-        <h2 class="text-lg font-medium">Параметры</h2>
-        <TestSettingsForm v-model="settings" />
-      </section>
-
-      <section class="flex flex-col gap-2 flex-1 min-h-0">
-        <h2 class="text-lg font-medium">Вопросы</h2>
-        <QuestionsBuilder v-model="form.questions" kind="test" />
-      </section>
-
-      <div class="flex gap-2 sticky bottom-0 py-2 bg-default/80 backdrop-blur">
-        <UButton color="primary" size="lg" :loading="saving" icon="i-lucide-check" @click="onSave">
-          Сохранить тест
-        </UButton>
-        <UButton
-          color="neutral"
-          variant="ghost"
-          size="lg"
-          :to="{ name: 'admin-course-workspace', params: { courseId } }"
-        >
-          К курсу
-        </UButton>
-      </div>
-    </template>
+    <CourseTestEditor
+      v-else
+      :form="form"
+      :settings="settings"
+      :saving="saving"
+      headline="Итоговый тест"
+      title-placeholder="Итоговый тест"
+      @save="onSave"
+    />
   </UMain>
 </template>

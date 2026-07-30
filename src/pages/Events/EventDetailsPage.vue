@@ -2,7 +2,8 @@
 import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { BlogPostProps } from '@nuxt/ui';
-import { currentRole } from '../../stores/role';
+import { useSectionAccess } from '../../composables/useSectionAccess';
+import { apiSessionFetch } from '../../composables/useAuthSession';
 import { useAppToast } from '../../composables/useAppToast';
 
 type EventPost = BlogPostProps & {
@@ -20,7 +21,9 @@ const event = ref<EventPost | null>(null);
 const loading = ref(false);
 const fetchError = ref<string | null>(null);
 
-const isAdmin = computed(() => currentRole.value === 'admin');
+const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
+ensureSectionAccess();
+const isAdmin = computed(() => canEditSection('events'));
 const isKiosk = computed(() => route.matched?.some((r) => r.meta?.kiosk));
 const isArchivedEvent = computed(() => {
   const badge = String(event.value?.badge ?? '').trim().toLowerCase();
@@ -269,18 +272,16 @@ async function handleEditSubmit() {
       imagePatch = { image: uploadJson.data.image, image_full: uploadJson.data.image_full };
     }
 
-    const res = await fetch(`/api/events.php?id=${event.value.id}`, {
+    const json = await apiSessionFetch(`/api/events.php?id=${event.value.id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      json: {
         title:       editState.title.trim(),
         description: editState.description.trim() || null,
         badge:       editState.badge || null,
         date:        editState.date,
         ...imagePatch,
-      }),
+      },
     });
-    const json = await res.json();
     if (!json.success) throw new Error(json.message || 'Ошибка сохранения');
 
     event.value = mapEvent(json.data);
@@ -322,10 +323,9 @@ async function handleDelete() {
   deleteSubmitting.value = true;
   deleteError.value = null;
   try {
-    const res = await fetch(`/api/events.php?id=${event.value.id}`, {
+    const json = await apiSessionFetch(`/api/events.php?id=${event.value.id}`, {
       method: 'DELETE',
     });
-    const json = await res.json();
     if (!json.success) throw new Error(json.message || 'Ошибка удаления');
 
     deleteConfirmOpen.value = false;

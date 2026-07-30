@@ -5,13 +5,18 @@ import type { BreadcrumbItem } from '@nuxt/ui';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useUsersData } from '../../../composables/useUsersData';
 import { useAppToast } from '../../../composables/useAppToast';
-import OfoMultiSelect from '../../../components/OfoMultiSelect.vue';
+import { useOfoTree } from '../../../composables/useOfoTree';
 
 const route = useRoute();
 const router = useRouter();
 const store = useCoursesStore();
 const { toast } = useAppToast();
 const { users, ensureLoaded: ensureUsers } = useUsersData();
+const {
+  categories,
+  ensureLoaded: ensureOfo,
+  rootUnitsOf,
+} = useOfoTree();
 
 const courseId = computed(() => Number(route.params.courseId));
 const loading = ref(true);
@@ -22,7 +27,6 @@ const selectedUsers = ref<number[]>([]);
 const ofoIds = ref<number[]>([]);
 const includeChildren = ref(true);
 const startsAt = ref('');
-const deadlineAt = ref('');
 const preview = ref<{ recipients?: any[]; count?: number; skipped?: number } | null>(null);
 
 const userItems = computed(() =>
@@ -30,6 +34,18 @@ const userItems = computed(() =>
     .map((u) => ({ label: u.fullName || String(u.id), value: u.id }))
     .sort((a, b) => a.label.localeCompare(b.label, 'ru')),
 );
+
+/** Корневые ОФО — как в фильтре результатов (только названия, без категорий). */
+const ofoItems = computed(() => {
+  const items: { label: string; value: number }[] = [];
+  const cats = [...categories.value].sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+  for (const cat of cats) {
+    for (const u of rootUnitsOf(cat.id)) {
+      items.push({ label: u.name, value: u.id });
+    }
+  }
+  return items.sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+});
 
 const crumbs = computed<BreadcrumbItem[]>(() => [
   { label: 'Курсы', to: { name: 'courses', query: { tab: 'manage' } } },
@@ -43,6 +59,7 @@ const canAssign = computed(
 
 onMounted(async () => {
   ensureUsers();
+  await ensureOfo();
   try {
     await store.loadCourse(courseId.value);
   } catch (e: any) {
@@ -60,7 +77,7 @@ function payload() {
     ofoIds: ofoIds.value,
     includeChildren: includeChildren.value,
     startsAt: startsAt.value || null,
-    deadlineAt: deadlineAt.value || null,
+    deadlineAt: null,
   };
 }
 
@@ -106,7 +123,7 @@ const previewList = computed(() => {
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full h-full min-h-0 gap-4 max-w-3xl">
+  <UMain class="flex flex-1 flex-col w-full max-w-3xl mx-auto min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
     <UBreadcrumb :items="crumbs" />
     <h1 class="text-2xl font-medium text-highlighted">Назначение курса</h1>
 
@@ -125,36 +142,43 @@ const previewList = computed(() => {
 
     <div v-else class="flex flex-col gap-5">
       <UFormField label="Сотрудники">
-          <USelectMenu
-            v-model="selectedUsers"
-            :items="userItems"
-            multiple
-            searchable
-            value-key="value"
-            label-key="label"
-            placeholder="Выберите сотрудников"
-            size="lg"
-            class="w-full"
-            :content="{ align: 'start', sideOffset: 8 }"
-          />
+        <USelectMenu
+          v-model="selectedUsers"
+          :items="userItems"
+          multiple
+          value-key="value"
+          label-key="label"
+          placeholder="Выберите сотрудников"
+          size="lg"
+          class="w-full"
+          :search-input="{ placeholder: 'Поиск…' }"
+          :content="{ align: 'start', sideOffset: 8 }"
+        />
       </UFormField>
 
       <UFormField label="ОФО">
-        <OfoMultiSelect v-model="ofoIds" />
+        <USelectMenu
+          v-model="ofoIds"
+          :items="ofoItems"
+          multiple
+          value-key="value"
+          label-key="label"
+          placeholder="Выберите ОФО"
+          size="lg"
+          color="neutral"
+          class="w-full"
+          :search-input="{ placeholder: 'Найти ОФО…' }"
+          :content="{ align: 'start', sideOffset: 8 }"
+        />
       </UFormField>
 
       <UFormField>
         <UCheckbox v-model="includeChildren" label="Включать дочерние ОФО" />
       </UFormField>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <UFormField label="Дата начала">
-          <UInput v-model="startsAt" type="datetime-local" size="lg" class="w-full" />
-        </UFormField>
-        <UFormField label="Дедлайн">
-          <UInput v-model="deadlineAt" type="datetime-local" size="lg" class="w-full" />
-        </UFormField>
-      </div>
+      <UFormField label="Дата начала">
+        <UInput v-model="startsAt" type="datetime-local" size="lg" class="w-full" />
+      </UFormField>
 
       <div class="flex flex-wrap gap-2">
         <UButton

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue';
 import type { BlogPostProps } from '@nuxt/ui';
-import { currentRole } from '../../stores/role';
+import { useSectionAccess } from '../../composables/useSectionAccess';
+import { apiSessionFetch, apiSessionUpload } from '../../composables/useAuthSession';
 import { useGalleryData } from '../../composables/useGalleryData';
 import { useAppToast } from '../../composables/useAppToast';
 import { formatDateRuLong } from '../../utils/date';
@@ -33,6 +34,8 @@ const { loading, error, albums: albumRecords, ensureLoaded, reload } = useGaller
 ensureLoaded();
 
 const { toast } = useAppToast();
+const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
+ensureSectionAccess();
 watch(
   error,
   (val) => {
@@ -116,7 +119,7 @@ function openCreate() {
 }
 
 const headerLinks = computed(() => {
-  if (currentRole.value !== 'admin') return [];
+  if (!canEditSection('gallery')) return [];
   return [
     {
       label:   'Добавить альбом',
@@ -145,26 +148,24 @@ async function handleCreateSubmit() {
   createSubmitting.value = true;
   try {
     // 1. Создаём альбом в БД
-    const res = await fetch('/api/gallery.php', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
+    const json = await apiSessionFetch('/api/gallery.php', {
+      method: 'POST',
+      json: {
         name:        createState.title.trim(),
         description: createState.description.trim() || null,
         date:        createState.date || null,
-      }),
+      },
     });
-    const json = await res.json();
     if (!json.success) throw new Error(json.message || 'Ошибка создания альбома');
 
-    const newAlbumId = json.data.id;
+    const newAlbumId = (json.data as any).id;
 
     // 2. Загружаем фото если выбраны
     for (const file of (createFiles.value ?? [])) {
       const fd = new FormData();
       fd.append('image',    file);
       fd.append('album_id', String(newAlbumId));
-      await fetch('/api/gallery_base.php', { method: 'POST', body: fd });
+      await apiSessionUpload('/api/gallery_base.php', fd);
     }
 
     // 3. Обновляем список

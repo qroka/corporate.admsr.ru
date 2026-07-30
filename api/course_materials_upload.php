@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * POST /api/course_materials_upload.php — multipart upload.
  * Fields: file, topicId, title?, type?, materialId? (update existing), isRequired?, minimumActiveSeconds?
@@ -6,7 +6,7 @@
 require_once __DIR__ . '/courses_common.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonError(405, 'Метод не поддерживается');
 
-$user = auth_require_admin($pdo);
+$user = auth_require_section(\, 'courses');
 
 $topicId = (int)($_POST['topicId'] ?? 0);
 $materialId = (int)($_POST['materialId'] ?? 0);
@@ -22,8 +22,8 @@ if ($materialId > 0) {
 }
 if (!$topic) jsonError(404, 'Тема не найдена');
 cs_require_course_admin($pdo, (int)$topic['course_id']);
-if ($topic['version_status'] !== 'draft') {
-    jsonError(409, 'Версия недоступна для редактирования (только черновик)');
+if (!in_array((string)$topic['version_status'], ['draft', 'published'], true)) {
+    jsonError(409, 'Версия недоступна для редактирования (только черновик/опубликовано)');
 }
 
 if (empty($_FILES['file']) || !is_uploaded_file($_FILES['file']['tmp_name'])) {
@@ -67,19 +67,14 @@ if (!move_uploaded_file($file['tmp_name'], $absPath)) {
 
 $relKey = $relPrefix . '/' . $storedName;
 // URL для клиента через course_file.php
-$fileUrl = 'course_file.php?path=' . rawurlencode($relKey);
+$fileUrl = '/api/course_file.php?path=' . rawurlencode($relKey);
 
-// Определяем type по расширению, если не передан
+// Тип вложения: PDF/картинки/видео — это тоже «файл»
 $type = (string)($_POST['type'] ?? '');
-if ($type === '') {
-    $type = match (true) {
-        in_array($ext, ['pdf'], true) => 'pdf',
-        in_array($ext, ['png','jpg','jpeg','gif','webp'], true) => 'image',
-        in_array($ext, ['mp4','webm'], true) => 'video',
-        default => 'file',
-    };
+if ($type === '' || in_array($type, ['pdf', 'image', 'video'], true)) {
+    $type = 'file';
 }
-$allowedTypes = ['rich_text', 'file', 'pdf', 'image', 'video', 'link'];
+$allowedTypes = ['rich_text', 'file', 'link'];
 if (!in_array($type, $allowedTypes, true)) $type = 'file';
 
 $title = trim((string)($_POST['title'] ?? ''));

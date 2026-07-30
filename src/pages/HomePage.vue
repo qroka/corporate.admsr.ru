@@ -8,6 +8,8 @@ import { useNewsReactions } from '../composables/useNewsReactions';
 import { useBirthdayColleagues } from '../composables/useBirthdayColleagues';
 import { attachAbsenceStorageSync, hasActiveAbsence } from '../stores/absenceJournal';
 import { currentRole } from '../stores/role';
+import { useSectionAccess } from '../composables/useSectionAccess';
+import { apiSessionUpload } from '../composables/useAuthSession';
 import LearningHomeWidget from './Courses/components/LearningHomeWidget.vue';
 
 const eventsLinks = <ButtonProps[]>([
@@ -33,6 +35,10 @@ const newsLinks = <ButtonProps[]>([
 ])
 
 const isAdmin = computed(() => currentRole.value === 'admin');
+
+const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
+ensureSectionAccess();
+const canEditBirthdays = computed(() => canEditSection('birthdays'));
 
 const birthdayLinks = <ButtonProps[]>([
   {
@@ -252,10 +258,9 @@ watch(birthdayFile, async (val) => {
   try {
     const fd = new FormData();
     fd.append('file', file);
-    const res = await fetch('/api/birthdays.php', { method: 'POST', body: fd });
-    const json = await res.json();
+    const json = await apiSessionUpload('/api/birthdays.php', fd);
     if (!json.success) throw new Error(json.message || 'Ошибка загрузки');
-    birthdayManifest.value = json.data ?? birthdayManifest.value;
+    birthdayManifest.value = (json.data as any) ?? birthdayManifest.value;
     await reloadBirthdays();
   } catch (e: any) {
     birthdayUploadError.value = e?.message ?? 'Ошибка загрузки';
@@ -393,7 +398,7 @@ watch(birthdayFile, async (val) => {
         </template>
       </UPageHeader>
       <UButton
-        v-if="isAdmin"
+        v-if="canEditBirthdays"
         label="Загрузить даты xlsx"
         icon="i-lucide-upload"
         color="neutral"

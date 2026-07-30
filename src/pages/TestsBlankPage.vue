@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import type { TabsItem } from '@nuxt/ui';
-import { currentRole } from '../stores/role';
+import { useSectionAccess } from '../composables/useSectionAccess';
 import { useTestsStore } from '../composables/useTestsStore';
 import { useUsersData } from '../composables/useUsersData';
 import { useAppToast } from '../composables/useAppToast';
@@ -14,7 +14,9 @@ import OfoMultiSelect from '../components/OfoMultiSelect.vue';
 type TabValue = 'list' | 'forme' | 'builder' | 'stats';
 
 const tab = ref<TabValue>('list');
-const isAdmin = computed(() => currentRole.value === 'admin');
+const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
+ensureSectionAccess();
+const isAdmin = computed(() => canEditSection('tests'));
 const store = useTestsStore();
 const { toast } = useAppToast();
 onMounted(() => { store.ensureLoaded(); });

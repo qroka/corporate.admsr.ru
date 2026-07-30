@@ -2,8 +2,9 @@
 import { computed, h, onMounted, ref, resolveComponent, watch } from 'vue';
 import type { TableColumn, TabsItem } from '@nuxt/ui';
 import { setHasActiveAbsence } from '../stores/absenceJournal';
-import { currentRole } from '../stores/role';
+import { useSectionAccess } from '../composables/useSectionAccess';
 import { useAppToast } from '../composables/useAppToast';
+import { apiSessionFetch } from '../composables/useAuthSession';
 
 type JsonRow = Record<string, unknown>;
 
@@ -151,7 +152,9 @@ const canStartAbsence = computed(() =>
   Boolean(startAbsenceAt.value) && Boolean(currentUser.value) && !activeRecord.value,
 );
 
-const isAdmin = computed(() => currentRole.value === 'admin');
+const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
+ensureSectionAccess();
+const isAdmin = computed(() => canEditSection('absence_journal'));
 
 const mySearchQuery = ref('');
 // Фильтр по статусу для "Мои отсутствия" убран по запросу
@@ -354,12 +357,10 @@ async function loadMoreAdmin(): Promise<void> {
   adminLoadingMore.value = true;
   try {
     const params = makeAdminQueryParams();
-    const res = await fetch(`/api/absence_journal.php?${params.toString()}`);
-    if (!res.ok) throw new Error(`Не удалось загрузить журнал (${res.status})`);
-    const raw = await res.json();
-    if (!raw.success) throw new Error(raw.error || 'Ошибка загрузки журнала');
+    const raw = await apiSessionFetch(`/api/absence_journal.php?${params.toString()}`, { method: 'GET' });
+    if (!raw.success) throw new Error(raw.message || (raw as any).error || 'Ошибка загрузки журнала');
 
-    const batch = (raw.data as JsonRow[]).map((row) => mapApiRecord(row, ofoTitleById.value));
+    const batch = ((raw.data as JsonRow[]) || []).map((row) => mapApiRecord(row, ofoTitleById.value));
     adminRecordsStore.value = [...adminRecordsStore.value, ...batch];
     adminOffset.value += batch.length;
     adminHasMore.value = batch.length >= ADMIN_PAGE_SIZE;
@@ -481,19 +482,17 @@ async function startAbsence() {
 
   loading.value = true;
   try {
-    const res = await fetch('/api/absence_journal.php', {
+    const data = await apiSessionFetch('/api/absence_journal.php', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      json: {
         user_id:        Number(u.id),
         fio:            u.fio,
         ofo:            Number(u.ofoId),
         role:           u.role,
         start_datetime: toLocalDateTimeInputValue(start).replace('T', ' ') + ':00',
-      }),
+      },
     });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Ошибка создания записи');
+    if (!data.success) throw new Error(data.message || (data as any).error || 'Ошибка создания записи');
 
     const newRecord = mapApiRecord(data.data as JsonRow, ofoTitleById.value);
     myRecordsStore.value = [newRecord, ...myRecordsStore.value];
@@ -548,13 +547,11 @@ async function saveEdit() {
       end_datetime:   end ? toLocalDateTimeInputValue(end).replace('T', ' ') + ':00' : '',
       reason,
     };
-    const res = await fetch(`/api/absence_journal.php?id=${rec.id}`, {
+    const data = await apiSessionFetch(`/api/absence_journal.php?id=${rec.id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      json: body,
     });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Ошибка обновления записи');
+    if (!data.success) throw new Error(data.message || (data as any).error || 'Ошибка обновления записи');
 
     const updated = mapApiRecord(data.data as JsonRow, ofoTitleById.value);
     myRecordsStore.value = myRecordsStore.value.map((r) => r.id === rec.id ? updated : r);
@@ -601,16 +598,14 @@ async function finishAbsence() {
   finishError.value = null;
   loading.value = true;
   try {
-    const res = await fetch(`/api/absence_journal.php?id=${rec.id}`, {
+    const data = await apiSessionFetch(`/api/absence_journal.php?id=${rec.id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      json: {
         end_datetime: toLocalDateTimeInputValue(end).replace('T', ' ') + ':00',
         reason,
-      }),
+      },
     });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Ошибка завершения записи');
+    if (!data.success) throw new Error(data.message || (data as any).error || 'Ошибка завершения записи');
 
     const updated = mapApiRecord(data.data as JsonRow, ofoTitleById.value);
     myRecordsStore.value = myRecordsStore.value.map((r) => r.id === rec.id ? updated : r);
@@ -638,9 +633,8 @@ async function deleteDraft(recordId: string) {
   myRecordsStore.value = myRecordsStore.value.filter((r) => r.id !== recordId);
   adminRecordsStore.value = adminRecordsStore.value.filter((r) => r.id !== recordId);
   try {
-    const res = await fetch(`/api/absence_journal.php?id=${recordId}`, { method: 'DELETE' });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Ошибка удаления');
+    const data = await apiSessionFetch(`/api/absence_journal.php?id=${recordId}`, { method: 'DELETE' });
+    if (!data.success) throw new Error(data.message || (data as any).error || 'Ошибка удаления');
     toast.add({
       title: 'Запись удалена',
       description: row ? `Удалено: ${formatDateTime(row.startAt)}` : 'Запись удалена.',

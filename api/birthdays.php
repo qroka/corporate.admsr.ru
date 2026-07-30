@@ -38,7 +38,7 @@ $allowedOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://127
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 header('Access-Control-Allow-Origin: ' . (in_array($origin, $allowedOrigins, true) ? $origin : $allowedOrigins[0]));
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Session-Token');
 header('Access-Control-Max-Age: 86400');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
@@ -244,6 +244,20 @@ if ($method === 'GET') {
 }
 
 if ($method === 'POST') {
+    require_once __DIR__ . '/auth_context.php';
+    // birthdays.php doesn't always have $pdo — create if needed for auth
+    if (!isset($pdo) || !($pdo instanceof PDO)) {
+        try {
+            $pdo = new PDO(
+                sprintf('pgsql:host=%s;port=%s;dbname=%s', DB_HOST, DB_PORT, DB_NAME),
+                DB_USER, DB_PASS,
+                [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+            );
+        } catch (PDOException $e) {
+            jsonError(500, 'Ошибка подключения к БД');
+        }
+    }
+    auth_require_section($pdo, 'birthdays');
     if (!is_dir(BDAY_DIR))     mkdir(BDAY_DIR, 0755, true);
     if (!is_dir(BDAY_OLD_DIR)) mkdir(BDAY_OLD_DIR, 0755, true);
 

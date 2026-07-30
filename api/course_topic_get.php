@@ -18,15 +18,17 @@ if (!$topic || (int)$topic['course_version_id'] !== (int)$enr['course_version_id
     jsonError(404, 'Тема не найдена');
 }
 
+$isReview = in_array((string)$enr['status'], ['completed', 'failed'], true);
+
 $ps = $pdo->prepare('SELECT * FROM public.course_topic_progress WHERE enrollment_id = :e AND topic_id = :t');
 $ps->execute([':e' => $enrollmentId, ':t' => $topicId]);
 $prog = $ps->fetch();
-if (!$prog || $prog['status'] === 'locked') {
+if (!$isReview && (!$prog || $prog['status'] === 'locked')) {
     jsonError(403, 'Тема ещё недоступна');
 }
 
-// Открыть тему
-if ($prog['status'] === 'available') {
+// Открыть тему (не трогаем прогресс в режиме просмотра завершённого курса)
+if (!$isReview && $prog && $prog['status'] === 'available') {
     $pdo->prepare(
         "UPDATE public.course_topic_progress
          SET status = 'in_progress', opened_at = COALESCE(opened_at, now()), updated_at = now()
@@ -61,10 +63,49 @@ unset($m);
 $ps->execute([':e' => $enrollmentId, ':t' => $topicId]);
 $prog = $ps->fetch();
 $topicData['progress'] = [
-    'status' => (string)$prog['status'],
-    'activeSeconds' => (int)$prog['active_seconds'],
-    'openedAt' => $prog['opened_at'],
-    'completedAt' => $prog['completed_at'],
+    'status' => (string)($prog['status'] ?? 'locked'),
+    'activeSeconds' => (int)($prog['active_seconds'] ?? 0),
+    'openedAt' => $prog['opened_at'] ?? null,
+    'completedAt' => $prog['completed_at'] ?? null,
 ];
 
-jsonOk(['topic' => $topicData, 'nextAction' => cs_next_action($pdo, $enrollmentId)]);
+$nextTopic = null;
+$nextSt = $pdo->prepare(
+    'SELECT t.id, t.title, t.sort_order, COALESCE(p.status, \'locked\') AS progress_status
+     FROM public.course_topics t
+     LEFT JOIN public.course_topic_progress p
+       ON p.topic_id = t.id AND p.enrollment_id = :e
+     WHERE t.course_version_id = :v
+       AND t.deleted_at IS NULL
+       AND (
+         t.sort_order > :so
+         OR (t.sort_order = :so AND t.id > :id)
+       )
+     ORDER BY t.sort_order, t.id
+     LIMIT 1'
+);
+$nextSt->execute([
+    ':e' => $enrollmentId,
+    ':v' => (int)$enr['course_version_id'],
+    ':so' => (int)$topic['sort_order'],
+    ':id' => $topicId,
+]);
+$nextRow = $nextSt->fetch();
+if ($nextRow) {
+    $nextStatus = (string)$nextRow['progress_status'];
+    if ($isReview || $nextStatus !== 'locked') {
+        $nextTopic = [
+            'id' => (int)$nextRow['id'],
+            'title' => (string)$nextRow['title'],
+            'status' => $nextStatus,
+        ];
+    }
+}
+
+jsonOk([
+    'topic' => $topicData,
+    'nextAction' => cs_next_action($pdo, $enrollmentId),
+    'nextTopic' => $nextTopic,
+    'reviewMode' => $isReview,
+    'enrollmentStatus' => (string)$enr['status'],
+]);

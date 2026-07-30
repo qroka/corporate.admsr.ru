@@ -31,7 +31,7 @@ $allowedOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://127
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 header('Access-Control-Allow-Origin: ' . (in_array($origin, $allowedOrigins, true) ? $origin : $allowedOrigins[0]));
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Session-Token');
 header('Access-Control-Max-Age: 86400');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
@@ -52,6 +52,8 @@ try {
 } catch (PDOException $e) {
   jsonError(500, 'Ошибка подключения к БД');
 }
+
+require_once __DIR__ . '/auth_context.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $id     = isset($_GET['id']) ? (int)$_GET['id'] : null;
@@ -122,6 +124,7 @@ switch ($method) {
       jsonError(400, 'Неизвестное действие');
     }
 
+    auth_require_section($pdo, 'news');
     $d = jsonBody();
     required($d, ['title', 'date']);
 
@@ -146,6 +149,7 @@ switch ($method) {
     break;
 
   case 'PUT':
+    auth_require_section($pdo, 'news');
     if (!$id) jsonError(400, 'Укажите ?id=...');
     $d = jsonBody();
     required($d, ['title', 'date']);
@@ -175,6 +179,7 @@ switch ($method) {
     break;
 
   case 'DELETE':
+    auth_require_section($pdo, 'news');
     if (!$id) jsonError(400, 'Укажите ?id=...');
     $check = $pdo->prepare('SELECT id FROM public.news WHERE id = :id');
     $check->execute([':id' => $id]);

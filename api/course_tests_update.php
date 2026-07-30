@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 /**
  * POST /api/course_tests_update.php
  * Body: {courseTestLinkId|testFormId, form: TestForm, isRequired?}
@@ -7,7 +7,7 @@
 require_once __DIR__ . '/courses_common.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonError(405, 'Метод не поддерживается');
 
-$user = auth_require_admin($pdo);
+$user = auth_require_section(\, 'courses');
 $body = cs_body();
 $linkId = (int)($body['courseTestLinkId'] ?? 0);
 $formId = (int)($body['testFormId'] ?? $body['formId'] ?? 0);
@@ -29,7 +29,7 @@ $version = cs_get_version($pdo, (int)$link['course_version_id']);
 if (!$version) jsonError(404, 'Версия не найдена');
 cs_require_course_admin($pdo, (int)$version['courseId']);
 if (!cs_version_editable($version)) {
-    jsonError(409, 'Опубликованная версия: правки вопросов недоступны. Создайте новую версию.');
+    jsonError(409, 'Архивированная версия: правки вопросов недоступны.');
 }
 
 $formPayload = $body['form'] ?? null;

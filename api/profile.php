@@ -69,6 +69,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     if (!$row) jsonError(404, 'Пользователь не найден');
 
+    $isAdmin = (($row['user_group'] ?? '') === 'admin');
+    $sections = [];
+    try {
+        require_once __DIR__ . '/auth_context.php';
+        $sections = auth_user_sections($pdo, [
+            'id' => (int)$row['id'],
+            'user_group' => $row['user_group'] ?? '',
+        ]);
+    } catch (Throwable $e) {
+        $sections = $isAdmin
+            ? ['news', 'events', 'gallery', 'courses', 'tests', 'absence_journal', 'birthdays']
+            : [];
+    }
+
     jsonOk([
         'id'         => (int)$row['id'],
         'firstname'  => $row['firstname']  ?? '',
@@ -80,6 +94,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'email'      => $row['email']      ?? '',
         'role'       => $row['role']       ?? '',
         'avatar_url' => $row['avatar_url'] ?? '',
+        'isAdmin'    => $isAdmin,
+        'sections'   => $sections,
     ]);
 }
 

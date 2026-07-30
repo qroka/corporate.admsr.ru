@@ -19,10 +19,14 @@ $topicId = (int)$m['topic_id'];
 cs_ensure_topic_progress_rows($pdo, $enrollmentId, (int)$enr['course_version_id']);
 cs_recalculate_locks($pdo, $enrollmentId);
 
+$isReview = in_array((string)$enr['status'], ['completed', 'failed'], true);
+
 $tp = $pdo->prepare('SELECT status FROM public.course_topic_progress WHERE enrollment_id = :e AND topic_id = :t');
 $tp->execute([':e' => $enrollmentId, ':t' => $topicId]);
 $ts = $tp->fetchColumn(0);
-if ($ts === false || $ts === 'locked') jsonError(403, 'Тема ещё недоступна');
+if (!$isReview && ($ts === false || $ts === 'locked')) {
+    jsonError(403, 'Тема ещё недоступна');
+}
 
 $pdo->beginTransaction();
 try {
@@ -77,7 +81,7 @@ try {
 
 $fileServeUrl = null;
 if (!empty($m['file_url'])) {
-    $fileServeUrl = 'course_file.php?materialId=' . $materialId;
+    $fileServeUrl = '/api/course_file.php?materialId=' . $materialId;
 }
 
 jsonOk([

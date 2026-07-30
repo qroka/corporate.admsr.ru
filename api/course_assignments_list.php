@@ -1,9 +1,9 @@
-<?php
+﻿<?php
 /** POST /api/course_assignments_list.php — Body: {courseId|versionId?} */
 require_once __DIR__ . '/courses_common.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonError(405, 'Метод не поддерживается');
 
-auth_require_admin($pdo);
+auth_require_section(\, 'courses');
 $body = cs_body();
 
 $sql = 'SELECT a.*, v.course_id, c.title AS course_title

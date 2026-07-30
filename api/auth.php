@@ -178,12 +178,19 @@ $pdo->prepare('UPDATE public.user_info SET auth = true, last_activity = now() WH
     ->execute([':id' => $user['id']]);
 
 $sessionToken = null;
+$sections = [];
+$isAdmin = (($user['user_group'] ?? '') === 'admin');
 try {
     require_once __DIR__ . '/auth_context.php';
     $sessionToken = auth_create_session($pdo, (int)$user['id']);
+    $sections = auth_user_sections($pdo, [
+        'id' => (int)$user['id'],
+        'user_group' => $user['user_group'] ?? '',
+    ]);
 } catch (Throwable $e) {
-    // Миграция V4 ещё не применена — вход не ломаем; модуль курсов потребует sessionToken.
+    // Миграция V4/V5 ещё не применена — вход не ломаем.
     $sessionToken = null;
+    $sections = $isAdmin ? ['news', 'events', 'gallery', 'courses', 'tests', 'absence_journal', 'birthdays'] : [];
 }
 
 $fio = implode(' ', array_filter([
@@ -201,5 +208,7 @@ echo json_encode([
         'user_group'   => $user['user_group'],
         'role'         => $user['role'] ?? '',
         'sessionToken' => $sessionToken,
+        'isAdmin'      => $isAdmin,
+        'sections'     => $sections,
     ],
 ]);
