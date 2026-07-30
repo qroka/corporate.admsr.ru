@@ -67,7 +67,11 @@ function pg_normalize_course_categories(mixed $raw): array
     }
     $out = [];
     foreach ($raw as $k) {
-        $key = trim((string)$k);
+        if (is_array($k)) {
+            $key = trim((string)($k['value'] ?? $k['label'] ?? ''));
+        } else {
+            $key = trim((string)$k);
+        }
         if ($key !== '' && in_array($key, AUTH_COURSE_CATEGORIES, true)) {
             $out[] = $key;
         }
@@ -192,11 +196,7 @@ function pg_replace_permissions(PDO $pdo, int $groupId, array $permissions): voi
 
 function pg_replace_course_categories(PDO $pdo, int $groupId, array $categories): void
 {
-    try {
-        $pdo->prepare('DELETE FROM public.portal_group_course_categories WHERE group_id = :g')->execute([':g' => $groupId]);
-    } catch (Throwable $e) {
-        return;
-    }
+    $pdo->prepare('DELETE FROM public.portal_group_course_categories WHERE group_id = :g')->execute([':g' => $groupId]);
     if (!$categories) {
         return;
     }

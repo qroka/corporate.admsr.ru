@@ -126,12 +126,37 @@ function toggleGroupPermission(key: string, on: boolean | 'indeterminate') {
   }
 }
 
+function toggleCourseCategory(key: string, on: boolean | 'indeterminate') {
+  const set = new Set(groupForm.courseCategories);
+  if (on === true) set.add(key);
+  else set.delete(key);
+  groupForm.courseCategories = [...set];
+}
+
+function normalizeCourseCategoriesPayload(raw: unknown[]): string[] {
+  const allowed = new Set(COURSE_CATEGORY_ITEMS.map((c) => c.value));
+  const out: string[] = [];
+  for (const item of raw) {
+    const v =
+      typeof item === 'string'
+        ? item
+        : item && typeof item === 'object' && 'value' in item
+          ? String((item as { value: unknown }).value)
+          : '';
+    if (v && allowed.has(v as (typeof COURSE_CATEGORY_ITEMS)[number]['value'])) out.push(v);
+  }
+  return [...new Set(out)];
+}
+
 async function saveGroup() {
   if (!groupForm.name.trim()) {
     toast.add({ title: 'Укажите название группы', color: 'warning', icon: 'i-lucide-alert-triangle' });
     return;
   }
-  if (groupForm.permissions.includes('courses') && !groupForm.courseCategories.length) {
+  const cats = groupForm.permissions.includes('courses')
+    ? normalizeCourseCategoriesPayload(groupForm.courseCategories as unknown[])
+    : [];
+  if (groupForm.permissions.includes('courses') && !cats.length) {
     toast.add({
       title: 'Выберите категории курсов',
       description: 'Для права «Курсы» нужна хотя бы одна категория.',
@@ -146,7 +171,7 @@ async function saveGroup() {
       name: groupForm.name.trim(),
       description: groupForm.description.trim(),
       permissions: groupForm.permissions,
-      courseCategories: groupForm.permissions.includes('courses') ? groupForm.courseCategories : [],
+      courseCategories: cats,
       memberIds: groupForm.memberIds,
     };
     if (groupEditId.value) {
@@ -1604,17 +1629,15 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
             name="courseCategories"
             hint="Пользователи группы увидят и смогут редактировать только выбранные категории."
           >
-            <USelectMenu
-              v-model="groupForm.courseCategories"
-              :items="[...COURSE_CATEGORY_ITEMS]"
-              multiple
-              value-key="value"
-              label-key="label"
-              placeholder="Выберите категории"
-              size="xl"
-              class="w-full"
-              :content="{ align: 'start', sideOffset: 8 }"
-            />
+            <div class="flex flex-col gap-2">
+              <UCheckbox
+                v-for="c in COURSE_CATEGORY_ITEMS"
+                :key="c.value"
+                :model-value="groupForm.courseCategories.includes(c.value)"
+                :label="c.label"
+                @update:model-value="(v) => toggleCourseCategory(c.value, v)"
+              />
+            </div>
           </UFormField>
           <UFormField label="Участники" name="members">
             <USelectMenu
