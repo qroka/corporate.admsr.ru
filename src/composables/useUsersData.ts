@@ -24,6 +24,7 @@ export type AdminUserRow = {
   fullName: string;
   ofo: string;
   user_group: string;
+  access_groups?: string;
   phone: string;
   email: string;
   auth: string;
@@ -49,6 +50,7 @@ function mapUser(r: any): AdminUserRow {
     fullName,
     ofo: String(r.ofo || '').trim(),
     user_group: r.user_group || '',
+    access_groups: String(r.access_groups || '').trim(),
     phone: r.phone || '',
     email: r.email || '',
     auth: r.auth || '',

@@ -1,9 +1,9 @@
-﻿<?php
+<?php
 /** POST /api/course_tests_create.php — Body: {topicId} | {versionId|courseId, type:'final'} */
 require_once __DIR__ . '/courses_common.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonError(405, 'Метод не поддерживается');
 
-$user = auth_require_section(\, 'courses');
+$user = auth_require_section($pdo, 'courses');
 $body = cs_body();
 $topicId = (int)($body['topicId'] ?? 0);
 $type = (string)($body['type'] ?? ($topicId > 0 ? 'topic' : 'final'));

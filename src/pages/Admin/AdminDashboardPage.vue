@@ -9,6 +9,7 @@ import { useGroupsData } from '../../composables/useGroupsData';
 import { useUsersData, type AdminUserRow } from '../../composables/useUsersData';
 import { currentRole } from '../../stores/role';
 import { PORTAL_SECTIONS, portalSectionLabel } from './portalSections';
+import { COURSE_CATEGORY_ITEMS } from '../Courses/courseCategories';
 
 const { toast, adminUserSaved, adminOfoSaved } = useAppToast();
 
@@ -69,6 +70,7 @@ const groupForm = reactive({
   name: '',
   description: '',
   permissions: [] as string[],
+  courseCategories: [] as string[],
   memberIds: [] as number[],
 });
 
@@ -81,11 +83,14 @@ const userSelectItems = computed(() =>
     .sort((a, b) => a.label.localeCompare(b.label, 'ru')),
 );
 
+const showCourseCategories = computed(() => groupForm.permissions.includes('courses'));
+
 function resetGroupForm() {
   groupEditId.value = null;
   groupForm.name = '';
   groupForm.description = '';
   groupForm.permissions = [];
+  groupForm.courseCategories = [];
   groupForm.memberIds = [];
 }
 
@@ -103,6 +108,7 @@ async function openEditGroup(id: number) {
     groupForm.name = g.name;
     groupForm.description = g.description || '';
     groupForm.permissions = [...(g.permissions || [])];
+    groupForm.courseCategories = [...(g.courseCategories || [])];
     groupForm.memberIds = [...(g.memberIds || [])];
     groupEditorOpen.value = true;
   } catch (e: any) {
@@ -115,11 +121,23 @@ function toggleGroupPermission(key: string, on: boolean | 'indeterminate') {
   if (on === true) set.add(key);
   else set.delete(key);
   groupForm.permissions = [...set];
+  if (!groupForm.permissions.includes('courses')) {
+    groupForm.courseCategories = [];
+  }
 }
 
 async function saveGroup() {
   if (!groupForm.name.trim()) {
     toast.add({ title: 'Укажите название группы', color: 'warning', icon: 'i-lucide-alert-triangle' });
+    return;
+  }
+  if (groupForm.permissions.includes('courses') && !groupForm.courseCategories.length) {
+    toast.add({
+      title: 'Выберите категории курсов',
+      description: 'Для права «Курсы» нужна хотя бы одна категория.',
+      color: 'warning',
+      icon: 'i-lucide-alert-triangle',
+    });
     return;
   }
   groupSaving.value = true;
@@ -128,6 +146,7 @@ async function saveGroup() {
       name: groupForm.name.trim(),
       description: groupForm.description.trim(),
       permissions: groupForm.permissions,
+      courseCategories: groupForm.permissions.includes('courses') ? groupForm.courseCategories : [],
       memberIds: groupForm.memberIds,
     };
     if (groupEditId.value) {
@@ -167,9 +186,13 @@ async function confirmDeleteGroup() {
   }
 }
 
-function groupPermissionsLabel(perms: string[] | undefined) {
+function groupPermissionsLabel(perms: string[] | undefined, cats?: string[]) {
   if (!perms?.length) return 'Без прав на разделы';
-  return perms.map(portalSectionLabel).join(', ');
+  const base = perms.map(portalSectionLabel).join(', ');
+  if (perms.includes('courses') && cats?.length) {
+    return `${base} · категории: ${cats.join(', ')}`;
+  }
+  return base;
 }
 watch(
   usersError,
@@ -949,6 +972,17 @@ const userColumns: TableColumn<AdminUserRow>[] = [
   { accessorKey: 'fullName', header: 'ФИО' },
   { accessorKey: 'role', header: 'Должность' },
   {
+    accessorKey: 'access_groups',
+    header: 'Группы',
+    cell: ({ row }) => {
+      const raw = String(row.getValue('access_groups') || '').trim();
+      if (!raw) {
+        return h('span', { class: 'text-dimmed' }, '—');
+      }
+      return h('span', { class: 'line-clamp-2 max-w-[200px]', title: raw }, raw);
+    },
+  },
+  {
     accessorKey: 'ofo',
     header: 'ОФО',
     cell: ({ row }) => {
@@ -1246,7 +1280,7 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
                   :columns="userColumns"
                   :data="usersVisible"
                   sticky
-                  class="w-full"
+                  class="w-full text-sm"
                 />
                 <div v-if="usersInfiniteLoading" class="py-3 text-center text-xs text-muted">
                   Загрузка…
@@ -1297,7 +1331,7 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
                 <div class="min-w-0">
                   <div class="font-medium text-highlighted truncate">{{ g.name }}</div>
                   <div class="text-sm text-muted">{{ g.memberCount }} участников</div>
-                  <p class="text-xs text-dimmed mt-1 line-clamp-2">{{ groupPermissionsLabel(g.permissions) }}</p>
+                  <p class="text-xs text-dimmed mt-1 line-clamp-2">{{ groupPermissionsLabel(g.permissions, g.courseCategories) }}</p>
                 </div>
                 <UButton
                   color="neutral"
@@ -1563,6 +1597,24 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
                 @update:model-value="(v) => toggleGroupPermission(s.key, v)"
               />
             </div>
+          </UFormField>
+          <UFormField
+            v-if="showCourseCategories"
+            label="Категории курсов"
+            name="courseCategories"
+            hint="Пользователи группы увидят и смогут редактировать только выбранные категории."
+          >
+            <USelectMenu
+              v-model="groupForm.courseCategories"
+              :items="[...COURSE_CATEGORY_ITEMS]"
+              multiple
+              value-key="value"
+              label-key="label"
+              placeholder="Выберите категории"
+              size="xl"
+              class="w-full"
+              :content="{ align: 'start', sideOffset: 8 }"
+            />
           </UFormField>
           <UFormField label="Участники" name="members">
             <USelectMenu

@@ -1,9 +1,9 @@
-﻿<?php
+<?php
 /** POST /api/courses_duplicate.php — Body: {courseId} */
 require_once __DIR__ . '/courses_common.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonError(405, 'Метод не поддерживается');
 
-$user = auth_require_section(\, 'courses');
+$user = auth_require_section($pdo, 'courses');
 $body = cs_body();
 $courseId = (int)($body['courseId'] ?? 0);
 if ($courseId <= 0) jsonError(400, 'Не передан courseId');

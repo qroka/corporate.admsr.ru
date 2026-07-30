@@ -259,6 +259,9 @@ function cs_require_course_admin(PDO $pdo, int $courseId): array
     if (!$course) {
         jsonError(404, 'Курс не найден');
     }
+    if (!auth_can_edit_course_category($pdo, $user, $course['category'] ?? null)) {
+        jsonError(403, 'Нет доступа к категории этого курса');
+    }
     return [$user, $course];
 }
 

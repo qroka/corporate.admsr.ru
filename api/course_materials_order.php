@@ -1,9 +1,9 @@
-﻿<?php
+<?php
 /** POST /api/course_materials_order.php — Body: {topicId, materialIds: number[]} */
 require_once __DIR__ . '/courses_common.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonError(405, 'Метод не поддерживается');
 
-$user = auth_require_section(\, 'courses');
+$user = auth_require_section($pdo, 'courses');
 $body = cs_body();
 $topicId = (int)($body['topicId'] ?? 0);
 $ids = $body['materialIds'] ?? [];

@@ -179,18 +179,22 @@ $pdo->prepare('UPDATE public.user_info SET auth = true, last_activity = now() WH
 
 $sessionToken = null;
 $sections = [];
+$courseCategories = [];
 $isAdmin = (($user['user_group'] ?? '') === 'admin');
 try {
     require_once __DIR__ . '/auth_context.php';
     $sessionToken = auth_create_session($pdo, (int)$user['id']);
-    $sections = auth_user_sections($pdo, [
+    $authUser = [
         'id' => (int)$user['id'],
         'user_group' => $user['user_group'] ?? '',
-    ]);
+    ];
+    $sections = auth_user_sections($pdo, $authUser);
+    $courseCategories = auth_user_course_categories($pdo, $authUser);
 } catch (Throwable $e) {
     // Миграция V4/V5 ещё не применена — вход не ломаем.
     $sessionToken = null;
     $sections = $isAdmin ? ['news', 'events', 'gallery', 'courses', 'tests', 'absence_journal', 'birthdays'] : [];
+    $courseCategories = $isAdmin ? ['Кадровая деятельность', 'Безопасность'] : [];
 }
 
 $fio = implode(' ', array_filter([
@@ -210,5 +214,6 @@ echo json_encode([
         'sessionToken' => $sessionToken,
         'isAdmin'      => $isAdmin,
         'sections'     => $sections,
+        'courseCategories' => $courseCategories,
     ],
 ]);

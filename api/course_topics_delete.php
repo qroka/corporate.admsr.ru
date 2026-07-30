@@ -1,9 +1,9 @@
-﻿<?php
+<?php
 /** POST /api/course_topics_delete.php — soft-delete. Body: {topicId} */
 require_once __DIR__ . '/courses_common.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonError(405, 'Метод не поддерживается');
 
-$user = auth_require_section(\, 'courses');
+$user = auth_require_section($pdo, 'courses');
 $body = cs_body();
 $topicId = (int)($body['topicId'] ?? 0);
 if ($topicId <= 0) jsonError(400, 'Не передан topicId');

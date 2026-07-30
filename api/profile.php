@@ -71,16 +71,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     $isAdmin = (($row['user_group'] ?? '') === 'admin');
     $sections = [];
+    $courseCategories = [];
     try {
         require_once __DIR__ . '/auth_context.php';
-        $sections = auth_user_sections($pdo, [
+        $authUser = [
             'id' => (int)$row['id'],
             'user_group' => $row['user_group'] ?? '',
-        ]);
+        ];
+        $sections = auth_user_sections($pdo, $authUser);
+        $courseCategories = auth_user_course_categories($pdo, $authUser);
     } catch (Throwable $e) {
         $sections = $isAdmin
             ? ['news', 'events', 'gallery', 'courses', 'tests', 'absence_journal', 'birthdays']
             : [];
+        $courseCategories = $isAdmin ? ['Кадровая деятельность', 'Безопасность'] : [];
     }
 
     jsonOk([
@@ -96,6 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'avatar_url' => $row['avatar_url'] ?? '',
         'isAdmin'    => $isAdmin,
         'sections'   => $sections,
+        'courseCategories' => $courseCategories,
     ]);
 }
 

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * POST /api/course_materials_upload.php — multipart upload.
  * Fields: file, topicId, title?, type?, materialId? (update existing), isRequired?, minimumActiveSeconds?
@@ -6,7 +6,7 @@
 require_once __DIR__ . '/courses_common.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonError(405, 'Метод не поддерживается');
 
-$user = auth_require_section(\, 'courses');
+$user = auth_require_section($pdo, 'courses');
 
 $topicId = (int)($_POST['topicId'] ?? 0);
 $materialId = (int)($_POST['materialId'] ?? 0);

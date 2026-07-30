@@ -46,15 +46,31 @@ $id     = isset($_GET['id']) ? (int)$_GET['id'] : null;
 
 switch ($method) {
   case 'GET':
-    $stmt = $pdo->prepare(
-      "SELECT id, status, login, password, firstname, surname, lastname, ofo, user_group, phone, email,
-              (auth = true AND last_activity IS NOT NULL AND last_activity > now() - interval '24 hours') AS auth,
-              to_char(last_activity AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS last_activity,
-              avatar_url, role
-       FROM public.user_info ORDER BY id ASC"
-    );
-    $stmt->execute();
-    $rows = $stmt->fetchAll();
+    try {
+      $stmt = $pdo->prepare(
+        "SELECT u.id, u.status, u.login, u.password, u.firstname, u.surname, u.lastname, u.ofo, u.user_group, u.phone, u.email,
+                (u.auth = true AND u.last_activity IS NOT NULL AND u.last_activity > now() - interval '24 hours') AS auth,
+                to_char(u.last_activity AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS last_activity,
+                u.avatar_url, u.role,
+                (SELECT string_agg(g.name, ', ' ORDER BY g.name)
+                 FROM public.portal_group_members m
+                 JOIN public.portal_access_groups g ON g.id = m.group_id
+                 WHERE m.user_id = u.id) AS access_groups
+         FROM public.user_info u ORDER BY u.id ASC"
+      );
+      $stmt->execute();
+      $rows = $stmt->fetchAll();
+    } catch (Throwable $e) {
+      $stmt = $pdo->prepare(
+        "SELECT id, status, login, password, firstname, surname, lastname, ofo, user_group, phone, email,
+                (auth = true AND last_activity IS NOT NULL AND last_activity > now() - interval '24 hours') AS auth,
+                to_char(last_activity AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS last_activity,
+                avatar_url, role, '' AS access_groups
+         FROM public.user_info ORDER BY id ASC"
+      );
+      $stmt->execute();
+      $rows = $stmt->fetchAll();
+    }
 
     $formatted = array_map(function($r) {
       return [
@@ -67,6 +83,7 @@ switch ($method) {
         'lastname'      => (string)$r['lastname'],
         'ofo'           => (string)$r['ofo'],
         'user_group'    => (string)$r['user_group'],
+        'access_groups' => (string)($r['access_groups'] ?? ''),
         'phone'         => (string)$r['phone'],
         'email'         => (string)$r['email'],
         'auth'          => (string)$r['auth'],

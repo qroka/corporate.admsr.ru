@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * POST /api/courses_update.php
  * Обновить title/category курса и/или поля draft-версии.
@@ -7,7 +7,7 @@
 require_once __DIR__ . '/courses_common.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonError(405, 'Метод не поддерживается');
 
-$user = auth_require_section(\, 'courses');
+$user = auth_require_section($pdo, 'courses');
 $body = cs_body();
 $courseId = (int)($body['courseId'] ?? 0);
 if ($courseId <= 0) jsonError(400, 'Не передан courseId');
@@ -17,6 +17,13 @@ $versionId = (int)($body['versionId'] ?? $course['currentVersionId'] ?? 0);
 $version = $versionId > 0 ? cs_get_version($pdo, $versionId) : null;
 if (!$version || (int)$version['courseId'] !== $courseId) {
     jsonError(404, 'Версия не найдена');
+}
+
+if (array_key_exists('category', $body)) {
+    $newCat = $body['category'] !== null ? trim((string)$body['category']) : '';
+    if ($newCat === '' || !auth_can_edit_course_category($pdo, $user, $newCat)) {
+        jsonError(403, 'Нет доступа к выбранной категории курсов');
+    }
 }
 
 $metaOnly = array_intersect_key($body, array_flip(['title', 'category']));

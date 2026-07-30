@@ -240,6 +240,12 @@ const AUTH_PORTAL_SECTIONS = [
     'birthdays',
 ];
 
+/** Категории курсов (как в course_courses.category / UI). */
+const AUTH_COURSE_CATEGORIES = [
+    'Кадровая деятельность',
+    'Безопасность',
+];
+
 /**
  * Уникальные section_key пользователя по членству в группах.
  * @return string[]
@@ -273,6 +279,77 @@ function auth_user_sections(PDO $pdo, array $user): array
         // Таблицы V5 ещё не применены
         return [];
     }
+}
+
+/**
+ * Категории курсов, которыми пользователь может управлять (OR по группам).
+ * @return string[]
+ */
+function auth_user_course_categories(PDO $pdo, array $user): array
+{
+    if (auth_is_admin($user)) {
+        return AUTH_COURSE_CATEGORIES;
+    }
+    if (!auth_can_edit_section($pdo, $user, 'courses')) {
+        return [];
+    }
+    $uid = (int)($user['id'] ?? 0);
+    if ($uid <= 0) {
+        return [];
+    }
+    try {
+        $st = $pdo->prepare(
+            'SELECT DISTINCT c.category_key
+             FROM public.portal_group_members m
+             JOIN public.portal_group_permissions p
+               ON p.group_id = m.group_id AND p.section_key = \'courses\'
+             JOIN public.portal_group_course_categories c ON c.group_id = m.group_id
+             WHERE m.user_id = :u'
+        );
+        $st->execute([':u' => $uid]);
+        $out = [];
+        foreach ($st->fetchAll() as $r) {
+            $key = (string)($r['category_key'] ?? '');
+            if ($key !== '' && in_array($key, AUTH_COURSE_CATEGORIES, true)) {
+                $out[] = $key;
+            }
+        }
+        return array_values(array_unique($out));
+    } catch (Throwable $e) {
+        // V6 ещё не применена — без ограничения по категориям (только section)
+        return AUTH_COURSE_CATEGORIES;
+    }
+}
+
+function auth_can_edit_course_category(PDO $pdo, array $user, ?string $category): bool
+{
+    if (auth_is_admin($user)) {
+        return true;
+    }
+    if (!auth_can_edit_section($pdo, $user, 'courses')) {
+        return false;
+    }
+    $cat = trim((string)($category ?? ''));
+    if ($cat === '') {
+        return false;
+    }
+    return in_array($cat, auth_user_course_categories($pdo, $user), true);
+}
+
+function auth_require_course_category(PDO $pdo, ?string $category): array
+{
+    $u = auth_require_section($pdo, 'courses');
+    if (!auth_can_edit_course_category($pdo, $u, $category)) {
+        http_response_code(403);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'success' => false,
+            'message' => 'Нет доступа к этой категории курсов',
+            'data' => null,
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    return $u;
 }
 
 function auth_can_edit_section(PDO $pdo, array $user, string $section): bool

@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * POST /api/course_assignment_cancel.php
  * Body: {assignmentId} — отмена assignment + not_started enrollments.
@@ -6,7 +6,7 @@
 require_once __DIR__ . '/courses_common.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonError(405, 'Метод не поддерживается');
 
-$user = auth_require_section(\, 'courses');
+$user = auth_require_section($pdo, 'courses');
 $body = cs_body();
 $assignmentId = (int)($body['assignmentId'] ?? 0);
 if ($assignmentId <= 0) jsonError(400, 'Не передан assignmentId');

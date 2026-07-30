@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * POST /api/course_assign_preview.php
  * Body: {userIds?: number[], ofoIds?: number[], includeChildren?: bool}
@@ -6,7 +6,7 @@
 require_once __DIR__ . '/courses_common.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonError(405, 'Метод не поддерживается');
 
-auth_require_section(\, 'courses');
+auth_require_section($pdo, 'courses');
 $body = cs_body();
 
 $userIds = array_values(array_unique(array_filter(array_map('intval', $body['userIds'] ?? []), fn($x) => $x > 0)));

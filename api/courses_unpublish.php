@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * POST /api/courses_unpublish.php — снять публикацию курса.
  * Body: {courseId} | {versionId}
@@ -11,7 +11,7 @@ require_once __DIR__ . '/courses_common.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonError(405, 'Метод не поддерживается');
 
-$user = auth_require_section(\, 'courses');
+$user = auth_require_section($pdo, 'courses');
 $body = cs_body();
 $versionId = cs_resolve_version_id($pdo, $body);
 $version = cs_get_version($pdo, $versionId);

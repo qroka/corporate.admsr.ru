@@ -1,7 +1,7 @@
 <?php
 /**
  * GET /api/portal_my_permissions.php
- * Текущие права пользователя: { isAdmin, sections: string[] }
+ * Текущие права: { isAdmin, sections, courseCategories }
  */
 require_once __DIR__ . '/auth_context.php';
 
@@ -24,11 +24,13 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 $user = auth_require_user($pdo);
 $isAdmin = auth_is_admin($user);
 $sections = auth_user_sections($pdo, $user);
+$courseCategories = auth_user_course_categories($pdo, $user);
 
 echo json_encode([
     'success' => true,
     'data' => [
         'isAdmin' => $isAdmin,
         'sections' => $sections,
+        'courseCategories' => $courseCategories,
     ],
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

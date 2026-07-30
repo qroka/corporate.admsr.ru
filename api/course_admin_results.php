@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * POST /api/course_admin_results.php
  * Body: {courseId|versionId?, status?, ofoId?, q?, limit?, offset?}
@@ -6,7 +6,7 @@
 require_once __DIR__ . '/courses_common.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonError(405, 'Метод не поддерживается');
 
-auth_require_section(\, 'courses');
+auth_require_section($pdo, 'courses');
 cs_mark_overdue($pdo);
 $body = cs_body();
 

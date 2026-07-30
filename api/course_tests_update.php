@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * POST /api/course_tests_update.php
  * Body: {courseTestLinkId|testFormId, form: TestForm, isRequired?}
@@ -7,7 +7,7 @@
 require_once __DIR__ . '/courses_common.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonError(405, 'Метод не поддерживается');
 
-$user = auth_require_section(\, 'courses');
+$user = auth_require_section($pdo, 'courses');
 $body = cs_body();
 $linkId = (int)($body['courseTestLinkId'] ?? 0);
 $formId = (int)($body['testFormId'] ?? $body['formId'] ?? 0);

@@ -4,11 +4,13 @@ import { useRouter } from 'vue-router';
 import type { BreadcrumbItem } from '@nuxt/ui';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
-import { COURSE_CATEGORY_ITEMS } from '../courseCategories';
+import { useSectionAccess } from '../../../composables/useSectionAccess';
 
 const router = useRouter();
 const store = useCoursesStore();
 const { toast } = useAppToast();
+const { allowedCourseCategoryItems, ensureLoaded } = useSectionAccess();
+ensureLoaded();
 const saving = ref(false);
 
 const form = reactive({
@@ -67,7 +69,7 @@ async function onSave() {
       <UFormField label="Категория" required>
         <USelectMenu
           v-model="form.category"
-          :items="[...COURSE_CATEGORY_ITEMS]"
+          :items="allowedCourseCategoryItems"
           value-key="value"
           label-key="label"
           placeholder="Выберите категорию"

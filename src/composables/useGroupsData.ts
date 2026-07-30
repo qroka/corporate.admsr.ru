@@ -13,6 +13,7 @@ export type PortalGroup = {
   name: string;
   description: string;
   permissions: PortalSectionKey[];
+  courseCategories?: string[];
   memberIds?: number[];
   members?: PortalGroupMember[];
   memberCount: number;
@@ -24,6 +25,7 @@ export type PortalGroupPayload = {
   name: string;
   description?: string;
   permissions: string[];
+  courseCategories?: string[];
   memberIds: number[];
 };
 
