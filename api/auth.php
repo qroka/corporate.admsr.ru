@@ -88,16 +88,22 @@ function asu_lookup_and_create(string $login, string $password, PDO $pdo): ?arra
         ':email'     => $u['email']    ?? '',
     ]);
 
-    // Возвращаем данные в формате, совместимом с основным потоком
+    // Если пользователь уже существовал (ON CONFLICT) — берём реальные ОФО/группу/роль/статус из БД,
+    // иначе (только что создан) — дефолты.
+    $sel = $pdo->prepare('SELECT ofo, user_group, role, status FROM public.user_info WHERE id = :id');
+    $sel->execute([':id' => (int)$u['id']]);
+    $existing = $sel->fetch() ?: [];
+
     return [
         'id'         => (int)$u['id'],
         'password'   => $u['password'] ?? '',
         'firstname'  => $firstname,
         'surname'    => $surname,
         'lastname'   => $lastname,
-        'ofo'        => -1,
-        'user_group' => 'user',
-        'status'     => true,
+        'ofo'        => isset($existing['ofo']) ? (int)$existing['ofo'] : -1,
+        'user_group' => $existing['user_group'] ?? 'user',
+        'role'       => $existing['role'] ?? '',
+        'status'     => isset($existing['status']) ? (bool)$existing['status'] : true,
     ];
 }
 
@@ -143,7 +149,7 @@ try {
 }
 
 $stmt = $pdo->prepare(
-    'SELECT id, status, password, firstname, surname, lastname, ofo, user_group, role FROM public.user_info WHERE login = :login LIMIT 1'
+    'SELECT id, status, password, firstname, surname, lastname, ofo, user_group, role FROM public.user_info WHERE LOWER(login) = LOWER(:login) LIMIT 1'
 );
 $stmt->execute([':login' => $login]);
 $user = $stmt->fetch();

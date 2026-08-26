@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue';
+import { useRoute } from 'vue-router';
 import type { BlogPostProps } from '@nuxt/ui';
 import { useSectionAccess } from '../../composables/useSectionAccess';
 import { apiSessionFetch, apiSessionUpload } from '../../composables/useAuthSession';
@@ -29,6 +30,9 @@ const albumPlaceholder = (() => {
 function albumCover(image?: string): string {
   return image && !isVideo(image) ? image : albumPlaceholder;
 }
+
+const route = useRoute();
+const isKiosk = computed(() => route.matched?.some((r) => r.meta?.kiosk));
 
 const { loading, error, albums: albumRecords, ensureLoaded, reload } = useGalleryData();
 ensureLoaded();
@@ -262,6 +266,7 @@ onUnmounted(() => {
 
             <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
               <UInput
+                v-if="!isKiosk"
                 v-model="searchQuery"
                 icon="i-lucide-search"
                 size="xl"
@@ -286,7 +291,7 @@ onUnmounted(() => {
         </UPageHeader>
 
         <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
-          <UInput v-model="searchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline" placeholder="Поиск по альбомам" class="flex-1" />
+          <UInput v-if="!isKiosk" v-model="searchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline" placeholder="Поиск по альбомам" class="flex-1" />
           <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" />
         </UContainer>
       </UContainer>

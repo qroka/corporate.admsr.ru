@@ -12,6 +12,10 @@ const router = useRouter();
 const { loading, error, sortedNews, ensureLoaded } = useNewsData();
 ensureLoaded();
 
+// Промо-ролик киоска. Файл лежит в web-корне (public/) и не бандлится Vite —
+// поэтому путь абсолютный и передаётся через :src, а не статичным src.
+const heroVideoSrc = '/kiosk-hero.mp4';
+
 const links = <ButtonProps[]>([
   {
     icon: 'i-lucide-arrow-up-right',
@@ -23,13 +27,22 @@ const links = <ButtonProps[]>([
   },
 ])
 
+function stripHtml(html: string, maxLen: number): string {
+  const plain = String(html ?? '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return plain.length > maxLen ? `${plain.slice(0, maxLen)}…` : plain;
+}
+
 const posts = computed<NewsPost[]>(() =>
   sortedNews.value.map((n) => {
     const imageSrc = resolveNewsImageSrc(n.imagePath);
     return {
       id: n.id,
       title: n.title || `Новость #${n.id}`,
-      description: n.description.slice(0, 260),
+      description: stripHtml(n.description, 260),
       date: formatNewsDate(n.date),
       badge: n.category || 'Новости',
       to: `/news/${n.id}`,
@@ -121,24 +134,23 @@ onUnmounted(() => {
   window.removeEventListener('kiosk-idle', handleKioskIdle);
 });
 
-const items = [
-  'src/img/EventsWebpFull/event_110_1.webp',
-  'src/img/EventsWebpFull/event_110_50.webp',
-  'src/img/EventsWebpFull/event_110_40.webp',
-  'src/img/EventsWebpFull/event_110_70.webp',
-]
-
 </script>
 
 <template>
   <UMain class="flex flex-col w-full h-full min-h-0 gap-6">
     <UContainer class="flex flex-col gap-6 w-full min-h-0 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
-      <UCarousel v-slot="{ item }" :autoplay="{ delay: 5000 }" :items="items" class="w-full mx-0">
-        <img :src="item" class="rounded-3xl object-cover w-full h-96" loading="lazy">
-      </UCarousel>
+      <video
+        class="rounded-3xl object-cover w-full h-[28rem] bg-black"
+        autoplay
+        muted
+        loop
+        playsinline
+        preload="auto"
+        :src="heroVideoSrc"
+      ></video>
       <UPageHeader  :links="links" class="border-none p-0">
         <template #title>
-          <h1 class="text-4xl font-normal font-unbounded">Лента новостей</h1>
+          <h1 class="text-5xl font-normal font-unbounded">Лента новостей</h1>
         </template>
       </UPageHeader>
       <UScrollArea ref="scrollAreaRef" class="flex-1 min-h-0 scrollbar-hide">
@@ -156,7 +168,7 @@ const items = [
             }"
           >
             <template #description>
-              <p class="text-base text-pretty text-muted">
+              <p class="text-xl leading-relaxed text-pretty text-muted">
                 {{ post.description }}
               </p>
             </template>

@@ -16,8 +16,9 @@ type NewsPost = BlogPostProps & { id: string; rawDate: string; likes: number; vi
 
 const route = useRoute();
 const router = useRouter();
+const isKiosk = computed(() => route.matched?.some((r) => r.meta?.kiosk));
 const newsDetailPrefix = computed(() =>
-  route.matched?.some((r) => r.meta?.kiosk) ? '/kiosk/news/' : '/news/',
+  isKiosk.value ? '/kiosk/news/' : '/news/',
 );
 
 const { loading, error, sortedNews, ensureLoaded, reload } = useNewsData();
@@ -311,7 +312,7 @@ async function handleCreateSubmit() {
           </UPageHeader>
 
           <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center mx-0">
-            <UInput v-model="searchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline" placeholder="Поиск по новостям..." class="flex-1" />
+            <UInput v-if="!isKiosk" v-model="searchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline" placeholder="Поиск по новостям..." class="flex-1" />
             <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" />
           </UContainer>
         </div>
@@ -328,7 +329,7 @@ async function handleCreateSubmit() {
         </UPageHeader>
 
         <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center mx-0">
-          <UInput v-model="searchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline" placeholder="Поиск по новостям..." class="flex-1" />
+          <UInput v-if="!isKiosk" v-model="searchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline" placeholder="Поиск по новостям..." class="flex-1" />
           <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" />
         </UContainer>
 

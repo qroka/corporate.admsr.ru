@@ -148,8 +148,14 @@ const reasonPresets = [
   'Совещание',
 ] as const;
 
+// У пользователя должно быть заполнено ОФО (числовой id), иначе бэкенд вернёт «ofo обязателен»
+const hasOfo = computed(() => {
+  const v = (currentUser.value?.ofoId ?? '').trim();
+  return /^[0-9]+$/.test(v) && Number(v) > 0;
+});
+
 const canStartAbsence = computed(() =>
-  Boolean(startAbsenceAt.value) && Boolean(currentUser.value) && !activeRecord.value,
+  Boolean(startAbsenceAt.value) && Boolean(currentUser.value) && hasOfo.value && !activeRecord.value,
 );
 
 const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
@@ -477,6 +483,11 @@ async function startAbsence() {
   const u = currentUser.value;
   if (!u) {
     toast.add({ title: 'Пользователь не определён', description: 'Перезагрузите страницу.', color: 'error', icon: 'i-lucide-alert-circle' });
+    return;
+  }
+
+  if (!hasOfo.value) {
+    toast.add({ title: 'Не указано подразделение (ОФО)', description: 'Обратитесь к администратору — в вашем профиле не заполнено ОФО.', color: 'error', icon: 'i-lucide-alert-circle' });
     return;
   }
 
@@ -1023,6 +1034,11 @@ watch(
           </template>
 
           <UContainer class="flex flex-col gap-3">
+            <div v-if="currentUser && !hasOfo" class="rounded-lg ring-1 ring-warning/40 bg-warning/5 p-3 text-sm text-warning flex items-start gap-2">
+              <UIcon name="i-lucide-alert-triangle" class="size-4 shrink-0 mt-0.5" />
+              <span>У вас не указано подразделение (ОФО). Отметить отсутствие нельзя — обратитесь к администратору, чтобы заполнить ОФО в профиле.</span>
+            </div>
+
             <UFormField size="xl" label="Дата и время начала">
               <UInput v-model="startAbsenceAt" class="w-full" type="datetime-local"
                 :disabled="loading || Boolean(activeRecord)" />

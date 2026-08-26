@@ -1,6 +1,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, reactive, onMounted, onUnmounted } from 'vue';
+import { useRoute } from 'vue-router';
 import type { BlogPostProps } from '@nuxt/ui';
 import { useSectionAccess } from '../../composables/useSectionAccess';
 import { apiSessionFetch } from '../../composables/useAuthSession';
@@ -13,6 +14,8 @@ type EventPost = BlogPostProps & {
 };
 
 // ─── State ───────────────────────────────────────────────────────────────────
+const route = useRoute();
+const isKiosk = computed(() => route.matched?.some((r) => r.meta?.kiosk));
 const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
 ensureSectionAccess();
 
@@ -306,6 +309,7 @@ onUnmounted(() => {
 
           <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
             <UInput
+              v-if="!isKiosk"
               v-model="searchQuery"
               icon="i-lucide-search"
               size="xl"
@@ -334,7 +338,7 @@ onUnmounted(() => {
         </UPageHeader>
 
         <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
-          <UInput v-model="searchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline" placeholder="Поиск по названию..." class="flex-1" />
+          <UInput v-if="!isKiosk" v-model="searchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline" placeholder="Поиск по названию..." class="flex-1" />
           <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" />
         </UContainer>
 

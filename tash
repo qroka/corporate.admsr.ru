@@ -1,0 +1,61 @@
+[1mdiff --git a/api/auth.php b/api/auth.php[m
+[1mindex 90fedd9..8268062 100644[m
+[1m--- a/api/auth.php[m
+[1m+++ b/api/auth.php[m
+[36m@@ -105,7 +105,7 @@[m [m$allowedOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://127[m
+ $origin = $_SERVER['HTTP_ORIGIN'] ?? '';[m
+ header('Access-Control-Allow-Origin: ' . (in_array($origin, $allowedOrigins, true) ? $origin : $allowedOrigins[0]));[m
+ header('Access-Control-Allow-Methods: POST, OPTIONS');[m
+[31m-header('Access-Control-Allow-Headers: Content-Type');[m
+[32m+[m[32mheader('Access-Control-Allow-Headers: Content-Type, Authorization, X-Session-Token');[m
+ [m
+ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }[m
+ [m
+[36m@@ -177,6 +177,26 @@[m [mif (!(bool)$user['status']) {[m
+ $pdo->prepare('UPDATE public.user_info SET auth = true, last_activity = now() WHERE id = :id')[m
+     ->execute([':id' => $user['id']]);[m
+ [m
+[32m+[m[32m$sessionToken = null;[m
+[32m+[m[32m$sections = [];[m
+[32m+[m[32m$courseCategories = [];[m
+[32m+[m[32m$isAdmin = (($user['user_group'] ?? '') === 'admin');[m
+[32m+[m[32mtry {[m
+[32m+[m[32m    require_once __DIR__ . '/auth_context.php';[m
+[32m+[m[32m    $sessionToken = auth_create_session($pdo, (int)$user['id']);[m
+[32m+[m[32m    $authUser = [[m
+[32m+[m[32m        'id' => (int)$user['id'],[m
+[32m+[m[32m        'user_group' => $user['user_group'] ?? '',[m
+[32m+[m[32m    ];[m
+[32m+[m[32m    $sections = auth_user_sections($pdo, $authUser);[m
+[32m+[m[32m    $courseCategories = auth_user_course_categories($pdo, $authUser);[m
+[32m+[m[32m} catch (Throwable $e) {[m
+[32m+[m[32m    // Миграция V4/V5 ещё не применена — вход не ломаем.[m
+[32m+[m[32m    $sessionToken = null;[m
+[32m+[m[32m    $sections = $isAdmin ? ['news', 'events', 'gallery', 'courses', 'tests', 'absence_journal', 'birthdays'] : [];[m
+[32m+[m[32m    $courseCategories = $isAdmin ? ['Кадровая деятельность', 'Безопасность'] : [];[m
+[32m+[m[32m}[m
+[32m+[m
+ $fio = implode(' ', array_filter([[m
+     $user['surname'],[m
+     $user['firstname'],[m
+[36m@@ -186,10 +206,14 @@[m [m$fio = implode(' ', array_filter([[m
+ echo json_encode([[m
+     'success' => true,[m
+     'user' => [[m
+[31m-        'id'         => (int)$user['id'],[m
+[31m-        'fio'        => $fio,[m
+[31m-        'ofo'        => $user['ofo'],[m
+[31m-        'user_group' => $user['user_group'],[m
+[31m-        'role'       => $user['role'] ?? '',[m
+[32m+[m[32m        'id'           => (int)$user['id'],[m
+[32m+[m[32m        'fio'          => $fio,[m
+[32m+[m[32m        'ofo'          => $user['ofo'],[m
+[32m+[m[32m        'user_group'   => $user['user_group'],[m
+[32m+[m[32m        'role'         => $user['role'] ?? '',[m
+[32m+[m[32m        'sessionToken' => $sessionToken,[m
+[32m+[m[32m        'isAdmin'      => $isAdmin,[m
+[32m+[m[32m        'sections'     => $sections,[m
+[32m+[m[32m        'courseCategories' => $courseCategories,[m
+     ],[m
+ ]);[m
+\ No newline at end of file[m

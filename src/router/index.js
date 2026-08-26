@@ -204,6 +204,17 @@ router.beforeEach(async (to, from, next) => {
   const fromIsKiosk = from.matched?.some((r) => r.meta?.kiosk);
   const isAuth = to.meta?.layout === 'auth';
 
+  // Если уже находимся внутри киоска, то любые переходы на «обычные» роуты
+  // (например `/events/:id` из карточки) перенаправляем на их kiosk-эквивалент
+  // ДО проверки авторизации — киоск работает полностью без входа.
+  if (fromIsKiosk && !toIsKiosk) {
+    const rawName = to.name ? String(to.name) : '';
+    const kioskName = kioskRouteNameByName[rawName];
+    if (kioskName) {
+      return next({ name: kioskName, params: to.params, query: to.query, hash: to.hash });
+    }
+  }
+
   if (!toIsKiosk) {
     const user = getStoredUser();
 
@@ -248,16 +259,6 @@ router.beforeEach(async (to, from, next) => {
   // На киоске админ-страницы недоступны даже если есть прямой URL.
   if (toIsKiosk && (to.meta?.requiresAdmin || to.meta?.requiresSection)) {
     return next({ name: 'kiosk' });
-  }
-
-  // Если уже находимся внутри киоска, то любые переходы ведём в kiosk-shell,
-  // чтобы страницы открывались внутри `AppKiosk.vue`.
-  if (fromIsKiosk && !toIsKiosk) {
-    const rawName = to.name ? String(to.name) : '';
-    const kioskName = kioskRouteNameByName[rawName];
-    if (kioskName) {
-      return next({ name: kioskName, params: to.params, query: to.query, hash: to.hash });
-    }
   }
 
   // Дашборд /admin — только суперadmin с включённым UI-тогглом.

@@ -366,6 +366,7 @@ function showMoreNews() {
                 <UBadge v-if="item.category" color="primary" variant="solid" size="lg">{{ item.category }}</UBadge>
                 <UBadge v-if="date" color="neutral" variant="soft" size="lg" class="backdrop-blur">{{ date }}</UBadge>
                 <UBadge
+                  v-if="!isKiosk"
                   as="button"
                   type="button"
                   :color="isLiked ? 'primary' : 'neutral'"
@@ -387,8 +388,11 @@ function showMoreNews() {
                 </UBadge>
               </div>
               <div class="flex items-end justify-between gap-4 flex-wrap">
-                <h1 class="text-2xl sm:text-4xl font-semibold tracking-tight min-w-0 flex-1"
-                  :class="imageSrc ? 'text-white' : 'text-highlighted'">
+                <h1 class="font-semibold tracking-tight min-w-0 flex-1"
+                  :class="[
+                    imageSrc ? 'text-white' : 'text-highlighted',
+                    isKiosk ? 'text-5xl leading-tight' : 'text-2xl sm:text-4xl',
+                  ]">
                   {{ title }}
                 </h1>
                 <div v-if="isAdmin" class="flex gap-2">
@@ -412,7 +416,7 @@ function showMoreNews() {
               <span class="text-sm font-semibold text-highlighted">Описание</span>
             </div>
           </template>
-          <div :class="['text-default', newsEditorHtmlClass]" class="px-0 sm:px-0 md:px-0 lg:px-0 xl:px-0" v-html="item.description" />
+          <div :class="['text-default', newsEditorHtmlClass, isKiosk ? 'text-2xl [&_p]:leading-relaxed' : '']" class="px-0 sm:px-0 md:px-0 lg:px-0 xl:px-0" v-html="item.description" />
         </UCard>
 
         <!-- Навигация между новостями -->
@@ -459,6 +463,7 @@ function showMoreNews() {
                 @click.stop
               >
                 <UBadge
+                  v-if="!isKiosk"
                   as="button"
                   type="button"
                   :color="isLikedFn(sidebarItem.id) ? 'primary' : 'neutral'"
