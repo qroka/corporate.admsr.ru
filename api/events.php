@@ -65,19 +65,13 @@ require_once __DIR__ . '/auth_context.php';
 $method = $_SERVER['REQUEST_METHOD'];
 $id     = isset($_GET['id']) ? (int) $_GET['id'] : null;
 
+try {
 switch ($method) {
 
     // ── GET ───────────────────────────────────────────────────────────────────
     case 'GET':
         if ($id !== null) {
-            $stmt = $pdo->prepare(
-                'SELECT e.*, g.name AS album_name
-                 FROM events e
-                 LEFT JOIN public.gallery g ON g.id = e.album_id
-                 WHERE e.id = ?'
-            );
-            $stmt->execute([$id]);
-            $row = $stmt->fetch();
+            $row = fetchEventRow($pdo, $id);
             if (!$row) jsonError(404, 'Мероприятие не найдено');
             jsonOk(fmt($row));
         } else {
@@ -112,15 +106,8 @@ switch ($method) {
         ]);
 
         $newId = (int) $stmt->fetchColumn();
-        $stmt2 = $pdo->prepare(
-            'SELECT e.*, g.name AS album_name
-             FROM events e
-             LEFT JOIN public.gallery g ON g.id = e.album_id
-             WHERE e.id = ?'
-        );
-        $stmt2->execute([$newId]);
         http_response_code(201);
-        jsonOk(fmt($stmt2->fetch()), 'Мероприятие создано');
+        jsonOk(fmt(fetchEventRow($pdo, $newId)), 'Мероприятие создано');
         break;
 
     // ── PUT ───────────────────────────────────────────────────────────────────
@@ -156,14 +143,7 @@ switch ($method) {
             ':id'          => $id,
         ]);
 
-        $stmt2 = $pdo->prepare(
-            'SELECT e.*, g.name AS album_name
-             FROM events e
-             LEFT JOIN public.gallery g ON g.id = e.album_id
-             WHERE e.id = ?'
-        );
-        $stmt2->execute([$id]);
-        jsonOk(fmt($stmt2->fetch()), 'Мероприятие обновлено');
+        jsonOk(fmt(fetchEventRow($pdo, $id)), 'Мероприятие обновлено');
         break;
 
     // ── DELETE ────────────────────────────────────────────────────────────────
@@ -180,8 +160,39 @@ switch ($method) {
     default:
         jsonError(405, 'Метод не поддерживается');
 }
+} catch (Throwable $e) {
+    $msg = $e->getMessage();
+    // Частая причина: не применена миграция V7 (колонка album_id)
+    if (stripos($msg, 'album_id') !== false) {
+        jsonError(500, 'В БД нет колонки events.album_id. Примените миграцию db/migration/V7__events_gallery_album.sql');
+    }
+    jsonError(500, 'Ошибка БД: ' . $msg);
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Одна запись мероприятия + имя альбома (если колонка/таблица доступны). */
+function fetchEventRow(PDO $pdo, int $id): ?array
+{
+    // Сначала без JOIN — страница детали работает даже до миграции V7
+    $stmt = $pdo->prepare('SELECT * FROM events WHERE id = ?');
+    $stmt->execute([$id]);
+    $row = $stmt->fetch();
+    if (!$row) return null;
+
+    $row['album_name'] = null;
+    if (!empty($row['album_id'])) {
+        try {
+            $g = $pdo->prepare('SELECT name FROM public.gallery WHERE id = ?');
+            $g->execute([(int) $row['album_id']]);
+            $name = $g->fetchColumn();
+            $row['album_name'] = $name !== false ? $name : null;
+        } catch (Throwable $e) {
+            $row['album_name'] = null;
+        }
+    }
+    return $row;
+}
 
 function buildQuery(array $get): array
 {
