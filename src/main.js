@@ -5,7 +5,15 @@ import App from './App.vue';
 import './assets/tailwind.css';
 import { router } from './router';
 import { applyUiTheme, getSavedUiTheme } from './composables/useUiTheme';
+import { applyKioskColorModeFromStorage } from './composables/useColorModeSchedule';
+import { applyMainColorModeFromStorage } from './composables/useColorMode';
 import { ensureSessionToken } from './composables/useAuthSession';
+
+if (window.location.pathname.startsWith('/kiosk')) {
+  applyKioskColorModeFromStorage();
+} else {
+  applyMainColorModeFromStorage();
+}
 
 const app = createApp(App);
 

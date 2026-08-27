@@ -1,3 +1,5 @@
+import { CalendarDate, parseDate } from '@internationalized/date';
+
 function isValidDate(d: Date): boolean {
   return d instanceof Date && !Number.isNaN(d.getTime());
 }
@@ -23,6 +25,24 @@ function parseDateLike(value: unknown): Date | null {
 
   const d = new Date(s);
   return isValidDate(d) ? d : null;
+}
+
+export function toCalendarDate(value: unknown): CalendarDate | null {
+  const s = String(value ?? '').trim();
+  if (!s) return null;
+
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (iso) {
+    try {
+      return parseDate(`${iso[1]}-${iso[2]}-${iso[3]}`);
+    } catch {
+      // fall through
+    }
+  }
+
+  const d = parseDateLike(value);
+  if (!d) return null;
+  return new CalendarDate(d.getFullYear(), d.getMonth() + 1, d.getDate());
 }
 
 export function formatDateRuShort(value: unknown): string {

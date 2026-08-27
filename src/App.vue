@@ -31,12 +31,13 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { ru } from '@nuxt/ui/locale';
 import { useRoute, useRouter } from 'vue-router';
 import AppHeader from './components/AppHeader.vue';
 import AppAside from './components/AppAside.vue';
 import { startSessionActivity } from './composables/useSessionActivity';
+import { useColorMode } from './composables/useColorMode';
 
 // Текущий маршрут (используется для подсветки активных пунктов навигации)
 const route = useRoute();
@@ -54,55 +55,14 @@ const isPublic = computed(() => route.meta?.public === true);
 
 
 // --- Поддержка светлой / тёмной темы для Nuxt UI ---
-const COLOR_MODE_KEY = 'ui-color-mode';
 const isDark = ref(false);
-
-const applyColorMode = (mode) => {
-  const root = document.documentElement;
-  if (!root) return;
-
-  if (mode === 'dark') {
-    root.classList.add('dark');
-  } else {
-    root.classList.remove('dark');
-  }
-};
-
-onMounted(() => {
-  const saved = localStorage.getItem(COLOR_MODE_KEY);
-  let mode;
-
-  if (saved === 'light' || saved === 'dark') {
-    mode = saved;
-  } else {
-    // Первый вход — по умолчанию светлая тема (выбор пользователя сохраняется ниже).
-    mode = 'light';
-  }
-
-  isDark.value = mode === 'dark';
-  applyColorMode(mode);
-
-    // Синхронизация смены темы из других частей UI (например, из профиля)
-    const onExternalMode = (e) => {
-    const next = e?.detail?.mode;
-    if (next !== 'light' && next !== 'dark') return;
-    isDark.value = next === 'dark';
-  };
-  window.addEventListener('ui-color-mode-change', onExternalMode);
-  onBeforeUnmount(() => {
-    window.removeEventListener('ui-color-mode-change', onExternalMode);
-  });
+const { syncFromStorage, toggleColorMode } = useColorMode(isDark, {
+  enabled: computed(() => !isKiosk.value),
 });
 
-watch(isDark, (value) => {
-  const mode = value ? 'dark' : 'light';
-  localStorage.setItem(COLOR_MODE_KEY, mode);
-  applyColorMode(mode);
+watch(isKiosk, (kiosk) => {
+  if (!kiosk) syncFromStorage();
 });
-
-const toggleColorMode = () => {
-  isDark.value = !isDark.value;
-};
 
 // Анимированная смена темы с помощью View Transitions API
 const startThemeTransition = (event) => {

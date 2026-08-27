@@ -355,16 +355,16 @@ function showMoreNews() {
       <div v-else-if="item" class="flex flex-col gap-6 p-px">
         <!-- Hero -->
         <div class="relative overflow-hidden rounded-lg ring ring-default bg-default">
-          <div class="relative h-96">
+          <div class="relative" :class="isKiosk ? 'h-[28rem]' : 'h-96'">
             <img v-if="imageSrc" :src="imageSrc" :alt="title"
               class="absolute inset-0 h-full w-full object-cover" loading="lazy" />
             <div class="absolute inset-0"
               :class="imageSrc ? 'bg-linear-to-t from-black/85 via-black/35 to-transparent'
                                : 'bg-linear-to-br from-primary/12 via-transparent to-primary/8'" />
-            <div class="absolute inset-0 p-6 flex flex-col justify-end">
+            <div class="absolute inset-0 flex flex-col justify-end" :class="isKiosk ? 'p-8' : 'p-6'">
               <div class="flex flex-wrap items-center gap-2 mb-2">
-                <UBadge v-if="item.category" color="primary" variant="solid" size="lg">{{ item.category }}</UBadge>
-                <UBadge v-if="date" color="neutral" variant="soft" size="lg" class="backdrop-blur">{{ date }}</UBadge>
+                <UBadge v-if="item.category" color="primary" variant="solid" :size="isKiosk ? 'xl' : 'lg'">{{ item.category }}</UBadge>
+                <UBadge v-if="date" color="neutral" variant="soft" :size="isKiosk ? 'xl' : 'lg'" class="backdrop-blur">{{ date }}</UBadge>
                 <UBadge
                   v-if="!isKiosk"
                   as="button"
@@ -383,7 +383,7 @@ function showMoreNews() {
                   ]"
                   @click.stop.prevent="toggleLike"
                 />
-                <UBadge color="neutral" variant="soft" size="lg" class="backdrop-blur">
+                <UBadge color="neutral" variant="soft" :size="isKiosk ? 'xl' : 'lg'" class="backdrop-blur">
                   {{ formatCountRu(item.views) }} просмотров
                 </UBadge>
               </div>
@@ -412,28 +412,54 @@ function showMoreNews() {
         <UCard v-if="item.description" class="rounded-lg">
           <template #header>
             <div class="flex items-center gap-2">
-              <UIcon name="i-lucide-file-text" class="size-5 text-primary" />
-              <span class="text-sm font-semibold text-highlighted">Описание</span>
+              <UIcon name="i-lucide-file-text" :class="isKiosk ? 'size-7 text-primary' : 'size-5 text-primary'" />
+              <span :class="isKiosk ? 'text-xl font-semibold text-highlighted' : 'text-sm font-semibold text-highlighted'">Описание</span>
             </div>
           </template>
-          <div :class="['text-default', newsEditorHtmlClass, isKiosk ? 'text-2xl [&_p]:leading-relaxed' : '']" class="px-0 sm:px-0 md:px-0 lg:px-0 xl:px-0" v-html="item.description" />
+          <div
+            :class="[
+              'text-default px-0 sm:px-0 md:px-0 lg:px-0 xl:px-0',
+              newsEditorHtmlClass,
+              isKiosk ? 'text-3xl [&_p]:leading-relaxed [&_p]:mb-4' : '',
+            ]"
+            v-html="item.description"
+          />
         </UCard>
 
         <!-- Навигация между новостями -->
-        <div v-if="surround.prev || surround.next" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <RouterLink v-if="surround.prev" :to="surround.prev.to"
-            class="flex flex-col gap-1 rounded-lg border border-default p-4 hover:bg-elevated/50 transition-colors">
-            <span class="flex items-center gap-1.5 text-xs text-muted">
-              <UIcon name="i-lucide-arrow-left" class="size-3.5" />Предыдущая
+        <div
+          v-if="surround.prev || surround.next"
+          :class="[
+            'gap-3 grid w-full',
+            isKiosk ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-2',
+          ]"
+        >
+          <RouterLink
+            v-if="surround.prev"
+            :to="surround.prev.to"
+            :class="[
+              'flex flex-col rounded-lg border border-default hover:bg-elevated/50 transition-colors min-w-0 w-full',
+              isKiosk ? 'gap-2 p-6' : 'gap-1 p-4',
+            ]"
+          >
+            <span :class="['flex items-center gap-1.5 text-muted', isKiosk ? 'text-lg' : 'text-xs']">
+              <UIcon name="i-lucide-arrow-left" :class="isKiosk ? 'size-5' : 'size-3.5'" />Предыдущая
             </span>
-            <span class="text-sm font-medium text-highlighted line-clamp-2">{{ surround.prev.title }}</span>
+            <span :class="['font-medium text-highlighted line-clamp-2', isKiosk ? 'text-2xl' : 'text-sm']">{{ surround.prev.title }}</span>
           </RouterLink>
-          <RouterLink v-if="surround.next" :to="surround.next.to"
-            class="flex flex-col gap-1 rounded-lg border border-default p-4 hover:bg-elevated/50 transition-colors sm:text-right sm:items-end">
-            <span class="flex items-center gap-1.5 text-xs text-muted">
-              Следующая<UIcon name="i-lucide-arrow-right" class="size-3.5" />
+          <RouterLink
+            v-if="surround.next"
+            :to="surround.next.to"
+            :class="[
+              'flex flex-col rounded-lg border border-default hover:bg-elevated/50 transition-colors text-right items-end min-w-0 w-full',
+              !surround.prev ? 'col-start-2' : '',
+              isKiosk ? 'gap-2 p-6' : 'gap-1 p-4 sm:text-right sm:items-end',
+            ]"
+          >
+            <span :class="['flex items-center gap-1.5 text-muted', isKiosk ? 'text-lg' : 'text-xs']">
+              Следующая<UIcon name="i-lucide-arrow-right" :class="isKiosk ? 'size-5' : 'size-3.5'" />
             </span>
-            <span class="text-sm font-medium text-highlighted line-clamp-2">{{ surround.next.title }}</span>
+            <span :class="['font-medium text-highlighted line-clamp-2', isKiosk ? 'text-2xl' : 'text-sm']">{{ surround.next.title }}</span>
           </RouterLink>
         </div>
       </div>

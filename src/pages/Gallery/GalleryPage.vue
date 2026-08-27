@@ -258,6 +258,11 @@ onUnmounted(() => {
         :style="{ left: `${floatingRect.left}px`, top: `${floatingRect.top}px`, width: `${floatingRect.width}px` }"
       >
         <div class="bg-default p-0 pb-6 flex flex-col gap-6">
+          <div v-if="isKiosk" class="flex items-center justify-between gap-4 w-full">
+            <h1 class="text-4xl font-normal font-unbounded">Фотогалерея</h1>
+            <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" class="shrink-0" />
+          </div>
+          <template v-else>
             <UPageHeader title="" :links="headerLinks" class="border-none p-0 w-full">
               <template #title>
                 <h1 class="text-4xl font-normal font-unbounded">Фотогалерея</h1>
@@ -266,7 +271,6 @@ onUnmounted(() => {
 
             <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
               <UInput
-                v-if="!isKiosk"
                 v-model="searchQuery"
                 icon="i-lucide-search"
                 size="xl"
@@ -277,6 +281,7 @@ onUnmounted(() => {
               />
               <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" />
             </UContainer>
+          </template>
         </div>
       </div>
     </transition>
@@ -284,16 +289,22 @@ onUnmounted(() => {
     <!-- Single scroll container for the whole page -->
     <div ref="mainScrollEl" class="flex flex-col w-full h-full min-h-0 gap-6 overflow-y-auto scrollbar-hide">
       <UContainer class="flex flex-col max-w-full w-full gap-6 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0 shrink-0">
-        <UPageHeader title="" :links="headerLinks" class="border-none p-0 w-full">
-          <template #title>
-            <h1 class="text-4xl font-normal font-unbounded">Фотогалерея</h1>
-          </template>
-        </UPageHeader>
+        <div v-if="isKiosk" class="flex items-center justify-between gap-4 w-full">
+          <h1 class="text-4xl font-normal font-unbounded">Фотогалерея</h1>
+          <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" class="shrink-0" />
+        </div>
+        <template v-else>
+          <UPageHeader title="" :links="headerLinks" class="border-none p-0 w-full">
+            <template #title>
+              <h1 class="text-4xl font-normal font-unbounded">Фотогалерея</h1>
+            </template>
+          </UPageHeader>
 
-        <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
-          <UInput v-if="!isKiosk" v-model="searchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline" placeholder="Поиск по альбомам" class="flex-1" />
-          <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" />
-        </UContainer>
+          <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
+            <UInput v-model="searchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline" placeholder="Поиск по альбомам" class="flex-1" />
+            <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" />
+          </UContainer>
+        </template>
       </UContainer>
 
       <UContainer class="sm:p-px max-w-full w-full md:p-px lg:p-px xl:p-px mx-0 flex-1 min-h-0">

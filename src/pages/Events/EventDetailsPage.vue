@@ -5,12 +5,23 @@ import type { BlogPostProps } from '@nuxt/ui';
 import { useSectionAccess } from '../../composables/useSectionAccess';
 import { apiSessionFetch } from '../../composables/useAuthSession';
 import { useAppToast } from '../../composables/useAppToast';
+import { useGalleryData } from '../../composables/useGalleryData';
+import { slideoverPopoverContent, slideoverSelectContent } from '../../composables/slideoverFieldUi';
+import { toCalendarDate } from '../../utils/date';
 
 type EventPost = BlogPostProps & {
   id?: number;
   badge?: string;
   image_full?: string;
   link?: string;
+  album_id?: number | null;
+  album_name?: string | null;
+};
+
+type AlbumPhoto = {
+  id: string;
+  thumbSrc: string;
+  fullSrc: string;
 };
 
 const route = useRoute();
@@ -23,6 +34,13 @@ const fetchError = ref<string | null>(null);
 
 const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
 ensureSectionAccess();
+const { albums, ensureLoaded: ensureAlbumsLoaded } = useGalleryData();
+ensureAlbumsLoaded();
+
+const albumSelectItems = computed(() => [
+  { label: 'Без альбома', value: '' },
+  ...albums.value.map((a) => ({ label: a.title, value: String(a.id) })),
+]);
 const isAdmin = computed(() => canEditSection('events'));
 const isKiosk = computed(() => route.matched?.some((r) => r.meta?.kiosk));
 const isArchivedEvent = computed(() => {
@@ -83,7 +101,74 @@ function mapEvent(raw: any): EventPost {
     image:       raw.image      ? { src: raw.image,      alt: raw.title } : undefined,
     image_full:  raw.image_full || raw.image || '',
     link:        raw.link ?? undefined,
+    album_id:    raw.album_id != null ? Number(raw.album_id) : null,
+    album_name:  raw.album_name ?? null,
   };
+}
+
+function isVideoUrl(url: string): boolean {
+  return /\.mp4(\?|$)/i.test(url ?? '');
+}
+
+const albumPhotos = ref<AlbumPhoto[]>([]);
+const albumPhotosLoading = ref(false);
+const albumSliderRef = ref<HTMLElement | null>(null);
+const albumSliderIndex = ref(0);
+let albumSliderTimer: number | null = null;
+
+const galleryAlbumTo = computed(() => {
+  const albumId = event.value?.album_id;
+  if (!albumId) return '';
+  return isKiosk.value ? `/kiosk/gallery/${albumId}` : `/gallery/${albumId}`;
+});
+
+async function loadAlbumPhotos(albumId?: number | null) {
+  if (!albumId) {
+    albumPhotos.value = [];
+    return;
+  }
+  albumPhotosLoading.value = true;
+  try {
+    const res = await fetch(`/api/gallery_base.php?album_id=${albumId}`);
+    const json = await res.json();
+    albumPhotos.value = json.success
+      ? (json.data ?? []).map((p: any) => ({
+          id: String(p.id),
+          thumbSrc: p.image_small_url,
+          fullSrc: p.image_full_url,
+        }))
+      : [];
+  } catch {
+    albumPhotos.value = [];
+  } finally {
+    albumPhotosLoading.value = false;
+    albumSliderIndex.value = 0;
+    startAlbumSliderAuto();
+  }
+}
+
+function setAlbumSliderIndex(next: number) {
+  const len = albumPhotos.value.length;
+  if (!len) {
+    albumSliderIndex.value = 0;
+    return;
+  }
+  albumSliderIndex.value = ((next % len) + len) % len;
+  const el = albumSliderRef.value;
+  if (!el) return;
+  const slide = el.children[albumSliderIndex.value] as HTMLElement | undefined;
+  slide?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+}
+
+function startAlbumSliderAuto() {
+  stopAlbumSliderAuto();
+  if (albumPhotos.value.length <= 1) return;
+  albumSliderTimer = window.setInterval(() => setAlbumSliderIndex(albumSliderIndex.value + 1), 6000);
+}
+
+function stopAlbumSliderAuto() {
+  if (albumSliderTimer) window.clearInterval(albumSliderTimer);
+  albumSliderTimer = null;
 }
 
 async function fetchEvent(id: string | string[]) {
@@ -98,6 +183,7 @@ async function fetchEvent(id: string | string[]) {
     if (!json.success) throw new Error(json.message || 'Ошибка загрузки');
 
     event.value = mapEvent(json.data);
+    await loadAlbumPhotos(event.value.album_id);
   } catch (e: any) {
     fetchError.value = e.message ?? 'Не удалось загрузить мероприятие';
   } finally {
@@ -198,16 +284,18 @@ async function copyEventLink() {
 type EditFormState = {
   title: string;
   description: string;
-  badge: string | null;
+  badge: string;
   date: string;
+  albumId: string;
 };
 
 const editOpen = ref(false);
 const editState = reactive<EditFormState>({
   title: '',
   description: '',
-  badge: null,
+  badge: '',
   date: '',
+  albumId: '',
 });
 
 const editImageFile = ref<File | null>(null);
@@ -229,12 +317,15 @@ function fillEditState() {
   if (!event.value) return;
   editState.title       = event.value.title ?? '';
   editState.description = event.value.description ?? '';
-  editState.badge       = (event.value as any).badge ?? null;
+  editState.badge       = String((event.value as any).badge ?? '');
   editState.date        = (event.value as any).date ?? '';
+  editState.albumId     = event.value.album_id ? String(event.value.album_id) : '';
+  editDateValue.value   = toCalendarDate(editState.date);
   editImageFile.value = null;
 }
 
 function openEdit() {
+  ensureAlbumsLoaded();
   fillEditState();
   editOpen.value = true;
 }
@@ -279,12 +370,14 @@ async function handleEditSubmit() {
         description: editState.description.trim() || null,
         badge:       editState.badge || null,
         date:        editState.date,
+        album_id:    editState.albumId ? Number(editState.albumId) : null,
         ...imagePatch,
       },
     });
     if (!json.success) throw new Error(json.message || 'Ошибка сохранения');
 
     event.value = mapEvent(json.data);
+    await loadAlbumPhotos(event.value.album_id);
     editOpen.value = false;
   } catch (e: any) {
     editError.value = e.message ?? 'Ошибка при сохранении';
@@ -376,8 +469,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   const el = mainScrollEl.value;
-  if (!el) return;
-  el.removeEventListener('scroll', onMainScroll);
+  if (el) el.removeEventListener('scroll', onMainScroll);
+  stopAlbumSliderAuto();
 });
 </script>
 
@@ -385,7 +478,7 @@ onUnmounted(() => {
   <UMain class="relative flex flex-col w-full h-full min-h-0 gap-0">
     <div ref="mainScrollEl" class="flex-1 min-h-0 overflow-y-auto max-w-full w-full sm:p-0 md:p-0 lg:p-0 xl:p-0 scrollbar-hide mx-0 pb-8">
       <!-- Floating header overlay -->
-      <div class="sticky top-0 z-30 h-0">
+      <div v-if="!isKiosk" class="sticky top-0 z-30 h-0">
         <div
           :class="[
             'absolute left-0 right-0',
@@ -431,7 +524,7 @@ onUnmounted(() => {
       <div v-else-if="event" class="flex flex-col gap-6 p-px">
         <!-- Hero -->
         <div class="relative overflow-hidden rounded-lg ring ring-default bg-default">
-          <div class="relative h-96">
+          <div class="relative" :class="isKiosk ? 'h-[28rem]' : 'h-96'">
             <img
               v-if="event.image_full || (event.image as any)?.src"
               :src="event.image_full || (event.image as any)?.src"
@@ -440,27 +533,34 @@ onUnmounted(() => {
             />
             <div class="absolute inset-0 bg-linear-to-t from-black/65 via-black/25 to-transparent" />
 
-            <div class="absolute inset-0 p-6 flex flex-col justify-end">
+            <div class="absolute inset-0 flex flex-col justify-end" :class="isKiosk ? 'p-8' : 'p-6'">
               <div class="flex flex-wrap items-center gap-2 mb-3">
-                <UBadge v-if="event.badge" :color="isNewEvent ? 'primary' : 'neutral'" :variant="isNewEvent ? 'solid' : 'soft'" size="lg">
+                <UBadge v-if="event.badge" :color="isNewEvent ? 'primary' : 'neutral'" :variant="isNewEvent ? 'solid' : 'soft'" :size="isKiosk ? 'xl' : 'lg'">
                   {{ event.badge }}
                 </UBadge>
-                <UBadge color="neutral" variant="soft" size="lg" class="backdrop-blur">
+                <UBadge color="neutral" variant="soft" :size="isKiosk ? 'xl' : 'lg'" class="backdrop-blur">
                   {{ formatDateRu(event.date) }}
                 </UBadge>
               </div>
 
               <div class="flex items-end justify-between gap-4 flex-wrap">
                 <div class="min-w-0">
-                  <h1 class="text-2xl sm:text-4xl font-semibold tracking-tight text-white">
+                  <h1
+                    class="font-semibold tracking-tight text-white"
+                    :class="isKiosk ? 'text-5xl leading-tight' : 'text-2xl sm:text-4xl'"
+                  >
                     {{ event.title }}
                   </h1>
-                  <p v-if="event.description" class="mt-2 text-sm sm:text-base text-white/85 max-w-3xl">
+                  <p
+                    v-if="event.description"
+                    class="mt-2 text-white/85 max-w-3xl"
+                    :class="isKiosk ? 'text-2xl leading-relaxed' : 'text-sm sm:text-base'"
+                  >
                     {{ firstSentence(event.description ?? '') }}
                   </p>
                 </div>
 
-                <div v-if="isAdmin" class="flex gap-2">
+                <div v-if="isAdmin && !isKiosk" class="flex gap-2">
                   <UButton color="neutral" variant="outline" size="lg" icon="i-lucide-pencil" @click="openEdit">
                     Изменить
                   </UButton>
@@ -473,27 +573,90 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <!-- Фотоальбом -->
+        <div v-if="event.album_id && (albumPhotosLoading || albumPhotos.length)" class="flex flex-col gap-4">
+          <div class="flex items-center justify-between gap-4">
+            <h2
+              class="font-semibold text-highlighted min-w-0 truncate"
+              :class="isKiosk ? 'text-3xl font-unbounded' : 'text-xl'"
+            >
+              {{ event.album_name || 'Фотоальбом' }}
+            </h2>
+            <UButton
+              :to="galleryAlbumTo"
+              color="neutral"
+              variant="outline"
+              :size="isKiosk ? 'xl' : 'lg'"
+              trailing-icon="i-lucide-arrow-right"
+              class="shrink-0"
+            >
+              Смотреть все
+            </UButton>
+          </div>
+
+          <USkeleton v-if="albumPhotosLoading" class="w-full rounded-2xl" :class="isKiosk ? 'h-80' : 'h-56'" />
+
+          <div
+            v-else
+            ref="albumSliderRef"
+            class="flex gap-4 overflow-x-auto snap-x snap-mandatory scrollbar-hide rounded-2xl"
+            @pointerdown="stopAlbumSliderAuto"
+            @pointerup="startAlbumSliderAuto"
+          >
+            <div
+              v-for="photo in albumPhotos"
+              :key="photo.id"
+              class="snap-center shrink-0 overflow-hidden rounded-2xl ring ring-default bg-elevated"
+              :class="isKiosk ? 'w-[88%] aspect-video' : 'w-[78%] sm:w-[52%] aspect-video'"
+            >
+              <video
+                v-if="isVideoUrl(photo.fullSrc)"
+                :src="photo.fullSrc"
+                class="h-full w-full object-cover"
+                muted
+                loop
+                playsinline
+                preload="metadata"
+              />
+              <img
+                v-else
+                :src="photo.fullSrc || photo.thumbSrc"
+                alt=""
+                class="h-full w-full object-cover"
+                loading="lazy"
+              />
+            </div>
+          </div>
+        </div>
+
         <!-- Body -->
-        <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-6 items-start">
-          <UCard class="rounded-lg">
+        <div
+          class="grid gap-6 items-start"
+          :class="isKiosk ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]'"
+        >
+          <UCard class="rounded-lg" :class="isKiosk ? 'order-2' : ''">
             <template #header>
               <div class="flex items-center justify-between gap-3">
                 <div class="flex items-center gap-2">
-                  <UIcon name="i-lucide-info" class="size-5 text-primary" />
-                  <span class="text-sm font-semibold text-highlighted">О мероприятии</span>
+                  <UIcon name="i-lucide-info" :class="isKiosk ? 'size-7 text-primary' : 'size-5 text-primary'" />
+                  <span :class="isKiosk ? 'text-xl font-semibold text-highlighted' : 'text-sm font-semibold text-highlighted'">О мероприятии</span>
                 </div>
               </div>
             </template>
 
             <div class="space-y-4">
-              <p v-if="event.description" class="text-base leading-6 text-muted">
+              <p
+                v-if="event.description"
+                class="leading-relaxed text-muted"
+                :class="isKiosk ? 'text-3xl' : 'text-base leading-6'"
+              >
                 {{ event.description }}
               </p>
-              <p v-else class="text-sm text-muted">
+              <p v-else :class="isKiosk ? 'text-2xl text-muted' : 'text-sm text-muted'">
                 Описание мероприятия пока не добавлено.
               </p>
 
-              <div class="flex flex-wrap gap-2 pt-1">
+              <div v-if="!isKiosk" class="flex flex-wrap gap-2 pt-1">
                 <UButton
                   :color="isArchivedEvent ? 'neutral' : (isJoined ? 'neutral' : 'primary')"
                   :variant="isArchivedEvent ? 'outline' : (isJoined ? 'soft' : 'solid')"
@@ -512,32 +675,36 @@ onUnmounted(() => {
             </div>
           </UCard>
 
-          <div class="space-y-4">
+          <div class="space-y-4" :class="isKiosk ? 'order-1' : ''">
             <UCard class="rounded-lg">
               <template #header>
                 <div class="flex items-center gap-2">
-                  <UIcon name="i-lucide-calendar-days" class="size-5 text-primary" />
-                  <span class="text-sm font-semibold text-highlighted">Детали</span>
+                  <UIcon name="i-lucide-calendar-days" :class="isKiosk ? 'size-7 text-primary' : 'size-5 text-primary'" />
+                  <span :class="isKiosk ? 'text-xl font-semibold text-highlighted' : 'text-sm font-semibold text-highlighted'">Детали</span>
                 </div>
               </template>
 
               <dl class="grid grid-cols-1 gap-3">
                 <div class="flex items-start justify-between gap-3">
-                  <dt class="text-sm text-muted">Дата</dt>
-                  <dd class="text-sm font-medium text-highlighted text-right">
+                  <dt :class="isKiosk ? 'text-xl text-muted' : 'text-sm text-muted'">Дата</dt>
+                  <dd :class="isKiosk ? 'text-xl font-medium text-highlighted text-right' : 'text-sm font-medium text-highlighted text-right'">
                     {{ formatDateRu(event.date) }}
                   </dd>
                 </div>
 
                 <div class="flex items-start justify-between gap-3">
-                  <dt class="text-sm text-muted">Статус</dt>
-                  <dd class="text-sm font-medium text-highlighted text-right">
-                    {{ isArchivedEvent ? 'Архив (запись закрыта)' : (isJoined ? 'Вы записаны' : 'Не записаны') }}
+                  <dt :class="isKiosk ? 'text-xl text-muted' : 'text-sm text-muted'">Статус</dt>
+                  <dd :class="isKiosk ? 'text-xl font-medium text-highlighted text-right' : 'text-sm font-medium text-highlighted text-right'">
+                    {{
+                      isKiosk
+                        ? (isArchivedEvent ? 'Архив (запись закрыта)' : (event.badge || 'Активное'))
+                        : (isArchivedEvent ? 'Архив (запись закрыта)' : (isJoined ? 'Вы записаны' : 'Не записаны'))
+                    }}
                   </dd>
                 </div>
               </dl>
 
-              <div v-if="event.link && event.link !== '#'" class="pt-4">
+              <div v-if="!isKiosk && event.link && event.link !== '#'" class="pt-4">
                 <UButton as="a" :href="event.link" target="_blank" rel="noopener noreferrer" size="lg" color="neutral" variant="solid" class="w-full justify-center" icon="i-lucide-external-link">
                   Открыть страницу
                 </UButton>
@@ -558,7 +725,12 @@ onUnmounted(() => {
     </div>
 
     <!-- Slideover редактирования -->
-    <USlideover v-model:open="editOpen" side="right" title="Редактирование мероприятия" description="Измените данные мероприятия">
+    <USlideover
+      v-model:open="editOpen"
+      side="right"
+      title="Редактирование мероприятия"
+      description="Измените данные мероприятия"
+    >
       <template #body>
         <div class="flex flex-col gap-4 py-2">
           <UForm :state="editState" class="space-y-4" @submit.prevent="handleEditSubmit">
@@ -567,7 +739,14 @@ onUnmounted(() => {
             </UFormField>
 
             <UFormField label="Категория (бейдж)" name="badge">
-              <USelect v-model="editState.badge" :items="editBadgeOptions" placeholder="Выберите: Новое или Архив" size="lg" class="w-full" />
+              <USelect
+                v-model="editState.badge"
+                :content="slideoverSelectContent"
+                :items="editBadgeOptions"
+                placeholder="Выберите: Новое или Архив"
+                size="lg"
+                class="w-full"
+              />
             </UFormField>
 
             <UFormField label="Описание" name="description">
@@ -577,7 +756,7 @@ onUnmounted(() => {
             <UFormField label="Дата проведения" name="date" required>
               <UInputDate v-model="editDateValue" size="lg" class="w-full">
                 <template #trailing>
-                  <UPopover>
+                  <UPopover :content="slideoverPopoverContent">
                     <UButton color="neutral" variant="link" size="sm" icon="i-lucide-calendar" aria-label="Выбрать дату" class="px-0" />
                     <template #content>
                       <UCalendar v-model="editDateValue" class="p-2" />
@@ -585,6 +764,20 @@ onUnmounted(() => {
                   </UPopover>
                 </template>
               </UInputDate>
+            </UFormField>
+
+            <UFormField label="Альбом фотогалереи" name="albumId">
+              <USelectMenu
+                v-model="editState.albumId"
+                :content="slideoverSelectContent"
+                :items="albumSelectItems"
+                value-key="value"
+                label-key="label"
+                placeholder="Выберите альбом"
+                size="lg"
+                :search-input="false"
+                class="w-full"
+              />
             </UFormField>
 
             <UFormField label="Изображение" name="image">
@@ -628,3 +821,12 @@ onUnmounted(() => {
     </UModal>
   </UMain>
 </template>
+
+<style>
+/* USelect / UPopover / USelectMenu поверх USlideover */
+:global([data-reka-select-content]),
+:global([data-reka-popover-content]),
+:global([data-reka-combobox-content]) {
+  z-index: 100 !important;
+}
+</style>

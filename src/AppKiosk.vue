@@ -23,10 +23,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import KioskHeader from './components/KioskHeader.vue';
 import KioskAside from './components/KioskAside.vue';
+import { useKioskColorModeSchedule } from './composables/useColorModeSchedule';
 
 type KioskTile = { title: string; icon: string; routeName?: string; to?: string; disabled?: boolean };
 
@@ -43,20 +44,12 @@ function go(tile: KioskTile) {
   else if (tile.to) router.push(tile.to);
 }
 
-// --- Поддержка светлой / тёмной темы для Nuxt UI (kiosk) ---
-const COLOR_MODE_KEY = 'ui-color-mode';
+// --- Автоматическая тема по времени (только киоск) ---
 const isDark = ref(false);
-
-function applyColorMode(mode: 'light' | 'dark') {
-  const root = document.documentElement;
-  if (!root) return;
-
-  if (mode === 'dark') root.classList.add('dark');
-  else root.classList.remove('dark');
-}
+const { toggleManualPreference } = useKioskColorModeSchedule(isDark);
 
 function toggleColorMode() {
-  isDark.value = !isDark.value;
+  toggleManualPreference();
 }
 
 // Анимированная смена темы с помощью View Transitions API
@@ -121,28 +114,8 @@ const idleEvents: Array<keyof WindowEventMap> = [
 ];
 
 onMounted(() => {
-  const saved = localStorage.getItem(COLOR_MODE_KEY);
-  let mode: 'light' | 'dark';
-
-  if (saved === 'light' || saved === 'dark') {
-    mode = saved;
-  } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    mode = 'dark';
-  } else {
-    mode = 'light';
-  }
-
-  isDark.value = mode === 'dark';
-  applyColorMode(mode);
-
   resetIdleTimer();
   for (const ev of idleEvents) window.addEventListener(ev, resetIdleTimer, { passive: true, capture: true });
-});
-
-watch(isDark, (value) => {
-  const mode: 'light' | 'dark' = value ? 'dark' : 'light';
-  localStorage.setItem(COLOR_MODE_KEY, mode);
-  applyColorMode(mode);
 });
 
 onUnmounted(() => {

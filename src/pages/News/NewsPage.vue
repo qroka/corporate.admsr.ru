@@ -305,16 +305,22 @@ async function handleCreateSubmit() {
         :style="{ left: `${floatingRect.left}px`, top: `${floatingRect.top}px`, width: `${floatingRect.width}px` }"
       >
         <div class="bg-default p-0 pb-6 flex flex-col gap-6">
-          <UPageHeader title="" :links="headerLinks" class="border-none p-0 w-full">
-            <template #title>
-              <h1 class="text-4xl font-normal font-unbounded">Новости</h1>
-            </template>
-          </UPageHeader>
+          <div v-if="isKiosk" class="flex items-center justify-between gap-4 w-full">
+            <h1 class="text-4xl font-normal font-unbounded">Новости</h1>
+            <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" class="shrink-0" />
+          </div>
+          <template v-else>
+            <UPageHeader title="" :links="headerLinks" class="border-none p-0 w-full">
+              <template #title>
+                <h1 class="text-4xl font-normal font-unbounded">Новости</h1>
+              </template>
+            </UPageHeader>
 
-          <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center mx-0">
-            <UInput v-if="!isKiosk" v-model="searchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline" placeholder="Поиск по новостям..." class="flex-1" />
-            <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" />
-          </UContainer>
+            <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center mx-0">
+              <UInput v-model="searchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline" placeholder="Поиск по новостям..." class="flex-1" />
+              <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" />
+            </UContainer>
+          </template>
         </div>
       </div>
     </transition>
@@ -322,18 +328,24 @@ async function handleCreateSubmit() {
     <!-- Single scroll container for the whole page -->
     <div ref="mainScrollEl" class="flex flex-col w-full h-full min-h-0 gap-6 overflow-y-auto scrollbar-hide">
       <UContainer class="flex flex-col max-w-full w-full gap-6 mx-0 shrink-0">
-        <UPageHeader title="" :links="headerLinks" class="border-none p-0 w-full">
-          <template #title>
-            <h1 class="text-4xl font-normal font-unbounded">Новости</h1>
-          </template>
-        </UPageHeader>
+        <div v-if="isKiosk" class="flex items-center justify-between gap-4 w-full">
+          <h1 class="text-4xl font-normal font-unbounded">Новости</h1>
+          <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" class="shrink-0" />
+        </div>
+        <template v-else>
+          <UPageHeader title="" :links="headerLinks" class="border-none p-0 w-full">
+            <template #title>
+              <h1 class="text-4xl font-normal font-unbounded">Новости</h1>
+            </template>
+          </UPageHeader>
 
-        <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center mx-0">
-          <UInput v-if="!isKiosk" v-model="searchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline" placeholder="Поиск по новостям..." class="flex-1" />
-          <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" />
-        </UContainer>
+          <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center mx-0">
+            <UInput v-model="searchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline" placeholder="Поиск по новостям..." class="flex-1" />
+            <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" />
+          </UContainer>
+        </template>
 
-        <p v-if="!loading && filtered.length !== postsBase.length" class="text-sm text-muted -mt-2">
+        <p v-if="!isKiosk && !loading && filtered.length !== postsBase.length" class="text-sm text-muted -mt-2">
           Найдено: {{ filtered.length }} из {{ postsBase.length }}
         </p>
       </UContainer>
@@ -358,6 +370,7 @@ async function handleCreateSubmit() {
                 {{ post.description }}
               </p>
               <UContainer
+                v-if="!isKiosk"
                 class="relative z-10 flex justify-between items-center gap-3 w-full mt-2"
                 @click.stop
               >

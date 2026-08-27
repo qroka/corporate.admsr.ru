@@ -6,6 +6,8 @@ import type { BlogPostProps } from '@nuxt/ui';
 import { useSectionAccess } from '../../composables/useSectionAccess';
 import { apiSessionFetch } from '../../composables/useAuthSession';
 import { formatDateRuLong } from '../../utils/date';
+import { useGalleryData } from '../../composables/useGalleryData';
+import { slideoverPopoverContent, slideoverSelectContent } from '../../composables/slideoverFieldUi';
 
 type EventPost = BlogPostProps & {
   id?: number;
@@ -18,6 +20,13 @@ const route = useRoute();
 const isKiosk = computed(() => route.matched?.some((r) => r.meta?.kiosk));
 const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
 ensureSectionAccess();
+const { albums, ensureLoaded: ensureAlbumsLoaded } = useGalleryData();
+ensureAlbumsLoaded();
+
+const albumSelectItems = computed(() => [
+  { label: 'Без альбома', value: '' },
+  ...albums.value.map((a) => ({ label: a.title, value: String(a.id) })),
+]);
 
 const posts = ref<EventPost[]>([]);
 const loading = ref(false);
@@ -118,6 +127,7 @@ type CreateFormState = {
   description: string;
   badge: string | null;
   date: string;
+  albumId: string;
 };
 
 const createState = reactive<CreateFormState>({
@@ -125,6 +135,7 @@ const createState = reactive<CreateFormState>({
   description: '',
   badge: null,
   date: '',
+  albumId: '',
 });
 
 const createImageFile = ref<File | null>(null);
@@ -165,6 +176,7 @@ function resetCreateForm() {
   createState.description = '';
   createState.badge = null;
   createState.date = '';
+  createState.albumId = '';
   createImageFile.value = null;
   if (createImagePreview.value) URL.revokeObjectURL(createImagePreview.value);
   createImagePreview.value = '';
@@ -173,6 +185,7 @@ function resetCreateForm() {
 }
 
 function openCreate() {
+  ensureAlbumsLoaded();
   resetCreateForm();
   createOpen.value = true;
 }
@@ -218,6 +231,7 @@ async function handleCreateSubmit() {
         date:        createState.date,
         image:       imagePath,
         image_full:  imageFullPath,
+        album_id:    createState.albumId ? Number(createState.albumId) : null,
       },
     });
     if (!json.success) throw new Error(json.message || 'Ошибка создания');
@@ -301,27 +315,32 @@ onUnmounted(() => {
         :style="{ left: `${floatingRect.left}px`, top: `${floatingRect.top}px`, width: `${floatingRect.width}px` }"
       >
         <div class="bg-default p-0 pb-6 flex flex-col gap-6">
-          <UPageHeader :links="headerLinks" class="border-none p-0 w-full">
-            <template #title>
-              <h1 class="text-4xl font-normal font-unbounded">Мероприятия</h1>
-            </template>
-          </UPageHeader>
+          <div v-if="isKiosk" class="flex items-center justify-between gap-4 w-full">
+            <h1 class="text-4xl font-normal font-unbounded">Мероприятия</h1>
+            <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" class="shrink-0" />
+          </div>
+          <template v-else>
+            <UPageHeader :links="headerLinks" class="border-none p-0 w-full">
+              <template #title>
+                <h1 class="text-4xl font-normal font-unbounded">Мероприятия</h1>
+              </template>
+            </UPageHeader>
 
-          <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
-            <UInput
-              v-if="!isKiosk"
-              v-model="searchQuery"
-              icon="i-lucide-search"
-              size="xl"
-              color="neutral"
-              variant="outline"
-              placeholder="Поиск по названию..."
-              class="flex-1"
-            />
-            <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" />
-          </UContainer>
+            <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
+              <UInput
+                v-model="searchQuery"
+                icon="i-lucide-search"
+                size="xl"
+                color="neutral"
+                variant="outline"
+                placeholder="Поиск по названию..."
+                class="flex-1"
+              />
+              <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" />
+            </UContainer>
+          </template>
 
-          <p v-if="!loading && filteredPosts.length !== posts.length" class="text-sm text-muted -mt-2">
+          <p v-if="!isKiosk && !loading && filteredPosts.length !== posts.length" class="text-sm text-muted -mt-2">
             Найдено: {{ filteredPosts.length }} из {{ posts.length }}
           </p>
         </div>
@@ -331,18 +350,24 @@ onUnmounted(() => {
     <!-- Single scroll container for the whole page -->
     <div ref="mainScrollEl" class="flex flex-col w-full h-full min-h-0 gap-6 overflow-y-auto scrollbar-hide">
       <UContainer class="flex flex-col max-w-full w-full gap-6 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0 shrink-0">
-        <UPageHeader :links="headerLinks" class="border-none p-0 w-full">
-          <template #title>
-            <h1 class="text-4xl font-normal font-unbounded">Мероприятия</h1>
-          </template>
-        </UPageHeader>
+        <div v-if="isKiosk" class="flex items-center justify-between gap-4 w-full">
+          <h1 class="text-4xl font-normal font-unbounded">Мероприятия</h1>
+          <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" class="shrink-0" />
+        </div>
+        <template v-else>
+          <UPageHeader :links="headerLinks" class="border-none p-0 w-full">
+            <template #title>
+              <h1 class="text-4xl font-normal font-unbounded">Мероприятия</h1>
+            </template>
+          </UPageHeader>
 
-        <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
-          <UInput v-if="!isKiosk" v-model="searchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline" placeholder="Поиск по названию..." class="flex-1" />
-          <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" />
-        </UContainer>
+          <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
+            <UInput v-model="searchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline" placeholder="Поиск по названию..." class="flex-1" />
+            <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" />
+          </UContainer>
+        </template>
 
-        <p v-if="!loading && filteredPosts.length !== posts.length" class="text-sm text-muted -mt-2">
+        <p v-if="!isKiosk && !loading && filteredPosts.length !== posts.length" class="text-sm text-muted -mt-2">
           Найдено: {{ filteredPosts.length }} из {{ posts.length }}
         </p>
       </UContainer>
@@ -406,7 +431,14 @@ onUnmounted(() => {
           </UFormField>
 
           <UFormField label="Категория" name="badge">
-            <USelect v-model="createState.badge" :items="createBadgeOptions" placeholder="Выберите: Новое или Архив" size="xl" class="w-full" />
+            <USelect
+              v-model="createState.badge"
+              :content="slideoverSelectContent"
+              :items="createBadgeOptions"
+              placeholder="Выберите: Новое или Архив"
+              size="xl"
+              class="w-full"
+            />
           </UFormField>
 
           <UFormField label="Описание" name="description">
@@ -417,7 +449,7 @@ onUnmounted(() => {
           <UFormField label="Дата проведения" name="date" required>
             <UInputDate v-model="createDateValue" size="xl" class="w-full">
               <template #trailing>
-                <UPopover>
+                <UPopover :content="slideoverPopoverContent">
                   <UButton color="neutral" variant="link" size="sm" icon="i-lucide-calendar" aria-label="Выбрать дату" class="px-0" />
                   <template #content>
                     <UCalendar v-model="createDateValue" class="p-2" />
@@ -425,6 +457,20 @@ onUnmounted(() => {
                 </UPopover>
               </template>
             </UInputDate>
+          </UFormField>
+
+          <UFormField label="Альбом фотогалереи" name="albumId">
+            <USelectMenu
+              v-model="createState.albumId"
+              :content="slideoverSelectContent"
+              :items="albumSelectItems"
+              value-key="value"
+              label-key="label"
+              placeholder="Выберите альбом"
+              size="xl"
+              :search-input="false"
+              class="w-full"
+            />
           </UFormField>
 
           <UFormField label="Изображение" name="image">
@@ -451,3 +497,11 @@ onUnmounted(() => {
     </USlideover>
   </UMain>
 </template>
+
+<style>
+:global([data-reka-select-content]),
+:global([data-reka-popover-content]),
+:global([data-reka-combobox-content]) {
+  z-index: 100 !important;
+}
+</style>

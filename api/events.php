@@ -18,6 +18,7 @@
  *   date        DATE          NOT NULL,
  *   image       VARCHAR(500)  NOT NULL DEFAULT '/favicon.svg',
  *   image_full  VARCHAR(500)  NOT NULL DEFAULT '/favicon.svg',
+ *   album_id    INTEGER       NULL REFERENCES public.gallery(id) ON DELETE SET NULL,
  *   created_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
  *   updated_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW()
  * );
@@ -69,7 +70,12 @@ switch ($method) {
     // ── GET ───────────────────────────────────────────────────────────────────
     case 'GET':
         if ($id !== null) {
-            $stmt = $pdo->prepare('SELECT * FROM events WHERE id = ?');
+            $stmt = $pdo->prepare(
+                'SELECT e.*, g.name AS album_name
+                 FROM events e
+                 LEFT JOIN public.gallery g ON g.id = e.album_id
+                 WHERE e.id = ?'
+            );
             $stmt->execute([$id]);
             $row = $stmt->fetch();
             if (!$row) jsonError(404, 'Мероприятие не найдено');
@@ -88,12 +94,13 @@ switch ($method) {
         $d = jsonBody();
         required($d, ['title', 'date']);
 
+        $def = '/favicon.svg';
+        $albumId = parseAlbumId($pdo, $d, true);
         $stmt = $pdo->prepare(
-            'INSERT INTO events (title, description, badge, date, image, image_full)
-             VALUES (:title, :description, :badge, :date, :image, :image_full)
+            'INSERT INTO events (title, description, badge, date, image, image_full, album_id)
+             VALUES (:title, :description, :badge, :date, :image, :image_full, :album_id)
              RETURNING id'
         );
-        $def = '/favicon.svg';
         $stmt->execute([
             ':title'       => trim($d['title']),
             ':description' => isset($d['description']) ? trim($d['description']) : null,
@@ -101,10 +108,16 @@ switch ($method) {
             ':date'        => $d['date'],
             ':image'       => !empty($d['image'])       ? trim($d['image'])       : $def,
             ':image_full'  => !empty($d['image_full'])  ? trim($d['image_full'])  : (!empty($d['image']) ? trim($d['image']) : $def),
+            ':album_id'    => $albumId,
         ]);
 
         $newId = (int) $stmt->fetchColumn();
-        $stmt2 = $pdo->prepare('SELECT * FROM events WHERE id = ?');
+        $stmt2 = $pdo->prepare(
+            'SELECT e.*, g.name AS album_name
+             FROM events e
+             LEFT JOIN public.gallery g ON g.id = e.album_id
+             WHERE e.id = ?'
+        );
         $stmt2->execute([$newId]);
         http_response_code(201);
         jsonOk(fmt($stmt2->fetch()), 'Мероприятие создано');
@@ -117,15 +130,19 @@ switch ($method) {
         $d = jsonBody();
         required($d, ['title', 'date']);
 
-        $cur = $pdo->prepare('SELECT image, image_full FROM events WHERE id = ?');
+        $cur = $pdo->prepare('SELECT image, image_full, album_id FROM events WHERE id = ?');
         $cur->execute([$id]);
         $curRow = $cur->fetch();
         if (!$curRow) jsonError(404, 'Мероприятие не найдено');
 
+        $albumId = array_key_exists('album_id', $d)
+            ? parseAlbumId($pdo, $d, true)
+            : (isset($curRow['album_id']) && $curRow['album_id'] !== null ? (int) $curRow['album_id'] : null);
+
         $stmt = $pdo->prepare(
             'UPDATE events
              SET title=:title, description=:description, badge=:badge,
-                 date=:date, image=:image, image_full=:image_full
+                 date=:date, image=:image, image_full=:image_full, album_id=:album_id
              WHERE id=:id'
         );
         $stmt->execute([
@@ -135,10 +152,16 @@ switch ($method) {
             ':date'        => $d['date'],
             ':image'       => !empty($d['image'])      ? trim($d['image'])      : $curRow['image'],
             ':image_full'  => !empty($d['image_full']) ? trim($d['image_full']) : $curRow['image_full'],
+            ':album_id'    => $albumId,
             ':id'          => $id,
         ]);
 
-        $stmt2 = $pdo->prepare('SELECT * FROM events WHERE id = ?');
+        $stmt2 = $pdo->prepare(
+            'SELECT e.*, g.name AS album_name
+             FROM events e
+             LEFT JOIN public.gallery g ON g.id = e.album_id
+             WHERE e.id = ?'
+        );
         $stmt2->execute([$id]);
         jsonOk(fmt($stmt2->fetch()), 'Мероприятие обновлено');
         break;
@@ -200,9 +223,32 @@ function fmt(array $r): array
         'date'        => $r['date'],
         'image'       => $r['image'],
         'image_full'  => $r['image_full'],
+        'album_id'    => isset($r['album_id']) && $r['album_id'] !== null ? (int) $r['album_id'] : null,
+        'album_name'  => $r['album_name'] ?? null,
         'created_at'  => $r['created_at'],
         'updated_at'  => $r['updated_at'],
     ];
+}
+
+/** @param bool $allowNull true — явный null сбрасывает альбом */
+function parseAlbumId(PDO $pdo, array $d, bool $allowNull): ?int
+{
+    if (!array_key_exists('album_id', $d)) {
+        return null;
+    }
+    if ($d['album_id'] === null || $d['album_id'] === '' || $d['album_id'] === false) {
+        return $allowNull ? null : null;
+    }
+    $id = (int) $d['album_id'];
+    if ($id <= 0) {
+        return null;
+    }
+    $check = $pdo->prepare('SELECT id FROM public.gallery WHERE id = ?');
+    $check->execute([$id]);
+    if (!$check->fetch()) {
+        jsonError(422, 'Альбом не найден');
+    }
+    return $id;
 }
 
 function jsonBody(): array

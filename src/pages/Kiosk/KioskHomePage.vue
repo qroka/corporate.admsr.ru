@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import type { BlogPostProps } from '@nuxt/ui';
-import type { ButtonProps } from '@nuxt/ui';
 import { useRouter } from 'vue-router';
 import { useNewsData, formatNewsDate, resolveNewsImageSrc } from '../../composables/useNewsData';
 
@@ -15,17 +14,22 @@ ensureLoaded();
 // Промо-ролик киоска. Файл лежит в web-корне (public/) и не бандлится Vite —
 // поэтому путь абсолютный и передаётся через :src, а не статичным src.
 const heroVideoSrc = '/kiosk-hero.mp4';
+const heroVideoRef = ref<HTMLVideoElement | null>(null);
 
-const links = <ButtonProps[]>([
-  {
-    icon: 'i-lucide-arrow-up-right',
-    to: '/kiosk/news',
-    size: 'xl',
-    color: 'neutral',
-    variant: 'outline',
-    class: 'rounded-full',
-  },
-])
+function restartHeroVideo() {
+  const video = heroVideoRef.value;
+  if (!video) return;
+  video.currentTime = 0;
+  void video.play().catch(() => {});
+}
+
+function setupHeroVideo() {
+  const video = heroVideoRef.value;
+  if (!video) return;
+  video.loop = true;
+  video.muted = true;
+  void video.play().catch(() => {});
+}
 
 function stripHtml(html: string, maxLen: number): string {
   const plain = String(html ?? '')
@@ -45,7 +49,7 @@ const posts = computed<NewsPost[]>(() =>
       description: stripHtml(n.description, 260),
       date: formatNewsDate(n.date),
       badge: n.category || 'Новости',
-      to: `/news/${n.id}`,
+      to: `/kiosk/news/${n.id}`,
       image: imageSrc ? { src: imageSrc, alt: n.title } : { src: '/src/img/Logo.svg', alt: n.title },
       likes: n.likes ?? 0,
       views: n.views ?? 0,
@@ -71,7 +75,7 @@ const sliderItems = computed<SliderItem[]>(() =>
       id: n.id,
       title: n.title || `Новость #${n.id}`,
       imageSrc: resolveNewsImageSrc(n.imagePath) ?? '',
-      to: `/news/${n.id}`,
+      to: `/kiosk/news/${n.id}`,
     }))
     .filter((x) => x.imageSrc.length)
     .slice(0, 8),
@@ -126,6 +130,7 @@ function handleKioskIdle() {
 }
 
 onMounted(() => {
+  setupHeroVideo();
   startSliderAuto();
   window.addEventListener('kiosk-idle', handleKioskIdle);
 });
@@ -139,20 +144,31 @@ onUnmounted(() => {
 <template>
   <UMain class="flex flex-col w-full h-full min-h-0 gap-6">
     <UContainer class="flex flex-col gap-6 w-full min-h-0 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
-      <video
-        class="rounded-3xl object-cover w-full h-[28rem] bg-black"
-        autoplay
-        muted
-        loop
-        playsinline
-        preload="auto"
-        :src="heroVideoSrc"
-      ></video>
-      <UPageHeader  :links="links" class="border-none p-0">
-        <template #title>
-          <h1 class="text-5xl font-normal font-unbounded">Лента новостей</h1>
-        </template>
-      </UPageHeader>
+      <div class="relative w-full aspect-video rounded-3xl overflow-hidden bg-black">
+        <video
+          ref="heroVideoRef"
+          class="absolute inset-0 w-full h-full object-cover"
+          autoplay
+          muted
+          loop
+          playsinline
+          preload="auto"
+          :src="heroVideoSrc"
+          @ended="restartHeroVideo"
+        />
+      </div>
+      <div class="flex items-center justify-between gap-4 w-full">
+        <h1 class="text-4xl font-normal font-unbounded">Лента новостей</h1>
+        <UButton
+          to="/kiosk/news"
+          size="xl"
+          color="neutral"
+          variant="outline"
+          trailing-icon="i-lucide-arrow-right"
+        >
+          Смотреть все новости
+        </UButton>
+      </div>
       <UScrollArea ref="scrollAreaRef" class="flex-1 min-h-0 scrollbar-hide">
         <UContainer class="flex flex-col gap-6 sm:p-px md:p-px lg:p-px xl:p-px mx-0 w-full">
           <USkeleton v-if="loading" class="h-32 w-full" />
