@@ -24,6 +24,10 @@ type AlbumPhoto = {
   fullSrc: string;
 };
 
+type AlbumSlide =
+  | (AlbumPhoto & { type: 'photo' })
+  | { type: 'cta'; id: 'album-cta' };
+
 const route = useRoute();
 const router = useRouter();
 
@@ -38,7 +42,7 @@ const { albums, ensureLoaded: ensureAlbumsLoaded } = useGalleryData();
 ensureAlbumsLoaded();
 
 const albumSelectItems = computed(() => [
-  { label: 'Без альбома', value: '' },
+  { label: 'Без альбома', value: 'none' },
   ...albums.value.map((a) => ({ label: a.title, value: String(a.id) })),
 ]);
 const isAdmin = computed(() => canEditSection('events'));
@@ -112,14 +116,18 @@ function isVideoUrl(url: string): boolean {
 
 const albumPhotos = ref<AlbumPhoto[]>([]);
 const albumPhotosLoading = ref(false);
-const albumSliderRef = ref<HTMLElement | null>(null);
-const albumSliderIndex = ref(0);
-let albumSliderTimer: number | null = null;
 
 const galleryAlbumTo = computed(() => {
   const albumId = event.value?.album_id;
   if (!albumId) return '';
   return isKiosk.value ? `/kiosk/gallery/${albumId}` : `/gallery/${albumId}`;
+});
+
+/** До 10 фото + финальная карточка «Смотреть в альбоме» */
+const albumSlides = computed<AlbumSlide[]>(() => {
+  const photos = albumPhotos.value.slice(0, 10).map((p) => ({ ...p, type: 'photo' as const }));
+  if (!photos.length) return [];
+  return [...photos, { type: 'cta' as const, id: 'album-cta' }];
 });
 
 async function loadAlbumPhotos(albumId?: number | null) {
@@ -142,33 +150,7 @@ async function loadAlbumPhotos(albumId?: number | null) {
     albumPhotos.value = [];
   } finally {
     albumPhotosLoading.value = false;
-    albumSliderIndex.value = 0;
-    startAlbumSliderAuto();
   }
-}
-
-function setAlbumSliderIndex(next: number) {
-  const len = albumPhotos.value.length;
-  if (!len) {
-    albumSliderIndex.value = 0;
-    return;
-  }
-  albumSliderIndex.value = ((next % len) + len) % len;
-  const el = albumSliderRef.value;
-  if (!el) return;
-  const slide = el.children[albumSliderIndex.value] as HTMLElement | undefined;
-  slide?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-}
-
-function startAlbumSliderAuto() {
-  stopAlbumSliderAuto();
-  if (albumPhotos.value.length <= 1) return;
-  albumSliderTimer = window.setInterval(() => setAlbumSliderIndex(albumSliderIndex.value + 1), 6000);
-}
-
-function stopAlbumSliderAuto() {
-  if (albumSliderTimer) window.clearInterval(albumSliderTimer);
-  albumSliderTimer = null;
 }
 
 async function fetchEvent(id: string | string[]) {
@@ -295,7 +277,7 @@ const editState = reactive<EditFormState>({
   description: '',
   badge: '',
   date: '',
-  albumId: '',
+  albumId: 'none',
 });
 
 const editImageFile = ref<File | null>(null);
@@ -319,7 +301,7 @@ function fillEditState() {
   editState.description = event.value.description ?? '';
   editState.badge       = String((event.value as any).badge ?? '');
   editState.date        = (event.value as any).date ?? '';
-  editState.albumId     = event.value.album_id ? String(event.value.album_id) : '';
+  editState.albumId     = event.value.album_id ? String(event.value.album_id) : 'none';
   editDateValue.value   = toCalendarDate(editState.date);
   editImageFile.value = null;
 }
@@ -370,7 +352,7 @@ async function handleEditSubmit() {
         description: editState.description.trim() || null,
         badge:       editState.badge || null,
         date:        editState.date,
-        album_id:    editState.albumId ? Number(editState.albumId) : null,
+        album_id:    editState.albumId && editState.albumId !== 'none' ? Number(editState.albumId) : null,
         ...imagePatch,
       },
     });
@@ -470,7 +452,6 @@ onMounted(() => {
 onUnmounted(() => {
   const el = mainScrollEl.value;
   if (el) el.removeEventListener('scroll', onMainScroll);
-  stopAlbumSliderAuto();
 });
 </script>
 
@@ -513,7 +494,7 @@ onUnmounted(() => {
 
       <!-- Скелетон -->
       <div v-if="loading" class="space-y-6">
-        <USkeleton class="h-56 sm:h-72 rounded-lg" />
+        <USkeleton class="w-full rounded-lg" :class="isKiosk ? 'aspect-video' : 'h-56 sm:h-72'" />
         <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-6 items-start">
           <USkeleton class="h-64 rounded-lg" />
           <USkeleton class="h-64 rounded-lg" />
@@ -524,7 +505,7 @@ onUnmounted(() => {
       <div v-else-if="event" class="flex flex-col gap-6 p-px">
         <!-- Hero -->
         <div class="relative overflow-hidden rounded-lg ring ring-default bg-default">
-          <div class="relative" :class="isKiosk ? 'h-[28rem]' : 'h-96'">
+          <div class="relative w-full" :class="isKiosk ? 'aspect-video' : 'h-96'">
             <img
               v-if="event.image_full || (event.image as any)?.src"
               :src="event.image_full || (event.image as any)?.src"
@@ -596,22 +577,50 @@ onUnmounted(() => {
 
           <USkeleton v-if="albumPhotosLoading" class="w-full rounded-2xl" :class="isKiosk ? 'h-80' : 'h-56'" />
 
-          <div
+          <UCarousel
             v-else
-            ref="albumSliderRef"
-            class="flex gap-4 overflow-x-auto snap-x snap-mandatory scrollbar-hide rounded-2xl"
-            @pointerdown="stopAlbumSliderAuto"
-            @pointerup="startAlbumSliderAuto"
+            v-slot="{ item }"
+            :items="albumSlides"
+            arrows
+            dots
+            wheel-gestures
+            :autoplay="albumSlides.length > 1 ? { delay: 6000, stopOnInteraction: true } : false"
+            :prev="{ color: 'neutral', variant: 'solid', size: isKiosk ? 'xl' : 'lg' }"
+            :next="{ color: 'neutral', variant: 'solid', size: isKiosk ? 'xl' : 'lg' }"
+            :ui="{
+              root: 'relative w-full',
+              item: 'basis-full sm:basis-4/5 ps-0',
+              container: 'ms-0 gap-4',
+              viewport: 'rounded-2xl',
+              dots: 'relative mt-4 inset-x-auto bottom-auto flex flex-nowrap items-center justify-center gap-1.5',
+              dot: 'size-2 shrink-0',
+            }"
+            class="w-full"
           >
+            <RouterLink
+              v-if="item.type === 'cta'"
+              :to="galleryAlbumTo"
+              class="flex h-full w-full aspect-video flex-col items-center justify-center gap-3 rounded-2xl ring ring-default bg-elevated/80 px-6 text-center transition-colors hover:bg-elevated"
+            >
+              <UIcon name="i-lucide-images" :class="isKiosk ? 'size-12 text-primary' : 'size-10 text-primary'" />
+              <span
+                class="font-semibold text-highlighted"
+                :class="isKiosk ? 'text-2xl font-unbounded' : 'text-lg'"
+              >
+                Смотреть в альбоме
+              </span>
+              <span class="text-muted" :class="isKiosk ? 'text-base' : 'text-sm'">
+                Все фотографии мероприятия
+              </span>
+            </RouterLink>
+
             <div
-              v-for="photo in albumPhotos"
-              :key="photo.id"
-              class="snap-center shrink-0 overflow-hidden rounded-2xl ring ring-default bg-elevated"
-              :class="isKiosk ? 'w-[88%] aspect-video' : 'w-[78%] sm:w-[52%] aspect-video'"
+              v-else
+              class="overflow-hidden rounded-2xl ring ring-default bg-elevated aspect-video w-full"
             >
               <video
-                v-if="isVideoUrl(photo.fullSrc)"
-                :src="photo.fullSrc"
+                v-if="isVideoUrl(item.fullSrc)"
+                :src="item.fullSrc"
                 class="h-full w-full object-cover"
                 muted
                 loop
@@ -620,13 +629,13 @@ onUnmounted(() => {
               />
               <img
                 v-else
-                :src="photo.fullSrc || photo.thumbSrc"
+                :src="item.fullSrc || item.thumbSrc"
                 alt=""
                 class="h-full w-full object-cover"
                 loading="lazy"
               />
             </div>
-          </div>
+          </UCarousel>
         </div>
 
         <!-- Body -->
@@ -767,15 +776,12 @@ onUnmounted(() => {
             </UFormField>
 
             <UFormField label="Альбом фотогалереи" name="albumId">
-              <USelectMenu
+              <USelect
                 v-model="editState.albumId"
                 :content="slideoverSelectContent"
                 :items="albumSelectItems"
-                value-key="value"
-                label-key="label"
                 placeholder="Выберите альбом"
                 size="lg"
-                :search-input="false"
                 class="w-full"
               />
             </UFormField>

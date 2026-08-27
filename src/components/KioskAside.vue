@@ -9,7 +9,8 @@ const activeNav = computed(() => {
   const name = String(route.name ?? '');
   // kiosk-* routes should highlight the corresponding section
   if (name.includes('events')) return 'events';
-  if (name.includes('gallery')) return 'gallery';
+  // Только список альбомов — внутри альбома кнопка не активна
+  if (name === 'kiosk-gallery' || name === 'gallery') return 'gallery';
   return '';
 });
 

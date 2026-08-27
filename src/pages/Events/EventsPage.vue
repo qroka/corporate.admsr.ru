@@ -24,7 +24,7 @@ const { albums, ensureLoaded: ensureAlbumsLoaded } = useGalleryData();
 ensureAlbumsLoaded();
 
 const albumSelectItems = computed(() => [
-  { label: 'Без альбома', value: '' },
+  { label: 'Без альбома', value: 'none' },
   ...albums.value.map((a) => ({ label: a.title, value: String(a.id) })),
 ]);
 
@@ -135,7 +135,7 @@ const createState = reactive<CreateFormState>({
   description: '',
   badge: null,
   date: '',
-  albumId: '',
+  albumId: 'none',
 });
 
 const createImageFile = ref<File | null>(null);
@@ -176,7 +176,7 @@ function resetCreateForm() {
   createState.description = '';
   createState.badge = null;
   createState.date = '';
-  createState.albumId = '';
+  createState.albumId = 'none';
   createImageFile.value = null;
   if (createImagePreview.value) URL.revokeObjectURL(createImagePreview.value);
   createImagePreview.value = '';
@@ -231,7 +231,7 @@ async function handleCreateSubmit() {
         date:        createState.date,
         image:       imagePath,
         image_full:  imageFullPath,
-        album_id:    createState.albumId ? Number(createState.albumId) : null,
+        album_id:    createState.albumId && createState.albumId !== 'none' ? Number(createState.albumId) : null,
       },
     });
     if (!json.success) throw new Error(json.message || 'Ошибка создания');
@@ -460,15 +460,12 @@ onUnmounted(() => {
           </UFormField>
 
           <UFormField label="Альбом фотогалереи" name="albumId">
-            <USelectMenu
+            <USelect
               v-model="createState.albumId"
               :content="slideoverSelectContent"
               :items="albumSelectItems"
-              value-key="value"
-              label-key="label"
               placeholder="Выберите альбом"
               size="xl"
-              :search-input="false"
               class="w-full"
             />
           </UFormField>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { ButtonProps, BlogPostProps } from '@nuxt/ui';
 import { useNewsData, formatNewsDate, resolveNewsImageSrc } from '../../composables/useNewsData';
@@ -27,6 +27,15 @@ watch(error, (val) => {
 const newsId = computed(() => String(route.params.id ?? '').trim());
 const item   = computed(() => (newsId.value ? getById(newsId.value) : undefined));
 
+const newsScrollEl = ref<HTMLElement | null>(null);
+
+watch(newsId, async () => {
+  await nextTick();
+  const el = newsScrollEl.value;
+  if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
+  else window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
 const title    = computed(() => item.value?.title || (newsId.value ? `Новость #${newsId.value}` : 'Новость'));
 const date     = computed(() => formatNewsDate(item.value?.date ?? null));
 const imageSrc = computed(() => resolveNewsImageSrc(item.value?.imagePath ?? null));
@@ -36,6 +45,16 @@ const newsListPath = computed(() => (isKiosk.value ? '/kiosk/news' : '/news'));
 const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
 ensureSectionAccess();
 const isAdmin      = computed(() => canEditSection('news'));
+
+/** В киоске внешние/любые ссылки в HTML описания не открываем */
+function onKioskNewsBodyClick(e: MouseEvent) {
+  if (!isKiosk.value) return;
+  const target = e.target as HTMLElement | null;
+  const link = target?.closest?.('a');
+  if (!link) return;
+  e.preventDefault();
+  e.stopPropagation();
+}
 
 const appendEditorEmojiTo = () => document.body;
 
@@ -345,17 +364,17 @@ function showMoreNews() {
 
 <template>
   <UMain class="relative flex flex-col xl:flex-row w-full h-full min-h-0 gap-6">
-    <div class="flex-1 min-h-0 overflow-y-auto max-w-full w-full scrollbar-hide">
+    <div ref="newsScrollEl" class="flex-1 min-h-0 overflow-y-auto max-w-full w-full scrollbar-hide">
 
       <div v-if="loading" class="space-y-6">
-        <USkeleton class="h-96 rounded-lg" />
+        <USkeleton class="w-full rounded-lg" :class="isKiosk ? 'aspect-video' : 'h-96'" />
         <USkeleton class="h-64 rounded-lg" />
       </div>
 
       <div v-else-if="item" class="flex flex-col gap-6 p-px">
         <!-- Hero -->
         <div class="relative overflow-hidden rounded-lg ring ring-default bg-default">
-          <div class="relative" :class="isKiosk ? 'h-[28rem]' : 'h-96'">
+          <div class="relative w-full" :class="isKiosk ? 'aspect-video' : 'h-96'">
             <img v-if="imageSrc" :src="imageSrc" :alt="title"
               class="absolute inset-0 h-full w-full object-cover" loading="lazy" />
             <div class="absolute inset-0"
@@ -420,9 +439,10 @@ function showMoreNews() {
             :class="[
               'text-default px-0 sm:px-0 md:px-0 lg:px-0 xl:px-0',
               newsEditorHtmlClass,
-              isKiosk ? 'text-3xl [&_p]:leading-relaxed [&_p]:mb-4' : '',
+              isKiosk ? 'text-3xl [&_p]:leading-relaxed [&_p]:mb-4 kiosk-news-body' : '',
             ]"
             v-html="item.description"
+            @click.capture="onKioskNewsBodyClick"
           />
         </UCard>
 
@@ -635,3 +655,11 @@ function showMoreNews() {
     </UModal>
   </UMain>
 </template>
+
+<style scoped>
+.kiosk-news-body :deep(a) {
+  pointer-events: none;
+  cursor: default;
+  text-decoration: none;
+}
+</style>
