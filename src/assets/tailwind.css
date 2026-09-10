@@ -353,6 +353,11 @@ body {
     background: transparent;
     display: none;
   }
+
+  /* Панели/карточки: масштаб как у прежнего rounded-2xl при radius=md */
+  .rounded-panel {
+    border-radius: calc(var(--ui-radius, 0.25rem) * 4);
+  }
 }
 
 /* Единый кастомный скроллбар во всём проекте (включая телетранспорт: Slideover и т.д.) */

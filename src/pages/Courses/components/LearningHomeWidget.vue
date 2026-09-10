@@ -39,9 +39,9 @@ function open(e: EnrollmentSummary) {
 <template>
   <UCard
     variant="soft"
-    class="w-full rounded-[10px]"
+    class="w-full rounded-panel"
     :ui="{
-      root: 'rounded-[10px] bg-elevated/75 ring-0 border-0 divide-y-0',
+      root: 'rounded-panel bg-elevated ring-0 border-0 divide-y-0',
       header: 'px-4 py-4 sm:px-4',
       body: 'flex flex-col gap-2 px-4 pb-4 pt-0 sm:px-4 sm:pb-4 sm:pt-0',
     }"

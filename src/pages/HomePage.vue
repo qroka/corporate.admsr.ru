@@ -7,7 +7,6 @@ import { useNewsFeed, useFeedSentinel } from '../composables/useNewsFeed';
 import { useNewsReactions } from '../composables/useNewsReactions';
 import { useBirthdayColleagues } from '../composables/useBirthdayColleagues';
 import { attachAbsenceStorageSync, hasActiveAbsence } from '../stores/absenceJournal';
-import { currentRole } from '../stores/role';
 import { useSectionAccess } from '../composables/useSectionAccess';
 import { apiSessionUpload } from '../composables/useAuthSession';
 import { useHeaderUser } from '../composables/useHeaderUser';
@@ -18,8 +17,6 @@ import HomeNewsCard from '../components/home/HomeNewsCard.vue';
 
 const router = useRouter();
 const { toast, success } = useAppToast();
-
-const isAdmin = computed(() => currentRole.value === 'admin');
 
 const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
 ensureSectionAccess();
@@ -485,9 +482,9 @@ onUnmounted(() => {
             :to="svc.to"
             :on-click="svc.action === 'sed' ? onSedClick : undefined"
             variant="soft"
-            class="bg-elevated/75"
+            class="bg-elevated"
             :ui="{
-              root: 'h-[92px] cursor-pointer rounded-[10px] ring-0 border-0 bg-elevated/75',
+              root: 'h-[92px] cursor-pointer rounded-panel ring-0 border-0 bg-elevated',
               container: 'items-center justify-center text-center gap-2 p-4 h-full',
               wrapper: 'items-center',
               leading: 'mb-0',
@@ -521,7 +518,7 @@ onUnmounted(() => {
               <USkeleton
                 v-for="n in 3"
                 :key="`sk-init-${n}`"
-                class="h-[300px] w-full rounded-[10px]"
+                class="h-[300px] w-full rounded-panel"
               />
             </template>
 
@@ -548,7 +545,7 @@ onUnmounted(() => {
                 <USkeleton
                   v-for="n in 2"
                   :key="`sk-more-${n}`"
-                  class="h-[300px] w-full rounded-[10px]"
+                  class="h-[300px] w-full rounded-panel"
                 />
               </template>
 
@@ -615,13 +612,13 @@ onUnmounted(() => {
 
         <!-- Правая колонка -->
         <aside class="w-full min-w-0 flex flex-col gap-4">
-          <LearningHomeWidget v-if="!isAdmin" />
+          <LearningHomeWidget />
 
           <UCard
             variant="soft"
-            class="w-full rounded-[10px]"
+            class="w-full rounded-panel"
             :ui="{
-              root: 'rounded-[10px] bg-elevated/75 ring-0 border-0 divide-y-0',
+              root: 'rounded-panel bg-elevated ring-0 border-0 divide-y-0',
               header: 'px-4 py-4 sm:px-4',
               body: 'flex flex-col gap-2 px-4 pb-4 pt-0 sm:px-4 sm:pb-4 sm:pt-0',
             }"
@@ -661,9 +658,9 @@ onUnmounted(() => {
 
           <UCard
             variant="soft"
-            class="w-full rounded-[10px]"
+            class="w-full rounded-panel"
             :ui="{
-              root: 'rounded-[10px] bg-elevated/75 ring-0 border-0 divide-y-0',
+              root: 'rounded-panel bg-elevated ring-0 border-0 divide-y-0',
               header: 'px-4 py-4 sm:px-4',
               body: 'flex flex-col gap-3 px-4 pb-4 pt-0 sm:px-4 sm:pb-4 sm:pt-0',
             }"
@@ -737,9 +734,9 @@ onUnmounted(() => {
 
           <UCard
             variant="soft"
-            class="w-full rounded-[10px]"
+            class="w-full rounded-panel"
             :ui="{
-              root: 'rounded-[10px] bg-elevated/75 ring-0 border-0 divide-y-0',
+              root: 'rounded-panel bg-elevated ring-0 border-0 divide-y-0',
               header: 'px-4 py-4 sm:px-4',
               body: 'flex flex-col gap-2 px-4 pb-4 pt-0 sm:px-4 sm:pb-4 sm:pt-0',
             }"

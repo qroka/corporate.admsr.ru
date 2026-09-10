@@ -32,6 +32,7 @@
           <template #header>
             <AppHeader
               :is-dark="isDark"
+              :color-mode="colorModePreference"
               :active-nav="activeNav"
               @toggle-theme="startThemeTransition"
             />
@@ -53,7 +54,7 @@ import { useRoute, useRouter } from 'vue-router';
 import AppHeader from './components/AppHeader.vue';
 import AppAside from './components/AppAside.vue';
 import { startSessionActivity } from './composables/useSessionActivity';
-import { useColorMode } from './composables/useColorMode';
+import { resolveMainColorMode, useColorMode } from './composables/useColorMode';
 import { usePortalSearchGroups } from './composables/usePortalNavigation';
 
 const route = useRoute();
@@ -69,7 +70,12 @@ const isAuth = computed(() => route.meta?.layout === 'auth');
 const isPublic = computed(() => route.meta?.public === true);
 
 const isDark = ref(false);
-const { syncFromStorage, toggleColorMode } = useColorMode(isDark, {
+const {
+  preference: colorModePreference,
+  syncFromStorage,
+  setColorMode,
+  toggleColorMode,
+} = useColorMode(isDark, {
   enabled: computed(() => !isKiosk.value),
 });
 
@@ -77,11 +83,27 @@ watch(isKiosk, (kiosk) => {
   if (!kiosk) syncFromStorage();
 });
 
-const startThemeTransition = (event) => {
+const startThemeTransition = (event, nextPreference) => {
   const anyDoc = document;
+  const hasExplicitPreference =
+    nextPreference === 'light' || nextPreference === 'dark' || nextPreference === 'system';
+
+  const apply = () => {
+    if (hasExplicitPreference) setColorMode(nextPreference);
+    else toggleColorMode();
+  };
+
+  const nextIsDark = hasExplicitPreference
+    ? resolveMainColorMode(nextPreference) === 'dark'
+    : !isDark.value;
+
+  if (hasExplicitPreference && nextIsDark === isDark.value) {
+    apply();
+    return;
+  }
 
   if (!anyDoc.startViewTransition) {
-    toggleColorMode();
+    apply();
     return;
   }
 
@@ -94,7 +116,7 @@ const startThemeTransition = (event) => {
     ) + 8;
 
   const transition = anyDoc.startViewTransition(() => {
-    toggleColorMode();
+    apply();
   });
 
   transition.ready.then(() => {

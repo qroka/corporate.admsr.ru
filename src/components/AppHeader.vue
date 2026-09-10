@@ -5,14 +5,36 @@ import { useHeaderUser } from '../composables/useHeaderUser';
 import { usePortalBreadcrumbs } from '../composables/usePortalNavigation';
 import { currentRole, setRole } from '../stores/role';
 import { clearAuthStorage } from '../composables/useAuthSession';
+import {
+  currentFontLabel,
+  currentRadiusLabel,
+  patchAppTheme,
+  randomAppTheme,
+  resetAppTheme,
+  useAppConfig,
+} from '../composables/useAppConfig';
+import {
+  FONT_OPTIONS,
+  NEUTRAL_COLOR_LABELS,
+  NEUTRAL_COLORS,
+  PRIMARY_COLOR_LABELS,
+  PRIMARY_COLORS,
+  RADIUS_OPTIONS,
+} from '../composables/useUiTheme';
 
 const { headerName, avatarSrc, loading, canToggleAdminRole } = useHeaderUser();
 const breadcrumbItems = usePortalBreadcrumbs();
+const appConfig = useAppConfig();
 
-defineProps({
+const props = defineProps({
   isDark: {
     type: Boolean,
     default: false,
+  },
+  colorMode: {
+    type: String,
+    default: 'light',
+    validator: (value) => ['light', 'dark', 'system'].includes(value),
   },
   activeNav: {
     type: String,
@@ -23,6 +45,7 @@ defineProps({
 const emit = defineEmits(['toggle-theme']);
 
 const router = useRouter();
+const userMenuOpen = ref(false);
 const isAdminRole = ref(currentRole.value === 'admin');
 
 watch(isAdminRole, (v) => {
@@ -51,6 +74,43 @@ async function logout() {
   }
 }
 
+const colorModeTabItems = [
+  { value: 'light', icon: 'i-lucide-sun', label: 'Светлая' },
+  { value: 'dark', icon: 'i-lucide-moon', label: 'Тёмная' },
+  { value: 'system', icon: 'i-lucide-monitor', label: 'Система' },
+];
+
+const roleTabItems = [
+  { value: 'user', label: 'Пользователь' },
+  { value: 'admin', label: 'Администратор' },
+];
+
+const colorModeTab = computed({
+  get: () => props.colorMode,
+  set: (value) => emit('toggle-theme', undefined, value),
+});
+
+const roleTab = computed({
+  get: () => (isAdminRole.value ? 'admin' : 'user'),
+  set: (value) => {
+    isAdminRole.value = value === 'admin';
+  },
+});
+
+const colorModeIcon = computed(() => {
+  if (props.colorMode === 'dark') return 'i-lucide-moon';
+  if (props.colorMode === 'system') return 'i-lucide-monitor';
+  return 'i-lucide-sun';
+});
+
+const profileTriggerLabel = computed(() => (
+  headerName.value ? `Меню профиля: ${headerName.value}` : 'Меню профиля'
+));
+
+function keepMenuOpen(e) {
+  e.preventDefault();
+}
+
 const userMenuItems = computed(() => {
   const groups = [
     [
@@ -75,16 +135,10 @@ const userMenuItems = computed(() => {
   if (canToggleAdminRole.value) {
     groups.push([
       {
-        label: 'Роль администратора',
-        icon: 'i-lucide-shield',
-        type: 'checkbox',
-        checked: isAdminRole.value,
-        onUpdateChecked(checked) {
-          isAdminRole.value = checked;
-        },
-        onSelect(e) {
-          e.preventDefault();
-        },
+        label: 'Роль',
+        slot: 'role',
+        class: 'cursor-default',
+        onSelect: keepMenuOpen,
       },
       {
         label: 'Дэшборд администратора',
@@ -94,24 +148,117 @@ const userMenuItems = computed(() => {
     ]);
   }
 
-  groups.push([
-    {
-      label: 'Сменить тему',
-      icon: 'i-lucide-sun-moon',
-      onSelect(e) {
-        e.preventDefault();
-        emit('toggle-theme', e);
+  groups.push(
+    [
+      {
+        label: 'Основной',
+        slot: 'chip',
+        chip: appConfig.ui.colors.primary,
+        content: { align: 'end', collisionPadding: 16 },
+        children: PRIMARY_COLORS.map((c) => ({
+          label: PRIMARY_COLOR_LABELS[c],
+          chip: c,
+          slot: 'chip',
+          type: 'checkbox',
+          checked: appConfig.ui.colors.primary === c,
+          onUpdateChecked(checked) {
+            if (checked) patchAppTheme({ primary: c });
+          },
+          onSelect(e) {
+            e.preventDefault();
+          },
+        })),
       },
-    },
-    {
-      label: 'Выйти',
-      icon: 'i-lucide-log-out',
-      color: 'error',
-      onSelect() {
-        void logout();
+      {
+        label: 'Нейтральный',
+        slot: 'chip',
+        chip: appConfig.ui.colors.neutral,
+        content: { align: 'end', collisionPadding: 16 },
+        children: NEUTRAL_COLORS.map((c) => ({
+          label: NEUTRAL_COLOR_LABELS[c],
+          chip: c,
+          slot: 'chip',
+          type: 'checkbox',
+          checked: appConfig.ui.colors.neutral === c,
+          onUpdateChecked(checked) {
+            if (checked) patchAppTheme({ neutral: c });
+          },
+          onSelect(e) {
+            e.preventDefault();
+          },
+        })),
       },
-    },
-  ]);
+      {
+        label: 'Шрифт',
+        icon: 'i-lucide-type',
+        kbds: [currentFontLabel()],
+        content: { align: 'end', collisionPadding: 16 },
+        children: FONT_OPTIONS.map((font) => ({
+          label: font.label,
+          type: 'checkbox',
+          checked: appConfig.ui.font === font.id,
+          onUpdateChecked(checked) {
+            if (checked) patchAppTheme({ font: font.id });
+          },
+          onSelect(e) {
+            e.preventDefault();
+          },
+        })),
+      },
+      {
+        label: 'Скругление',
+        icon: 'i-lucide-radius',
+        kbds: [currentRadiusLabel()],
+        content: { align: 'end', collisionPadding: 16 },
+        children: RADIUS_OPTIONS.map((radius) => ({
+          label: radius.label,
+          type: 'checkbox',
+          checked: appConfig.ui.radius === radius.id,
+          onUpdateChecked(checked) {
+            if (checked) patchAppTheme({ radius: radius.id });
+          },
+          onSelect(e) {
+            e.preventDefault();
+          },
+        })),
+      },
+    ],
+    [
+      {
+        label: 'Случайная тема',
+        icon: 'i-lucide-dices',
+        onSelect(e) {
+          e.preventDefault();
+          randomAppTheme();
+        },
+      },
+      {
+        label: 'Сбросить',
+        icon: 'i-lucide-rotate-ccw',
+        onSelect(e) {
+          e.preventDefault();
+          resetAppTheme();
+        },
+      },
+    ],
+    [
+      {
+        label: 'Система',
+        icon: colorModeIcon.value,
+        slot: 'theme',
+        class: 'cursor-default',
+        onSelect: keepMenuOpen,
+      },
+      {
+        label: 'Выйти',
+        icon: 'i-lucide-log-out',
+        color: 'error',
+        onSelect() {
+          void logout();
+        },
+      },
+    ],
+  );
 
   return groups;
 });
@@ -120,7 +267,7 @@ const userMenuItems = computed(() => {
 <template>
   <UDashboardNavbar
     :ui="{
-      root: 'h-[60px] shrink-0 border-0 mx-4 mt-4 rounded-2xl bg-elevated/75 px-4',
+      root: 'h-[60px] shrink-0 border-0 mx-4 mt-4 rounded-panel bg-elevated px-4',
       left: 'min-w-0',
       right: 'gap-4',
       title: 'min-w-0',
@@ -165,31 +312,92 @@ const userMenuItems = computed(() => {
       <USeparator orientation="vertical" class="h-6" />
 
       <UDropdownMenu
+        v-model:open="userMenuOpen"
         :items="userMenuItems"
+        :disabled="loading"
         :content="{ align: 'end', side: 'bottom', sideOffset: 8 }"
-        :ui="{ content: 'w-64' }"
+        :ui="{ content: 'w-72' }"
       >
-        <button
-          type="button"
-          class="flex items-center gap-2 rounded-md px-1 py-0.5 hover:bg-elevated/50 transition-colors min-w-0"
-        >
-          <template v-if="loading">
-            <USkeleton class="size-7 rounded-full" />
-            <USkeleton class="h-3 w-28 hidden sm:block" />
-          </template>
-          <template v-else>
-            <UAvatar
-              :src="avatarSrc"
-              :alt="headerName"
-              size="sm"
-              icon="i-lucide-user"
+        <template #default="{ open }">
+          <UButton
+            type="button"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            class="min-w-0 hover:bg-accented/50 data-[state=open]:bg-accented/50"
+            :aria-label="profileTriggerLabel"
+            :aria-expanded="open"
+            aria-haspopup="menu"
+          >
+            <template v-if="loading">
+              <USkeleton class="size-7 rounded-full" />
+              <USkeleton class="h-3 w-28 hidden sm:block" />
+            </template>
+            <template v-else>
+              <UAvatar
+                :src="avatarSrc"
+                :alt="headerName"
+                size="xs"
+                icon="i-lucide-user"
+              />
+              <span class="hidden sm:inline text-xs font-medium text-highlighted truncate max-w-[140px]">
+                {{ headerName }}
+              </span>
+              <UIcon
+                name="i-lucide-chevron-down"
+                class="size-4 text-muted shrink-0 transition-transform"
+                :class="open ? 'rotate-180' : ''"
+              />
+            </template>
+          </UButton>
+        </template>
+
+        <template #chip-leading="{ item }">
+          <span class="inline-flex items-center justify-center shrink-0 size-5">
+            <span
+              class="rounded-full size-2 ring ring-bg bg-(--chip-light) dark:bg-(--chip-dark)"
+              :style="{
+                '--chip-light': `var(--color-${item.chip}-500)`,
+                '--chip-dark': `var(--color-${item.chip}-400)`,
+              }"
             />
-            <span class="hidden sm:inline text-xs font-medium text-highlighted truncate max-w-[140px]">
-              {{ headerName }}
-            </span>
-            <UIcon name="i-lucide-chevron-down" class="size-4 text-muted shrink-0" />
-          </template>
-        </button>
+          </span>
+        </template>
+
+        <template #role>
+          <UTabs
+            v-model="roleTab"
+            :items="roleTabItems"
+            size="xs"
+            color="neutral"
+            variant="pill"
+            :content="false"
+            activation-mode="manual"
+            class="w-full"
+            :ui="{ list: 'w-full' }"
+            @click.stop
+          />
+        </template>
+
+        <template #theme-trailing>
+          <UTabs
+            v-model="colorModeTab"
+            :items="colorModeTabItems"
+            size="xs"
+            color="neutral"
+            variant="pill"
+            :content="false"
+            activation-mode="manual"
+            class="w-24"
+            :ui="{
+              list: 'p-0.5 gap-0',
+              trigger: 'p-1',
+              leadingIcon: 'size-3.5',
+              label: 'sr-only',
+            }"
+            @click.stop
+          />
+        </template>
       </UDropdownMenu>
     </template>
   </UDashboardNavbar>

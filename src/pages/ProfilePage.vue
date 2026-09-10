@@ -2,11 +2,25 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import type { DropdownMenuItem } from '@nuxt/ui';
 import { useAppToast } from '../composables/useAppToast';
-import { useAppConfig } from '../composables/useAppConfig';
 import { useOfoTree, type OfoPosition } from '../composables/useOfoTree';
 import OfoSelect from '../components/OfoSelect.vue';
 import { useProfileDisplay } from '../composables/useProfileDisplay';
-import { NEUTRAL_COLORS, PRIMARY_COLORS } from '../composables/useUiTheme';
+import {
+  FONT_OPTIONS,
+  NEUTRAL_COLOR_LABELS,
+  NEUTRAL_COLORS,
+  PRIMARY_COLOR_LABELS,
+  PRIMARY_COLORS,
+  RADIUS_OPTIONS,
+} from '../composables/useUiTheme';
+import {
+  currentFontLabel,
+  currentRadiusLabel,
+  patchAppTheme,
+  randomAppTheme,
+  resetAppTheme,
+  useAppConfig,
+} from '../composables/useAppConfig';
 import { avatarUrlFromFilename, PROFILE_AVATAR_FILENAMES } from '../constants/profileAvatars';
 import { useProfileWall, wallPostPlainText, type WallPost } from '../composables/useProfileWall';
 import ProfileWallPost from '../components/profile/ProfileWallPost.vue';
@@ -92,42 +106,97 @@ const appConfig = useAppConfig();
 const themeMenuItems = computed<DropdownMenuItem[][]>(() => [
   [
     {
-      label: 'Primary',
+      label: 'Основной',
       slot: 'chip',
       chip: appConfig.ui.colors.primary,
       content: { align: 'center', collisionPadding: 16 },
       children: colors.map((c) => ({
-        label: String(c),
+        label: PRIMARY_COLOR_LABELS[c],
         chip: c,
         slot: 'chip',
         checked: appConfig.ui.colors.primary === c,
-        type: 'checkbox',
+        type: 'checkbox' as const,
+        onUpdateChecked: (checked: boolean) => {
+          if (checked) patchAppTheme({ primary: c });
+        },
         onSelect: (e: Event) => {
           e.preventDefault();
-          appConfig.ui.colors.primary = c;
         },
       })),
     },
     {
-      label: 'Neutral',
+      label: 'Нейтральный',
       slot: 'chip',
       chip: appConfig.ui.colors.neutral,
       content: { align: 'end', collisionPadding: 16 },
       children: neutrals.map((c) => ({
-        label: String(c),
+        label: NEUTRAL_COLOR_LABELS[c],
         chip: c,
         slot: 'chip',
-        type: 'checkbox',
+        type: 'checkbox' as const,
         checked: appConfig.ui.colors.neutral === c,
+        onUpdateChecked: (checked: boolean) => {
+          if (checked) patchAppTheme({ neutral: c });
+        },
         onSelect: (e: Event) => {
           e.preventDefault();
-          appConfig.ui.colors.neutral = c;
+        },
+      })),
+    },
+    {
+      label: 'Шрифт',
+      icon: 'i-lucide-type',
+      kbds: [currentFontLabel()],
+      content: { align: 'end', collisionPadding: 16 },
+      children: FONT_OPTIONS.map((font) => ({
+        label: font.label,
+        type: 'checkbox' as const,
+        checked: appConfig.ui.font === font.id,
+        onUpdateChecked: (checked: boolean) => {
+          if (checked) patchAppTheme({ font: font.id });
+        },
+        onSelect: (e: Event) => {
+          e.preventDefault();
+        },
+      })),
+    },
+    {
+      label: 'Скругление',
+      icon: 'i-lucide-radius',
+      kbds: [currentRadiusLabel()],
+      content: { align: 'end', collisionPadding: 16 },
+      children: RADIUS_OPTIONS.map((radius) => ({
+        label: radius.label,
+        type: 'checkbox' as const,
+        checked: appConfig.ui.radius === radius.id,
+        onUpdateChecked: (checked: boolean) => {
+          if (checked) patchAppTheme({ radius: radius.id });
+        },
+        onSelect: (e: Event) => {
+          e.preventDefault();
         },
       })),
     },
   ],
+  [
+    {
+      label: 'Случайная тема',
+      icon: 'i-lucide-dices',
+      onSelect: (e: Event) => {
+        e.preventDefault();
+        randomAppTheme();
+      },
+    },
+    {
+      label: 'Сбросить',
+      icon: 'i-lucide-rotate-ccw',
+      onSelect: (e: Event) => {
+        e.preventDefault();
+        resetAppTheme();
+      },
+    },
+  ],
 ]);
-
 function selectAvatar(filename: string) {
   setAvatarSrc(avatarUrlFromFilename(filename));
   avatarPickerOpen.value = false;
@@ -480,7 +549,7 @@ onMounted(() => {
             <div>
               <h3 class="text-sm font-semibold text-highlighted mb-1">Цвета интерфейса</h3>
               <p class="text-sm text-muted mb-3">Настройка сохранится в браузере</p>
-              <UDropdownMenu :items="themeMenuItems">
+              <UDropdownMenu :items="themeMenuItems" :ui="{ content: 'w-56' }">
                 <UButton type="button" icon="i-lucide-palette" color="neutral" variant="outline" size="lg" trailing-icon="i-lucide-chevrons-up-down">
                   Кастомизация портала
                 </UButton>

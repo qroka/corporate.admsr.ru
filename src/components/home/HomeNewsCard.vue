@@ -115,9 +115,9 @@ function onExtraReaction() {
 <template>
   <UCard
     variant="soft"
-    class="w-full h-[300px] shrink-0 rounded-[10px]"
+    class="w-full h-[300px] shrink-0 rounded-panel"
     :ui="{
-      root: 'divide-y-0 h-[300px] rounded-[10px] bg-elevated/75 ring-0 border-0 overflow-hidden',
+      root: 'divide-y-0 h-[300px] rounded-panel bg-elevated ring-0 border-0 overflow-hidden',
       body: 'p-0 sm:p-0 h-full overflow-hidden',
     }"
   >
