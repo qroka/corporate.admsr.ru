@@ -54,7 +54,10 @@ switch ($method) {
     case 'GET':
         if ($id !== null) {
             $stmt = $pdo->prepare(
-                'SELECT id, name, description, date FROM public.gallery WHERE id = :id'
+                "SELECT g.id, g.name, g.description, g.date,
+                        (SELECT COUNT(*)::int FROM public.gallery_base WHERE album_id = g.id) AS photo_count
+                 FROM public.gallery g
+                 WHERE g.id = :id"
             );
             $stmt->execute([':id' => $id]);
             $row = $stmt->fetch();
@@ -66,7 +69,8 @@ switch ($method) {
             $stmt = $pdo->query(
                 "SELECT g.id, g.name, g.description, g.date,
                         (SELECT image_small_url FROM public.gallery_base
-                         WHERE album_id = g.id ORDER BY id ASC LIMIT 1) AS cover
+                         WHERE album_id = g.id ORDER BY id ASC LIMIT 1) AS cover,
+                        (SELECT COUNT(*)::int FROM public.gallery_base WHERE album_id = g.id) AS photo_count
                  FROM public.gallery g
                  ORDER BY g.date DESC, g.id DESC"
             );
@@ -145,6 +149,7 @@ function fmtAlbum(array $r): array
         'description' => $r['description'] ?? '',
         'date'        => isset($r['date']) ? substr($r['date'], 0, 10) : '',
         'cover'       => $r['cover'] ?? null,
+        'photo_count' => isset($r['photo_count']) ? (int)$r['photo_count'] : 0,
     ];
 }
 
@@ -187,7 +192,8 @@ function fetchGalleryCursorPage(PDO $pdo, array $get): array
     $sql =
         "SELECT g.id, g.name, g.description, g.date,
                 (SELECT image_small_url FROM public.gallery_base
-                 WHERE album_id = g.id ORDER BY id ASC LIMIT 1) AS cover
+                 WHERE album_id = g.id ORDER BY id ASC LIMIT 1) AS cover,
+                (SELECT COUNT(*)::int FROM public.gallery_base WHERE album_id = g.id) AS photo_count
          FROM public.gallery g" .
         $where .
         ' ORDER BY g.date DESC NULLS LAST, g.id DESC' .

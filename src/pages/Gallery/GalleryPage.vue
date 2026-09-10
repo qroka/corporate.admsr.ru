@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue';
 import { useRoute } from 'vue-router';
-import type { BlogPostProps } from '@nuxt/ui';
 import { useSectionAccess } from '../../composables/useSectionAccess';
 import { apiSessionFetch, apiSessionUpload } from '../../composables/useAuthSession';
 import { useGalleryData } from '../../composables/useGalleryData';
@@ -10,16 +9,23 @@ import { formatDateRuLong } from '../../utils/date';
 import { useCursorFeed } from '../../composables/useCursorFeed';
 import { useFeedSentinel } from '../../composables/useFeedSentinel';
 
-type Album = BlogPostProps & { id: string; date: string; rawDate: string };
+type Album = {
+  id: string;
+  title: string;
+  description: string;
+  date: string;
+  rawDate: string;
+  to: string;
+  coverSrc: string;
+  photoCount: number;
+};
 
 const GALLERY_PAGE_LIMIT = 12;
 
-/** Видео не может быть обложкой <img> — отличаем по .mp4 и подставляем заглушку. */
 function isVideo(url: string): boolean {
   return /\.mp4(\?|$)/i.test(url ?? '');
 }
 
-/** Заглушка обложки «АЛЬБОМ» — когда в альбоме нет фото (пусто или только видео). */
 const albumPlaceholder = (() => {
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">` +
@@ -30,9 +36,16 @@ const albumPlaceholder = (() => {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 })();
 
-/** Обложка альбома: реальное фото, иначе — заглушка «АЛЬБОМ». */
 function albumCover(image?: string): string {
   return image && !isVideo(image) ? image : albumPlaceholder;
+}
+
+function photosLabel(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${n} фотография`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${n} фотографии`;
+  return `${n} фотографий`;
 }
 
 const route = useRoute();
@@ -51,7 +64,6 @@ watch(searchQuery, (q) => {
 });
 
 const sortKey = ref<'newest' | 'oldest' | 'title-asc' | 'title-desc'>('newest');
-
 const sortOptions = [
   { value: 'newest', label: 'Сначала новые' },
   { value: 'oldest', label: 'Сначала старые' },
@@ -68,7 +80,8 @@ function mapAlbum(raw: any): Album {
     rawDate,
     date: formatDateRuLong(rawDate) || rawDate,
     to: `/gallery/${raw.id}`,
-    image: { src: albumCover(raw.cover ?? undefined), alt: 'Обложка альбома' },
+    coverSrc: albumCover(raw.cover ?? undefined),
+    photoCount: Number(raw.photo_count ?? 0) || 0,
   };
 }
 
@@ -128,24 +141,22 @@ const filteredAlbums = computed(() => {
   });
 });
 
-// ── Создание альбома ──────────────────────────────────────────────────────────
-const createOpen       = ref(false);
+const createOpen = ref(false);
 const createSubmitting = ref(false);
-const createFiles      = ref<File[] | undefined>(undefined);
-type SingleDateValue   = { value?: any } | any | null;
-const createDateValue  = ref<SingleDateValue>(null);
-const createErrors     = reactive({ title: '', general: '' });
-
+const createFiles = ref<File[] | undefined>(undefined);
+type SingleDateValue = { value?: any } | any | null;
+const createDateValue = ref<SingleDateValue>(null);
+const createErrors = reactive({ title: '', general: '' });
 const createState = reactive({ title: '', description: '', date: '' });
 
 function resetCreateForm() {
-  createState.title       = '';
+  createState.title = '';
   createState.description = '';
-  createState.date        = '';
-  createDateValue.value   = null;
-  createFiles.value       = undefined;
-  createErrors.title      = '';
-  createErrors.general    = '';
+  createState.date = '';
+  createDateValue.value = null;
+  createFiles.value = undefined;
+  createErrors.title = '';
+  createErrors.general = '';
 }
 
 function openCreate() {
@@ -154,13 +165,13 @@ function openCreate() {
 }
 
 const headerLinks = computed(() => {
-  if (!canEditSection('gallery')) return [];
+  if (!canEditSection('gallery') || isKiosk.value) return [];
   return [
     {
-      label:   'Добавить альбом',
-      color:   'neutral',
+      label: 'Добавить альбом',
+      color: 'neutral',
       variant: 'outline',
-      size:    'xl',
+      size: 'md',
       onClick: openCreate,
     },
   ];
@@ -172,7 +183,7 @@ watch(createDateValue, (val) => {
 });
 
 function validateCreate() {
-  createErrors.title   = '';
+  createErrors.title = '';
   createErrors.general = '';
   if (!createState.title.trim()) createErrors.title = 'Заполните название альбома.';
   return !createErrors.title;
@@ -182,36 +193,33 @@ async function handleCreateSubmit() {
   if (!validateCreate()) return;
   createSubmitting.value = true;
   try {
-    // 1. Создаём альбом в БД
     const json = await apiSessionFetch('/api/gallery.php', {
       method: 'POST',
       json: {
-        name:        createState.title.trim(),
+        name: createState.title.trim(),
         description: createState.description.trim() || null,
-        date:        createState.date || null,
+        date: createState.date || null,
       },
     });
     if (!json.success) throw new Error(json.message || 'Ошибка создания альбома');
 
     const newAlbumId = (json.data as any).id;
 
-    // 2. Загружаем фото если выбраны
-    for (const file of (createFiles.value ?? [])) {
+    for (const file of createFiles.value ?? []) {
       const fd = new FormData();
-      fd.append('image',    file);
+      fd.append('image', file);
       fd.append('album_id', String(newAlbumId));
       await apiSessionUpload('/api/gallery_base.php', fd);
     }
 
-    // 3. Обновляем список
     await refresh();
     void reloadGalleryCache();
     createOpen.value = false;
     resetCreateForm();
     toast.add({
-      title:       'Альбом создан',
-      color:       'success',
-      icon:        'i-lucide-check-circle',
+      title: 'Альбом создан',
+      color: 'success',
+      icon: 'i-lucide-check-circle',
     });
   } catch (e: any) {
     createErrors.general = e.message ?? 'Ошибка при создании альбома';
@@ -220,163 +228,118 @@ async function handleCreateSubmit() {
   }
 }
 
-// ── Floating header on scroll up ──────────────────────────────────────────────
 const mainScrollEl = ref<HTMLElement | null>(null);
 const gallerySentinelEl = ref<HTMLElement | null>(null);
-const showFloatingHeader = ref(false);
-let lastScrollTop = 0;
-let rafPending = false;
-
-const FLOATING_SHOW_AT = 180;
-const FLOATING_HIDE_AT = 0;
-
-const floatingRect = reactive({ left: 0, top: 0, width: 0 });
-function updateFloatingRect() {
-  const el = mainScrollEl.value;
-  if (!el) return;
-  const r = el.getBoundingClientRect();
-  floatingRect.left = Math.round(r.left);
-  floatingRect.top = Math.round(r.top);
-  floatingRect.width = Math.round(r.width);
-}
-
-function onMainScroll() {
-  const el = mainScrollEl.value;
-  if (!el) return;
-  if (rafPending) return;
-  rafPending = true;
-  requestAnimationFrame(() => {
-    rafPending = false;
-    const top = el.scrollTop;
-    const goingUp = top < lastScrollTop;
-    const goingDown = top > lastScrollTop;
-
-    if (top < FLOATING_HIDE_AT) {
-      showFloatingHeader.value = false;
-    } else if (goingUp && top > FLOATING_SHOW_AT) {
-      showFloatingHeader.value = true;
-    } else if (goingDown) {
-      showFloatingHeader.value = false;
-    }
-
-    lastScrollTop = top;
-    if (showFloatingHeader.value) updateFloatingRect();
-  });
-}
 
 useFeedSentinel({
   root: mainScrollEl,
   sentinel: gallerySentinelEl,
   enabled: sentinelEnabled,
-  onIntersect: () => { void loadMore(); },
+  onIntersect: () => {
+    void loadMore();
+  },
   rootMargin: '600px 0px',
 });
 
 onMounted(() => {
   void loadInitial();
-  const el = mainScrollEl.value;
-  if (!el) return;
-  lastScrollTop = el.scrollTop;
-  el.addEventListener('scroll', onMainScroll, { passive: true });
-  updateFloatingRect();
-  window.addEventListener('resize', updateFloatingRect, { passive: true });
 });
 
 onUnmounted(() => {
-  const el = mainScrollEl.value;
-  if (!el) return;
-  el.removeEventListener('scroll', onMainScroll);
-  window.removeEventListener('resize', updateFloatingRect as any);
   if (searchTimer) clearTimeout(searchTimer);
 });
 </script>
 
 <template>
   <UMain class="relative w-full h-full min-h-0">
-    <!-- Floating header (rendered only when needed, does not affect layout) -->
-    <transition name="fade">
-      <div
-        v-if="showFloatingHeader"
-        class="fixed z-30"
-        :style="{ left: `${floatingRect.left}px`, top: `${floatingRect.top}px`, width: `${floatingRect.width}px` }"
-      >
-        <div class="bg-default p-0 pb-6 flex flex-col gap-6">
-          <div v-if="isKiosk" class="flex items-center justify-between gap-4 w-full">
-            <h1 class="text-4xl font-normal font-unbounded">Фотогалерея</h1>
-            <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" class="shrink-0" />
-          </div>
-          <template v-else>
-            <UPageHeader title="" :links="headerLinks" class="border-none p-0 w-full">
-              <template #title>
-                <h1 class="text-4xl font-normal font-unbounded">Фотогалерея</h1>
-              </template>
-            </UPageHeader>
+    <div
+      ref="mainScrollEl"
+      class="flex flex-col w-full h-full min-h-0 gap-6 overflow-y-auto scrollbar-hide p-px"
+    >
+      <div class="flex flex-col gap-6 w-full max-w-[1600px] mx-auto">
+        <UPageHeader
+          headline="Корпоративная жизнь"
+          title="Фотогалерея"
+          description="Альбомы корпоративных событий и встреч"
+          :links="headerLinks"
+        />
 
-            <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
-              <UInput
-                v-model="searchQuery"
-                icon="i-lucide-search"
-                size="xl"
-                color="neutral"
-                variant="outline"
-                placeholder="Поиск по альбомам"
-                class="flex-1"
-              />
-              <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" />
-            </UContainer>
-          </template>
-        </div>
-      </div>
-    </transition>
-
-    <!-- Single scroll container for the whole page -->
-    <div ref="mainScrollEl" class="flex flex-col w-full h-full min-h-0 gap-6 overflow-y-auto scrollbar-hide">
-      <UContainer class="flex flex-col max-w-full w-full gap-6 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0 shrink-0">
-        <div v-if="isKiosk" class="flex items-center justify-between gap-4 w-full">
-          <h1 class="text-4xl font-normal font-unbounded">Фотогалерея</h1>
-          <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" class="shrink-0" />
-        </div>
-        <template v-else>
-          <UPageHeader title="" :links="headerLinks" class="border-none p-0 w-full">
-            <template #title>
-              <h1 class="text-4xl font-normal font-unbounded">Фотогалерея</h1>
-            </template>
-          </UPageHeader>
-
-          <UContainer class="flex flex-col max-w-full w-full sm:flex-row gap-3 items-stretch sm:items-center sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
-            <UInput v-model="searchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline" placeholder="Поиск по альбомам" class="flex-1" />
-            <USelect v-model="sortKey" :items="sortOptions" size="xl" color="neutral" />
-          </UContainer>
-        </template>
-      </UContainer>
-
-      <UContainer class="sm:p-px max-w-full w-full md:p-px lg:p-px xl:p-px mx-0 flex-1 min-h-0">
-        <div v-if="loading" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-          <USkeleton v-for="i in 6" :key="i" class="h-64 rounded-2xl" />
-        </div>
-        <UContainer
-          v-else
-          class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:p-0 max-w-full w-full md:p-0 lg:p-0 xl:p-0 mx-0"
+        <div
+          v-if="!isKiosk"
+          class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center"
         >
-          <UBlogPost v-for="album in filteredAlbums" :key="album.id" v-bind="album" class="h-full max-w-full w-full">
-            <template #title>
-              <span class="overflow-hidden text-ellipsis [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]">
+          <UInput
+            v-model="searchQuery"
+            icon="i-lucide-search"
+            size="md"
+            color="neutral"
+            variant="outline"
+            placeholder="Найти альбом..."
+            class="w-full min-w-0 flex-1"
+          />
+          <USelect
+            v-model="sortKey"
+            :items="sortOptions"
+            size="md"
+            color="neutral"
+            class="w-full sm:w-56 shrink-0"
+          />
+        </div>
+
+        <div v-if="loading" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <USkeleton v-for="i in 6" :key="i" class="h-64 rounded-panel" />
+        </div>
+
+        <UEmpty
+          v-else-if="!filteredAlbums.length"
+          variant="naked"
+          icon="i-lucide-images"
+          title="Альбомы не найдены"
+          description="Измените поиск или создайте новый альбом."
+          class="w-full py-10"
+        />
+
+        <div
+          v-else
+          class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"
+        >
+          <RouterLink
+            v-for="album in filteredAlbums"
+            :key="album.id"
+            :to="album.to"
+            class="group flex flex-col gap-3 rounded-panel p-px transition ring-1 ring-transparent hover:ring-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <div class="relative aspect-[16/10] overflow-hidden rounded-panel bg-elevated">
+              <img
+                :src="album.coverSrc"
+                :alt="album.title"
+                loading="lazy"
+                decoding="async"
+                class="size-full object-cover transition duration-300 group-hover:scale-[1.02]"
+              />
+              <span
+                class="absolute bottom-2 right-2 inline-flex items-center gap-1.5 rounded-md bg-black/65 px-2 py-1 text-xs text-white tabular-nums backdrop-blur-sm"
+              >
+                <UIcon name="i-lucide-images" class="size-3.5 shrink-0" />
+                {{ photosLabel(album.photoCount) }}
+              </span>
+            </div>
+            <div class="flex min-w-0 flex-col gap-1 px-0.5">
+              <p v-if="album.date" class="text-sm text-muted">
+                {{ album.date }}
+              </p>
+              <h2 class="text-base font-semibold text-highlighted line-clamp-2 text-pretty">
                 {{ album.title }}
-              </span>
-            </template>
-            <template #description>
-              <span class="overflow-hidden text-ellipsis [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]">
-                {{ album.description }}
-              </span>
-            </template>
-          </UBlogPost>
-        </UContainer>
+              </h2>
+            </div>
+          </RouterLink>
+        </div>
 
         <div
           v-if="!loading && feedLoading"
-          class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 mt-3"
+          class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"
         >
-          <USkeleton v-for="i in 3" :key="`more-${i}`" class="h-64 rounded-2xl" />
+          <USkeleton v-for="i in 3" :key="`more-${i}`" class="h-64 rounded-panel" />
         </div>
 
         <div
@@ -385,10 +348,9 @@ onUnmounted(() => {
           class="h-1 w-full shrink-0"
           aria-hidden="true"
         />
-      </UContainer>
+      </div>
     </div>
 
-    <!-- Slideover создания альбома -->
     <USlideover
       v-model:open="createOpen"
       side="right"
@@ -397,8 +359,18 @@ onUnmounted(() => {
     >
       <template #body>
         <UForm :state="createState" class="space-y-4" @submit.prevent="handleCreateSubmit">
-          <UFormField label="Название альбома" name="title" :error="createErrors.title || undefined" required>
-            <UInput v-model="createState.title" size="xl" class="w-full" placeholder="Введите название альбома" />
+          <UFormField
+            label="Название альбома"
+            name="title"
+            :error="createErrors.title || undefined"
+            required
+          >
+            <UInput
+              v-model="createState.title"
+              size="xl"
+              class="w-full"
+              placeholder="Введите название альбома"
+            />
           </UFormField>
 
           <UFormField label="Описание" name="description">
@@ -415,7 +387,14 @@ onUnmounted(() => {
             <UInputDate v-model="createDateValue" size="xl" class="w-full">
               <template #trailing>
                 <UPopover>
-                  <UButton color="neutral" variant="link" size="sm" icon="i-lucide-calendar" aria-label="Выбрать дату" class="px-0" />
+                  <UButton
+                    color="neutral"
+                    variant="link"
+                    size="md"
+                    icon="i-lucide-calendar"
+                    aria-label="Выбрать дату"
+                    class="px-0"
+                  />
                   <template #content>
                     <UCalendar v-model="createDateValue" class="p-2" />
                   </template>
@@ -435,15 +414,34 @@ onUnmounted(() => {
             />
           </UFormField>
 
-          <UAlert v-if="createErrors.general" color="error" variant="subtle" icon="i-lucide-alert-circle" :description="createErrors.general" />
+          <UAlert
+            v-if="createErrors.general"
+            color="error"
+            variant="subtle"
+            icon="i-lucide-alert-circle"
+            :description="createErrors.general"
+          />
         </UForm>
       </template>
       <template #footer>
         <div class="flex justify-between gap-3 items-center w-full">
-          <UButton type="button" color="neutral" variant="outline" size="xl" class="w-full justify-center" @click="createOpen = false">
+          <UButton
+            type="button"
+            color="neutral"
+            variant="outline"
+            size="md"
+            class="w-full justify-center"
+            @click="createOpen = false"
+          >
             Отмена
           </UButton>
-          <UButton type="button" size="xl" class="w-full justify-center" :loading="createSubmitting" @click="handleCreateSubmit">
+          <UButton
+            type="button"
+            size="md"
+            class="w-full justify-center"
+            :loading="createSubmitting"
+            @click="handleCreateSubmit"
+          >
             Создать альбом
           </UButton>
         </div>

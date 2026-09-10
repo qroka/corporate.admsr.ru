@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { computed, h, onMounted, ref, resolveComponent, watch } from 'vue';
+import { computed, h, onMounted, ref, resolveComponent, shallowRef, watch } from 'vue';
 import type { TableColumn, TabsItem } from '@nuxt/ui';
+import { Time } from '@internationalized/date';
 import { setHasActiveAbsence } from '../stores/absenceJournal';
 import { useSectionAccess } from '../composables/useSectionAccess';
 import { useAppToast } from '../composables/useAppToast';
 import { apiSessionFetch } from '../composables/useAuthSession';
+import { toCalendarDate } from '../utils/date';
+import { slideoverPopoverContent, slideoverSelectContent } from '../composables/slideoverFieldUi';
 
 type JsonRow = Record<string, unknown>;
 
@@ -123,8 +126,10 @@ const currentUser = ref<CurrentUser | null>(null);
 const ofoTitleById = ref<Record<string, string>>({});
 
 const startAbsenceAt = ref(toLocalDateTimeInputValue(new Date()));
-const startDate = ref('');
-const startTime = ref('');
+const startDateValue = shallowRef<ReturnType<typeof toCalendarDate>>(null);
+const startTimeValue = shallowRef<Time | null>(null);
+const startHour = ref(0);
+const startMinute = ref(0);
 const startReason = ref('');
 const filterPeriod = ref<'all' | 'today' | 'week' | 'month'>('all');
 const mySortDesc = ref(true);
@@ -133,21 +138,72 @@ const historyFilterOpen = ref(false);
 const myRecordsStore = ref<AbsenceRecord[]>([]);
 const adminRecordsStore = ref<AbsenceRecord[]>([]);
 
+const TIME_STEP_MINUTES = 5;
+let syncingStartTime = false;
+
+const hourOptions = Array.from({ length: 24 }, (_, h) => ({
+  label: two(h),
+  value: h,
+}));
+
+const minuteOptions = Array.from({ length: 60 / TIME_STEP_MINUTES }, (_, i) => {
+  const m = i * TIME_STEP_MINUTES;
+  return { label: two(m), value: m };
+});
+
+function roundMinutesToStep(minutes: number, step = TIME_STEP_MINUTES): number {
+  const rounded = Math.round(minutes / step) * step;
+  if (rounded >= 60) return 60 - step;
+  return Math.max(0, rounded);
+}
+
+function applyStartTimeParts(hour: number, minute: number) {
+  const h = Math.min(23, Math.max(0, hour));
+  const m = roundMinutesToStep(minute);
+  startHour.value = h;
+  startMinute.value = m;
+  startTimeValue.value = new Time(h, m, 0);
+}
+
 function syncStartPartsFromCombined() {
   const d = parseDateTimeInputValue(startAbsenceAt.value) ?? new Date();
-  startDate.value = `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
-  startTime.value = `${two(d.getHours())}:${two(d.getMinutes())}`;
+  startDateValue.value = toCalendarDate(d);
+  syncingStartTime = true;
+  applyStartTimeParts(d.getHours(), d.getMinutes());
+  syncingStartTime = false;
 }
 
 function syncCombinedFromParts() {
-  if (!startDate.value || !startTime.value) return;
-  startAbsenceAt.value = `${startDate.value}T${startTime.value}`;
+  const datePart = startDateValue.value as { year?: number; month?: number; day?: number } | null;
+  const timePart = startTimeValue.value;
+  if (!datePart?.year || !datePart?.month || !datePart?.day || !timePart) return;
+  startAbsenceAt.value =
+    `${datePart.year}-${two(datePart.month)}-${two(datePart.day)}` +
+    `T${two(timePart.hour)}:${two(timePart.minute)}`;
 }
 
 syncStartPartsFromCombined();
 
-watch([startDate, startTime], () => {
+watch([startDateValue, startTimeValue], () => {
   syncCombinedFromParts();
+});
+
+watch(startTimeValue, (time) => {
+  if (syncingStartTime || !time) return;
+  syncingStartTime = true;
+  startHour.value = time.hour;
+  startMinute.value = roundMinutesToStep(time.minute);
+  if (time.minute !== startMinute.value) {
+    startTimeValue.value = new Time(time.hour, startMinute.value, 0);
+  }
+  syncingStartTime = false;
+});
+
+watch([startHour, startMinute], ([hour, minute]) => {
+  if (syncingStartTime) return;
+  syncingStartTime = true;
+  startTimeValue.value = new Time(hour, roundMinutesToStep(minute), 0);
+  syncingStartTime = false;
 });
 
 const MY_PAGE_SIZE = 200;
@@ -250,12 +306,6 @@ const monthStats = computed(() => {
     duration: formatDurationRuSpaced(totalMs),
   };
 });
-
-const workplaceStatusText = computed(() =>
-  activeRecord.value
-    ? 'Сейчас вы отсутствуете'
-    : 'Сейчас вы на рабочем месте',
-);
 
 const canStartAbsence = computed(() =>
   Boolean(startAbsenceAt.value)
@@ -398,6 +448,11 @@ function onMyScroll(e: Event) {
   if (el.scrollTop + el.clientHeight >= el.scrollHeight - 250) {
     void loadMoreMy();
   }
+}
+
+function onPageScroll(e: Event) {
+  if (adminTab.value === 'my') onMyScroll(e);
+  else onAdminScroll(e);
 }
 
 function makeAdminQueryParams(): URLSearchParams {
@@ -1145,21 +1200,16 @@ watch(
 </script>
 
 <template>
-  <UMain class="w-full h-full min-h-0">
-    <div class="flex flex-col gap-6 w-full max-w-[1600px] mx-auto h-full min-h-0">
+  <UMain class="relative w-full h-full min-h-0">
+    <div
+      class="flex flex-col gap-6 w-full h-full min-h-0 max-w-[1600px] mx-auto overflow-y-auto scrollbar-hide p-px pb-8"
+      @scroll.passive="onPageScroll"
+    >
       <UPageHeader
+        headline="Сервисы"
+        title="Журнал отсутствия"
         description="Отмечайте рабочие отсутствия и просматривайте историю"
-        class="border-none p-0 w-full"
-      >
-        <template #headline>
-          <RouterLink to="/services" class="text-primary hover:underline">
-            Сервисы
-          </RouterLink>
-        </template>
-        <template #title>
-          <h1 class="text-4xl font-normal font-unbounded">Журнал отсутствия</h1>
-        </template>
-      </UPageHeader>
+      />
 
       <UAlert
         v-if="error"
@@ -1187,7 +1237,7 @@ watch(
       <!-- Мои отсутствия -->
       <div
         v-if="adminTab === 'my'"
-        class="flex flex-col gap-6 w-full min-h-0 flex-1"
+        class="flex flex-col gap-6 w-full"
       >
         <UCard
           variant="soft"
@@ -1197,17 +1247,6 @@ watch(
             body: 'flex flex-col gap-4 p-4 sm:p-5',
           }"
         >
-          <div class="flex items-center gap-2 text-sm">
-            <span
-              class="size-2 rounded-full shrink-0"
-              :class="activeRecord ? 'bg-warning' : 'bg-success'"
-              aria-hidden="true"
-            />
-            <span :class="activeRecord ? 'text-warning' : 'text-muted'">
-              {{ workplaceStatusText }}
-            </span>
-          </div>
-
           <div
             v-if="currentUser && !hasOfo"
             class="rounded-lg ring-1 ring-warning/40 bg-warning/5 p-3 text-sm text-warning flex items-start gap-2"
@@ -1233,7 +1272,7 @@ watch(
                     type="button"
                     color="neutral"
                     variant="ghost"
-                    size="xs"
+                    size="md"
                     icon="i-lucide-info"
                     square
                     aria-label="Подсказка"
@@ -1243,28 +1282,92 @@ watch(
 
               <div class="flex flex-col lg:flex-row gap-2 lg:items-center">
                 <template v-if="!activeRecord">
-                  <UInput
-                    v-model="startDate"
-                    type="date"
+                  <UInputDate
+                    v-model="startDateValue"
+                    size="md"
                     color="neutral"
-                    size="xl"
-                    icon="i-lucide-calendar"
+                    class="w-full lg:w-48"
+                    :disabled="loading"
+                  >
+                    <template #trailing>
+                      <UPopover :content="slideoverPopoverContent">
+                        <UButton
+                          color="neutral"
+                          variant="link"
+                          size="md"
+                          icon="i-lucide-calendar"
+                          aria-label="Выбрать дату"
+                          class="px-0"
+                          :disabled="loading"
+                        />
+                        <template #content>
+                          <UCalendar v-model="startDateValue" class="p-2" />
+                        </template>
+                      </UPopover>
+                    </template>
+                  </UInputDate>
+                  <UInputTime
+                    v-model="startTimeValue"
+                    size="md"
+                    color="neutral"
+                    :hour-cycle="24"
+                    :step="{ minute: 5 }"
+                    step-snapping
+                    granularity="minute"
                     class="w-full lg:w-44"
                     :disabled="loading"
-                  />
-                  <UInput
-                    v-model="startTime"
-                    type="time"
-                    color="neutral"
-                    size="xl"
-                    icon="i-lucide-clock"
-                    class="w-full lg:w-36"
-                    :disabled="loading"
-                  />
+                  >
+                    <template #trailing>
+                      <UPopover :content="slideoverPopoverContent">
+                        <UButton
+                          color="neutral"
+                          variant="link"
+                          size="md"
+                          icon="i-lucide-clock"
+                          aria-label="Выбрать время"
+                          class="px-0"
+                          :disabled="loading"
+                        />
+                        <template #content>
+                          <div class="p-3 w-64 flex flex-col gap-2">
+                            <div class="flex items-end gap-2">
+                              <UFormField label="Часы" class="min-w-0 flex-1">
+                                <USelectMenu
+                                  v-model="startHour"
+                                  :items="hourOptions"
+                                  :content="slideoverSelectContent"
+                                  :search-input="false"
+                                  value-key="value"
+                                  label-key="label"
+                                  size="md"
+                                  color="neutral"
+                                  class="w-full"
+                                />
+                              </UFormField>
+                              <span class="pb-2.5 text-lg text-muted shrink-0" aria-hidden="true">:</span>
+                              <UFormField label="Минуты" class="min-w-0 flex-1">
+                                <USelectMenu
+                                  v-model="startMinute"
+                                  :items="minuteOptions"
+                                  :content="slideoverSelectContent"
+                                  :search-input="false"
+                                  value-key="value"
+                                  label-key="label"
+                                  size="md"
+                                  color="neutral"
+                                  class="w-full"
+                                />
+                              </UFormField>
+                            </div>
+                          </div>
+                        </template>
+                      </UPopover>
+                    </template>
+                  </UInputTime>
                   <UInput
                     v-model="startReason"
                     color="neutral"
-                    size="xl"
+                    size="md"
                     placeholder="Причина отсутствия"
                     class="w-full min-w-0 flex-1"
                     :disabled="loading"
@@ -1273,7 +1376,7 @@ watch(
                   <UButton
                     color="primary"
                     variant="solid"
-                    size="xl"
+                    size="md"
                     class="shrink-0 justify-center"
                     :disabled="!canStartAbsence || loading"
                     @click="startAbsence"
@@ -1285,7 +1388,7 @@ watch(
                   v-else
                   color="primary"
                   variant="solid"
-                  size="xl"
+                  size="md"
                   class="w-full lg:w-auto justify-center"
                   icon="i-lucide-check-circle-2"
                   @click="openFinish(activeRecord)"
@@ -1317,7 +1420,7 @@ watch(
           </div>
         </UCard>
 
-        <section class="flex flex-col gap-4 min-h-0 flex-1" aria-label="История отсутствия">
+        <section class="flex flex-col gap-4" aria-label="История отсутствия">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div class="flex items-baseline gap-2 min-w-0">
               <h2 class="text-lg font-semibold text-highlighted">История отсутствия</h2>
@@ -1415,8 +1518,7 @@ watch(
 
           <div
             v-else
-            class="flex-1 min-h-0 w-full rounded-panel bg-elevated overflow-auto"
-            @scroll.passive="onMyScroll"
+            class="w-full rounded-panel ring-1 ring-default overflow-x-auto"
           >
             <UTable
               :columns="columns"
@@ -1426,16 +1528,20 @@ watch(
                 root: 'bg-transparent',
                 base: 'min-w-full',
                 thead: 'bg-elevated',
-                th: 'px-4 py-3 text-xs font-semibold',
-                td: 'px-4 py-3 text-sm',
-                tr: 'border-b border-default last:border-0',
+                tbody: 'bg-transparent [&>tr]:bg-transparent',
+                th: 'px-4 py-3 text-xs font-semibold bg-elevated',
+                td: 'px-4 py-3 text-sm bg-transparent',
+                tr: 'border-b border-default last:border-0 bg-transparent',
               }"
             />
 
-            <div class="p-4 text-sm text-muted flex items-center justify-center gap-3">
+            <div
+              v-if="myLoadingMore || myHasMore"
+              class="p-4 text-sm text-muted flex items-center justify-center gap-3"
+            >
               <span v-if="myLoadingMore">Загрузка…</span>
               <UButton
-                v-else-if="myHasMore"
+                v-else
                 color="neutral"
                 variant="soft"
                 size="sm"
@@ -1452,7 +1558,7 @@ watch(
       <!-- Отсутствия подразделения -->
       <div
         v-else
-        class="flex flex-col gap-4 w-full min-h-0 flex-1"
+        class="flex flex-col gap-4 w-full"
       >
         <template v-if="!isAdmin">
           <UEmpty
@@ -1518,8 +1624,7 @@ watch(
 
           <div
             v-else
-            class="flex-1 min-h-0 w-full rounded-panel bg-elevated overflow-auto"
-            @scroll.passive="onAdminScroll"
+            class="w-full rounded-panel ring-1 ring-default overflow-x-auto"
           >
             <UTable
               :columns="adminColumns"
@@ -1529,16 +1634,20 @@ watch(
                 root: 'bg-transparent',
                 base: 'min-w-full',
                 thead: 'bg-elevated',
-                th: 'px-4 py-3 text-xs font-semibold',
-                td: 'px-4 py-3 text-sm',
-                tr: 'border-b border-default last:border-0',
+                tbody: 'bg-transparent [&>tr]:bg-transparent',
+                th: 'px-4 py-3 text-xs font-semibold bg-elevated',
+                td: 'px-4 py-3 text-sm bg-transparent',
+                tr: 'border-b border-default last:border-0 bg-transparent',
               }"
             />
 
-            <div class="p-4 text-sm text-muted flex items-center justify-center gap-3">
+            <div
+              v-if="adminLoadingMore || adminHasMore"
+              class="p-4 text-sm text-muted flex items-center justify-center gap-3"
+            >
               <span v-if="adminLoadingMore">Загрузка…</span>
               <UButton
-                v-else-if="adminHasMore"
+                v-else
                 color="neutral"
                 variant="soft"
                 size="sm"

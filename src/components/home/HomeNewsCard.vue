@@ -110,6 +110,27 @@ function onExtraReaction() {
     icon: 'i-lucide-smile',
   });
 }
+
+const lightboxOpen = ref(false);
+
+function downloadImage(e?: Event) {
+  e?.preventDefault();
+  e?.stopPropagation();
+  if (!props.imageSrc) return;
+  const a = document.createElement('a');
+  a.href = props.imageSrc;
+  a.download = `news-${props.id}`;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  a.click();
+}
+
+function openLightbox(e?: Event) {
+  e?.preventDefault();
+  e?.stopPropagation();
+  if (!props.imageSrc) return;
+  lightboxOpen.value = true;
+}
 </script>
 
 <template>
@@ -122,7 +143,7 @@ function onExtraReaction() {
     }"
   >
     <div class="grid h-full grid-cols-2">
-      <div class="relative h-full min-w-0 overflow-hidden bg-muted">
+      <div class="group relative h-full min-w-0 overflow-hidden bg-muted">
         <img
           :src="imageSrc"
           alt=""
@@ -138,6 +159,34 @@ function onExtraReaction() {
           loading="lazy"
           decoding="async"
         />
+        <div
+          class="pointer-events-none absolute inset-0 z-20 opacity-0 group-hover:opacity-100 transition"
+        >
+          <div class="absolute top-2 right-2 flex gap-1 pointer-events-auto">
+            <UButton
+              type="button"
+              color="neutral"
+              variant="solid"
+              size="xs"
+              icon="i-lucide-download"
+              square
+              class="bg-black/60 hover:bg-black/80 text-white ring-0"
+              aria-label="Скачать"
+              @click="downloadImage($event)"
+            />
+            <UButton
+              type="button"
+              color="neutral"
+              variant="solid"
+              size="xs"
+              icon="i-lucide-expand"
+              square
+              class="bg-black/60 hover:bg-black/80 text-white ring-0"
+              aria-label="Открыть"
+              @click="openLightbox($event)"
+            />
+          </div>
+        </div>
       </div>
 
       <div class="flex h-full min-w-0 flex-col gap-2.5 p-4">
@@ -236,4 +285,21 @@ function onExtraReaction() {
       </div>
     </div>
   </UCard>
+
+  <UModal
+    v-model:open="lightboxOpen"
+    class="p-0"
+    :ui="{ content: 'bg-transparent shadow-none ring-0 w-auto max-w-[95vw]', header: 'hidden', body: 'p-0' }"
+  >
+    <template #content>
+      <div class="flex flex-col items-center justify-center gap-3 p-0">
+        <img
+          :src="imageSrc"
+          :alt="imageAlt"
+          decoding="async"
+          class="block w-auto h-auto max-w-[95vw] max-h-[85vh] rounded-lg"
+        />
+      </div>
+    </template>
+  </UModal>
 </template>

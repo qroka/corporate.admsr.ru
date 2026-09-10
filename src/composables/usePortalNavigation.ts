@@ -1,6 +1,13 @@
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useRoute, useRouter, type RouteLocationRaw, type RouteParamsGeneric } from 'vue-router';
 import type { BreadcrumbItem, NavigationMenuItem, CommandPaletteGroup } from '@nuxt/ui';
+
+/** Динамическая подпись текущего сегмента крошек (например, название альбома). */
+const breadcrumbCurrentLabel = ref<string | null>(null);
+
+export function useBreadcrumbCurrentLabel() {
+  return breadcrumbCurrentLabel;
+}
 
 type NavRouteName = string;
 
@@ -254,9 +261,10 @@ export function usePortalBreadcrumbs() {
     }
 
     const currentTitle =
-      typeof route.meta?.title === 'string' && route.meta.title
+      (breadcrumbCurrentLabel.value && breadcrumbCurrentLabel.value.trim()) ||
+      (typeof route.meta?.title === 'string' && route.meta.title
         ? route.meta.title
-        : titleForRouteName(router, routeName) || 'Страница';
+        : titleForRouteName(router, routeName) || 'Страница');
 
     items.push({
       label: currentTitle,
@@ -314,7 +322,7 @@ export function useSidebarNavItems() {
       label: 'Фотогалерея',
       icon: 'i-lucide-images',
       to: '/gallery',
-      active: isRouteMatch(route.name, ['gallery']),
+      active: isRouteMatch(route.name, ['gallery', 'gallery-album']),
     },
     {
       label: 'Дни рождения',
