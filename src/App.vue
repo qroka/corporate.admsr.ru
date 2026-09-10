@@ -16,6 +16,8 @@
         />
 
         <UDashboardSearch
+          v-model:open="portalSearchOpen"
+          shortcut="ctrl_shift_alt_f12"
           placeholder="Искать сотрудника, памятку, документ..."
           :groups="searchGroups"
           :color-mode="false"
@@ -48,7 +50,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ru } from '@nuxt/ui/locale';
 import { useRoute, useRouter } from 'vue-router';
 import AppHeader from './components/AppHeader.vue';
@@ -60,8 +62,26 @@ import { usePortalSearchGroups } from './composables/usePortalNavigation';
 const route = useRoute();
 const router = useRouter();
 const searchGroups = usePortalSearchGroups();
+const portalSearchOpen = ref(false);
 
-onMounted(() => startSessionActivity(router));
+/** Ctrl/⌘+K по физической клавише (работает и на русской раскладке), блокирует поиск браузера. */
+function onPortalSearchHotkey(e) {
+  if (isKiosk.value || isAuth.value || isPublic.value) return;
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+  if (e.code !== 'KeyK' && e.key?.toLowerCase() !== 'k') return;
+  e.preventDefault();
+  e.stopPropagation();
+  portalSearchOpen.value = !portalSearchOpen.value;
+}
+
+onMounted(() => {
+  startSessionActivity(router);
+  window.addEventListener('keydown', onPortalSearchHotkey, true);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onPortalSearchHotkey, true);
+});
 
 const activeNav = computed(() => (route.name ?? 'events'));
 

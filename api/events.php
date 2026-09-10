@@ -74,6 +74,8 @@ switch ($method) {
             $row = fetchEventRow($pdo, $id);
             if (!$row) jsonError(404, 'Мероприятие не найдено');
             jsonOk(fmt($row));
+        } elseif (isset($_GET['limit']) || array_key_exists('cursor', $_GET)) {
+            jsonOk(fetchEventsCursorPage($pdo, $_GET));
         } else {
             [$sql, $params] = buildQuery($_GET);
             $stmt = $pdo->prepare($sql);
@@ -222,6 +224,117 @@ function buildQuery(array $get): array
 
     $sql = 'SELECT * FROM events' . ($cond ? ' WHERE ' . implode(' AND ', $cond) : '') . " ORDER BY $order $dir";
     return [$sql, $params];
+}
+
+/**
+ * Cursor page for events list.
+ * Sort: date DESC, id DESC. Cursor = last item (date + id).
+ */
+function fetchEventsCursorPage(PDO $pdo, array $get): array
+{
+    $limit = isset($get['limit']) ? (int)$get['limit'] : 12;
+    if ($limit < 1) $limit = 12;
+    if ($limit > 48) $limit = 48;
+
+    $cond   = [];
+    $params = [];
+
+    if (!empty($get['search'])) {
+        $cond[] = '(title ILIKE :search OR description ILIKE :search)';
+        $params[':search'] = '%' . trim((string)$get['search']) . '%';
+    }
+
+    if (!empty($get['badge']) && $get['badge'] !== '_all') {
+        $badges = array_filter(array_map('trim', explode(',', (string)$get['badge'])));
+        if ($badges) {
+            $ph = [];
+            foreach ($badges as $i => $b) {
+                $ph[] = ":b$i";
+                $params[":b$i"] = $b;
+            }
+            $cond[] = 'badge IN (' . implode(',', $ph) . ')';
+        }
+    }
+
+    $cursorRaw = isset($get['cursor']) ? trim((string)$get['cursor']) : '';
+    if ($cursorRaw !== '') {
+        $cursor = decodeDateIdCursor($cursorRaw);
+        if ($cursor === null) {
+            jsonError(400, 'Некорректный cursor');
+        }
+        $cond[] = '(date < :cursor_date OR (date = :cursor_date AND id < :cursor_id))';
+        $params[':cursor_date'] = $cursor['date'];
+        $params[':cursor_id'] = $cursor['id'];
+    }
+
+    $where = $cond ? (' WHERE ' . implode(' AND ', $cond)) : '';
+    $fetchLimit = $limit + 1;
+
+    $sql =
+        'SELECT * FROM events' .
+        $where .
+        ' ORDER BY date DESC, id DESC' .
+        ' LIMIT :fetch_limit';
+
+    $stmt = $pdo->prepare($sql);
+    foreach ($params as $key => $value) {
+        if ($key === ':cursor_id') {
+            $stmt->bindValue($key, (int)$value, PDO::PARAM_INT);
+        } else {
+            $stmt->bindValue($key, $value);
+        }
+    }
+    $stmt->bindValue(':fetch_limit', $fetchLimit, PDO::PARAM_INT);
+    $stmt->execute();
+    $rows = $stmt->fetchAll();
+
+    $hasMore = count($rows) > $limit;
+    if ($hasMore) {
+        $rows = array_slice($rows, 0, $limit);
+    }
+
+    $items = array_map('fmt', $rows);
+    $nextCursor = null;
+    if ($hasMore && count($rows) > 0) {
+        $last = $rows[count($rows) - 1];
+        $nextCursor = encodeDateIdCursor((string)($last['date'] ?? ''), (int)$last['id']);
+    }
+
+    return [
+        'items' => $items,
+        'nextCursor' => $nextCursor,
+        'hasMore' => $hasMore,
+    ];
+}
+
+function encodeDateIdCursor(string $date, int $id): string
+{
+    $payload = json_encode(['d' => $date, 'i' => $id], JSON_UNESCAPED_UNICODE);
+    return rtrim(strtr(base64_encode($payload !== false ? $payload : ''), '+/', '-_'), '=');
+}
+
+/** @return array{date: string, id: int}|null */
+function decodeDateIdCursor(string $raw): ?array
+{
+    $b64 = strtr($raw, '-_', '+/');
+    $pad = strlen($b64) % 4;
+    if ($pad > 0) {
+        $b64 .= str_repeat('=', 4 - $pad);
+    }
+    $json = base64_decode($b64, true);
+    if ($json === false || $json === '') return null;
+
+    $data = json_decode($json, true);
+    if (!is_array($data)) return null;
+
+    $date = isset($data['d']) ? trim((string)$data['d']) : '';
+    $id = isset($data['i']) ? (int)$data['i'] : 0;
+
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}/', $date)) return null;
+    $date = substr($date, 0, 10);
+    if ($id < 1) return null;
+
+    return ['date' => $date, 'id' => $id];
 }
 
 function fmt(array $r): array

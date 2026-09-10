@@ -1,4 +1,5 @@
 import { onBeforeUnmount, onMounted, ref, type Ref, type MaybeRefOrGetter, toValue } from 'vue';
+import { applyUiTheme, getSavedUiTheme } from './useUiTheme';
 
 export const COLOR_MODE_KEY = 'ui-color-mode';
 
@@ -7,6 +8,8 @@ export type ColorModeResolved = 'light' | 'dark';
 
 export function applyColorModeToDocument(mode: ColorModeResolved) {
   document.documentElement.classList.toggle('dark', mode === 'dark');
+  // Adaptive primary «white» = white in dark / black in light.
+  applyUiTheme(getSavedUiTheme());
 }
 
 export function getSystemColorMode(): ColorModeResolved {

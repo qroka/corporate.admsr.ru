@@ -114,6 +114,10 @@ if ($method === 'GET') {
     $albumId = isset($_GET['album_id']) ? (int)$_GET['album_id'] : 0;
     if ($albumId <= 0) jsonError(400, 'Укажите album_id');
 
+    if (isset($_GET['limit']) || array_key_exists('cursor', $_GET)) {
+        jsonOk(fetchAlbumPhotosCursorPage($pdo, $albumId, $_GET));
+    }
+
     $stmt = $pdo->prepare(
         'SELECT id, album_id, image_full_url, image_small_url
          FROM public.gallery_base
@@ -122,6 +126,61 @@ if ($method === 'GET') {
     );
     $stmt->execute([':aid' => $albumId]);
     jsonOk($stmt->fetchAll());
+}
+
+/**
+ * Cursor page for album photos. Sort: id ASC. Cursor = last id.
+ */
+function fetchAlbumPhotosCursorPage(PDO $pdo, int $albumId, array $get): array
+{
+    $limit = isset($get['limit']) ? (int)$get['limit'] : 36;
+    if ($limit < 1) $limit = 36;
+    if ($limit > 72) $limit = 72;
+
+    $params = [':aid' => $albumId];
+    $cond = ['album_id = :aid'];
+
+    $cursorRaw = isset($get['cursor']) ? trim((string)$get['cursor']) : '';
+    if ($cursorRaw !== '') {
+        if (!ctype_digit($cursorRaw)) {
+            jsonError(400, 'Некорректный cursor');
+        }
+        $cond[] = 'id > :cursor_id';
+        $params[':cursor_id'] = (int)$cursorRaw;
+    }
+
+    $fetchLimit = $limit + 1;
+    $sql =
+        'SELECT id, album_id, image_full_url, image_small_url
+         FROM public.gallery_base
+         WHERE ' . implode(' AND ', $cond) .
+        ' ORDER BY id ASC
+         LIMIT :fetch_limit';
+
+    $stmt = $pdo->prepare($sql);
+    foreach ($params as $key => $value) {
+        $stmt->bindValue($key, (int)$value, PDO::PARAM_INT);
+    }
+    $stmt->bindValue(':fetch_limit', $fetchLimit, PDO::PARAM_INT);
+    $stmt->execute();
+    $rows = $stmt->fetchAll();
+
+    $hasMore = count($rows) > $limit;
+    if ($hasMore) {
+        $rows = array_slice($rows, 0, $limit);
+    }
+
+    $nextCursor = null;
+    if ($hasMore && count($rows) > 0) {
+        $last = $rows[count($rows) - 1];
+        $nextCursor = (string)(int)$last['id'];
+    }
+
+    return [
+        'items' => $rows,
+        'nextCursor' => $nextCursor,
+        'hasMore' => $hasMore,
+    ];
 }
 
 // ── POST: загрузить фото ──────────────────────────────────────────────────────

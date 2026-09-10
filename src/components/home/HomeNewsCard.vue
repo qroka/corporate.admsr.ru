@@ -182,7 +182,10 @@ function onExtraReaction() {
           </p>
         </div>
 
-        <div class="h-px w-full shrink-0 bg-muted" />
+        <USeparator
+          class="shrink-0"
+          :ui="{ border: 'border-inverted/20' }"
+        />
 
         <div class="flex shrink-0 flex-wrap items-center gap-1.5" @click.stop>
           <UButton

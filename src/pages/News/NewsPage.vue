@@ -2,7 +2,7 @@
 import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue';
 import type { BlogPostProps } from '@nuxt/ui';
 import { useRoute, useRouter } from 'vue-router';
-import { useNewsData, formatNewsDate, resolveNewsImageSrc } from '../../composables/useNewsData';
+import { useNewsData, formatNewsDate, resolveNewsImageSrc, mapApiRow } from '../../composables/useNewsData';
 import { useNewsReactions } from '../../composables/useNewsReactions'; 
 import { newsEditorToolbarItems } from '../../composables/newsEditorToolbar';
 import { newsEditorExtensions, newsEditorEmojiMenuItems } from '../../composables/newsEditorExtensions';
@@ -11,8 +11,12 @@ import { newsEditorSlideoverUi } from '../../composables/newsEditorSlideoverUi';
 import { useAppToast } from '../../composables/useAppToast';
 import { useSectionAccess } from '../../composables/useSectionAccess';
 import { apiSessionFetch } from '../../composables/useAuthSession';
+import { useCursorFeed } from '../../composables/useCursorFeed';
+import { useFeedSentinel } from '../../composables/useFeedSentinel';
 
 type NewsPost = BlogPostProps & { id: string; rawDate: string; likes: number; views: number };
+
+const NEWS_PAGE_LIMIT = 12;
 
 const route = useRoute();
 const router = useRouter();
@@ -21,8 +25,64 @@ const newsDetailPrefix = computed(() =>
   isKiosk.value ? '/kiosk/news/' : '/news/',
 );
 
-const { loading, error, sortedNews, ensureLoaded, reload } = useNewsData();
-ensureLoaded();
+const { upsertItems, reload: reloadNewsCache } = useNewsData();
+const searchQuery = ref('');
+const searchForApi = ref('');
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+
+watch(searchQuery, (q) => {
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    searchForApi.value = q.trim();
+  }, 300);
+});
+
+const {
+  items: feedItems,
+  loading: feedLoading,
+  initialLoading,
+  error: feedError,
+  hasMore,
+  loadInitial,
+  loadMore,
+  refresh,
+  sentinelEnabled,
+} = useCursorFeed({
+  buildUrl: (cursor) => {
+    const params = new URLSearchParams();
+    params.set('limit', String(NEWS_PAGE_LIMIT));
+    if (cursor) params.set('cursor', cursor);
+    if (searchForApi.value) params.set('search', searchForApi.value);
+    return `/api/news.php?${params.toString()}`;
+  },
+  mapItem: (raw) => {
+    const n = mapApiRow(raw as Record<string, unknown>);
+    if (!n) return null;
+    upsertItems([n]);
+    const imageSrc = resolveNewsImageSrc(n.imagePath);
+    const plain = newsPlainText(n.description);
+    return {
+      id: n.id,
+      rawDate: n.date,
+      title: n.title || `Новость #${n.id}`,
+      description: plain.length > 240 ? `${plain.slice(0, 240)}…` : plain,
+      date: formatNewsDate(n.date),
+      badge: n.category || undefined,
+      to: `${newsDetailPrefix.value}${n.id}`,
+      likes: n.likes ?? 0,
+      views: n.views ?? 0,
+      image: imageSrc ? { src: imageSrc, alt: n.title } : { src: '/src/img/Logo.svg', alt: n.title },
+    } satisfies NewsPost;
+  },
+  getId: (item) => item.id,
+});
+
+const loading = computed(() => initialLoading.value);
+const error = feedError;
+
+watch(searchForApi, () => {
+  void loadInitial(true);
+});
 
 const { toast } = useAppToast();
 watch(
@@ -61,6 +121,7 @@ const headerLinks = computed(() => {
 
 // ─── Floating header (like GalleryPage) ────────────────────────────────────────
 const mainScrollEl = ref<HTMLElement | null>(null);
+const newsSentinelEl = ref<HTMLElement | null>(null);
 const showFloatingHeader = ref(false);
 const floatingRect = reactive({ left: 0, top: 0, width: 0 });
 let lastScrollTop = 0;
@@ -103,7 +164,6 @@ function onMainScroll() {
   });
 }
 
-const searchQuery = ref('');
 const sortKey = ref<'newest' | 'oldest' | 'title-asc' | 'title-desc'>('newest');
 const sortOptions = [
   { value: 'newest',     label: 'Сначала новые' },
@@ -124,44 +184,23 @@ function formatCountRu(n: number): string {
   return Math.max(0, Math.round(v)).toLocaleString('ru-RU');
 }
 
-const postsBase = computed<NewsPost[]>(() =>
-  sortedNews.value.map((n) => {
-    const imageSrc = resolveNewsImageSrc(n.imagePath);
-    const plain = newsPlainText(n.description);
-    return {
-      id:          n.id,
-      rawDate:     n.date,
-      title:       n.title || `Новость #${n.id}`,
-      description: plain.length > 240 ? `${plain.slice(0, 240)}…` : plain,
-      date:        formatNewsDate(n.date),
-      badge:       n.category || undefined,
-      to:          `${newsDetailPrefix.value}${n.id}`,
-      likes:       n.likes ?? 0,
-      views:       n.views ?? 0,
-      image:       imageSrc ? { src: imageSrc, alt: n.title } : { src: '/src/img/Logo.svg', alt: n.title },
-    };
-  }),
-);
-
 const filtered = computed(() => {
-  const q = searchQuery.value.trim().toLowerCase();
-  const base = postsBase.value;
-  const items = q
-    ? base.filter((p) => {
-        const t = String(p.title ?? '').toLowerCase();
-        const d = String(p.description ?? '').toLowerCase();
-        return t.includes(q) || d.includes(q) || p.id.includes(q);
-      })
-    : base.slice();
-
+  const items = feedItems.value.slice();
   items.sort((a, b) => {
     if (sortKey.value === 'newest')     return String(b.rawDate ?? '').localeCompare(String(a.rawDate ?? ''));
     if (sortKey.value === 'oldest')     return String(a.rawDate ?? '').localeCompare(String(b.rawDate ?? ''));
     if (sortKey.value === 'title-asc')  return String(a.title ?? '').localeCompare(String(b.title ?? ''), 'ru-RU');
     return String(b.title ?? '').localeCompare(String(a.title ?? ''), 'ru-RU');
   });
-
   return items;
+});
+
+useFeedSentinel({
+  root: mainScrollEl,
+  sentinel: newsSentinelEl,
+  enabled: sentinelEnabled,
+  onIntersect: () => { void loadMore(); },
+  rootMargin: '600px 0px',
 });
 
 const { isLiked: isNewsLiked, toggleLike: toggleNewsLike } = useNewsReactions();
@@ -226,20 +265,23 @@ function openCreate() {
   createOpen.value = true;
 }
 
-onMounted(() => {
+onUnmounted(() => {
+  const el = mainScrollEl.value;
+  if (!el) return;
+  el.removeEventListener('scroll', onMainScroll);
+  window.removeEventListener('resize', updateFloatingRect as any);
+  if (searchTimer) clearTimeout(searchTimer);
+});
+
+onMounted(async () => {
+  void loadInitial();
+  await Promise.resolve();
   const el = mainScrollEl.value;
   if (!el) return;
   lastScrollTop = el.scrollTop;
   el.addEventListener('scroll', onMainScroll, { passive: true });
   updateFloatingRect();
   window.addEventListener('resize', updateFloatingRect, { passive: true });
-});
-
-onUnmounted(() => {
-  const el = mainScrollEl.value;
-  if (!el) return;
-  el.removeEventListener('scroll', onMainScroll);
-  window.removeEventListener('resize', updateFloatingRect as any);
 });
 
 function validateCreate(): boolean {
@@ -286,7 +328,8 @@ async function handleCreateSubmit() {
     toast.add({ title: 'Новость создана', color: 'success', icon: 'i-lucide-check-circle' });
     createOpen.value = false;
     resetCreateForm();
-    await reload();
+    await refresh();
+    void reloadNewsCache();
   } catch (e: any) {
     createError.value = e.message ?? 'Ошибка при создании новости';
   } finally {
@@ -345,14 +388,16 @@ async function handleCreateSubmit() {
           </UContainer>
         </template>
 
-        <p v-if="!isKiosk && !loading && filtered.length !== postsBase.length" class="text-sm text-muted -mt-2">
-          Найдено: {{ filtered.length }} из {{ postsBase.length }}
+        <p v-if="!isKiosk && searchForApi && !loading" class="text-sm text-muted -mt-2">
+          Найдено: {{ filtered.length }}{{ hasMore ? '+' : '' }}
         </p>
       </UContainer>
 
       <UContainer class="sm:p-px max-w-full w-full md:p-px lg:p-px xl:p-px mx-0 flex-1 min-h-0">
         <UContainer class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 max-w-full w-full mx-0">
-          <USkeleton v-if="loading" class="h-28 w-full" />
+          <template v-if="loading">
+            <USkeleton v-for="n in 6" :key="n" class="h-64 w-full rounded-2xl" />
+          </template>
           <UBlogPost
             v-for="post in filtered"
             v-else
@@ -398,6 +443,20 @@ async function handleCreateSubmit() {
             </template>
           </UBlogPost>
         </UContainer>
+
+        <div
+          v-if="!loading && feedLoading"
+          class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 mt-3"
+        >
+          <USkeleton v-for="n in 3" :key="`more-${n}`" class="h-64 w-full rounded-2xl" />
+        </div>
+
+        <div
+          v-if="filtered.length"
+          ref="newsSentinelEl"
+          class="h-1 w-full shrink-0"
+          aria-hidden="true"
+        />
 
         <UEmpty
           v-if="!loading && !filtered.length"

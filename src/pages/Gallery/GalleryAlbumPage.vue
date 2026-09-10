@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useGalleryData } from '../../composables/useGalleryData';
 import { useAppToast } from '../../composables/useAppToast';
 import { useSectionAccess } from '../../composables/useSectionAccess';
 import { apiSessionFetch, apiSessionUpload } from '../../composables/useAuthSession';
+import { useCursorFeed } from '../../composables/useCursorFeed';
+import { useFeedSentinel } from '../../composables/useFeedSentinel';
 
 type Photo = { id: string; thumbSrc: string; fullSrc: string };
-type DbPhoto = { id: number; album_id: number; image_full_url: string; image_small_url: string };
+
+const ALBUM_PHOTOS_LIMIT = 36;
 
 const route  = useRoute();
 const router = useRouter();
@@ -44,38 +47,36 @@ async function loadAlbum() {
   }
 }
 
-// ── Фотографии ────────────────────────────────────────────────────────────────
-const photos        = ref<DbPhoto[]>([]);
-const photosLoading = ref(false);
+// ── Фотографии (cursor + sentinel) ────────────────────────────────────────────
+const {
+  items,
+  loading: feedLoading,
+  initialLoading: photosInitialLoading,
+  loadInitial: loadPhotosInitial,
+  loadMore: loadMorePhotos,
+  refresh: refreshPhotos,
+  sentinelEnabled: photosSentinelEnabled,
+  hasMore: photosHasMore,
+} = useCursorFeed<Photo>({
+  buildUrl: (cursor) => {
+    const params = new URLSearchParams();
+    params.set('album_id', albumId.value);
+    params.set('limit', String(ALBUM_PHOTOS_LIMIT));
+    if (cursor) params.set('cursor', cursor);
+    return `/api/gallery_base.php?${params.toString()}`;
+  },
+  mapItem: (raw: any) => {
+    if (!raw?.id) return null;
+    return {
+      id: String(raw.id),
+      thumbSrc: String(raw.image_small_url ?? ''),
+      fullSrc: String(raw.image_full_url ?? ''),
+    };
+  },
+  getId: (item) => item.id,
+});
 
-async function loadPhotos() {
-  photosLoading.value = true;
-  try {
-    const res  = await fetch(`/api/gallery_base.php?album_id=${albumId.value}`);
-    const json = await res.json();
-    if (json.success) {
-      photos.value = json.data ?? [];
-      const n = photos.value.length;
-      visibleCount.value = Math.min(BATCH, Math.max(n, 0));
-      await fillVisibleUntilScrollable();
-    }
-  } catch {} finally {
-    photosLoading.value = false;
-  }
-}
-
-const items = computed<Photo[]>(() =>
-  photos.value.map((p) => ({
-    id:       String(p.id),
-    thumbSrc: p.image_small_url,
-    fullSrc:  p.image_full_url,
-  })),
-);
-
-/** Постепенная отрисовка: не вешаем тысячи <img> сразу — порциями по скроллу */
-const BATCH = 36;
-const visibleCount = ref(BATCH);
-const visibleItems = computed(() => items.value.slice(0, visibleCount.value));
+const photosLoading = computed(() => photosInitialLoading.value);
 
 const thumbLoaded = reactive<Record<string, boolean>>({});
 function onThumbLoad(id: string) {
@@ -83,34 +84,12 @@ function onThumbLoad(id: string) {
 }
 
 watch(albumId, () => {
-  visibleCount.value = BATCH;
   for (const k of Object.keys(thumbLoaded)) delete thumbLoaded[k];
+  void loadPhotosInitial(true);
 });
 
-function tryAppendVisible(el: HTMLElement) {
-  const total = items.value.length;
-  if (total === 0 || visibleCount.value >= total) return;
-  const { scrollTop, scrollHeight, clientHeight } = el;
-  const nearBottom = scrollHeight - scrollTop - clientHeight < Math.max(480, clientHeight * 0.35);
-  if (nearBottom) {
-    visibleCount.value = Math.min(visibleCount.value + BATCH, total);
-  }
-}
-
-/** Если экран высокий и контента мало, подгружаем порции без прокрутки */
-async function fillVisibleUntilScrollable() {
-  await nextTick();
-  const el = mainScrollEl.value;
-  if (!el || items.value.length === 0) return;
-  let guard = 0;
-  while (guard++ < 50 && visibleCount.value < items.value.length) {
-    const { scrollHeight, clientHeight } = el;
-    if (scrollHeight > clientHeight + 32) break;
-    const next = Math.min(visibleCount.value + BATCH, items.value.length);
-    if (next === visibleCount.value) break;
-    visibleCount.value = next;
-    await nextTick();
-  }
+async function loadPhotos() {
+  await refreshPhotos();
 }
 
 // ── Лайтбокс ─────────────────────────────────────────────────────────────────
@@ -162,11 +141,8 @@ async function deletePhoto(photoId: string) {
   deletingPhotoId.value = photoId;
   try {
     await apiSessionFetch(`/api/gallery_base.php?id=${photoId}`, { method: 'DELETE' });
-    photos.value = photos.value.filter((p) => String(p.id) !== photoId);
+    items.value = items.value.filter((p) => p.id !== photoId);
     delete thumbLoaded[photoId];
-    if (visibleCount.value > items.value.length) {
-      visibleCount.value = items.value.length;
-    }
     if (selected.value?.id === photoId) selected.value = null;
   } finally {
     deletingPhotoId.value = null;
@@ -310,6 +286,7 @@ const estimateSize = computed(() => (viewportWidth.value < 640 ? 420 : 480));
 
 // ── Floating header on scroll up (aligned to page container) ──────────────────
 const mainScrollEl = ref<HTMLElement | null>(null);
+const photosSentinelEl = ref<HTMLElement | null>(null);
 const showFloatingHeader = ref(false);
 let lastScrollTop = 0;
 let rafPending = false;
@@ -348,9 +325,16 @@ function onMainScroll() {
 
     lastScrollTop = top;
     if (showFloatingHeader.value) updateFloatingRect();
-    tryAppendVisible(el);
   });
 }
+
+useFeedSentinel({
+  root: mainScrollEl,
+  sentinel: photosSentinelEl,
+  enabled: photosSentinelEnabled,
+  onIntersect: () => { void loadMorePhotos(); },
+  rootMargin: '600px 0px',
+});
 
 onMounted(() => {
   const el = mainScrollEl.value;
@@ -419,7 +403,7 @@ onUnmounted(() => {
 
         <div v-else class="columns-1 sm:columns-2 xl:columns-3 gap-x-3">
           <div
-            v-for="item in visibleItems"
+            v-for="item in items"
             :key="item.id"
             class="relative mb-3 break-inside-avoid rounded-xl overflow-hidden bg-elevated ring ring-transparent hover:ring-accented transition w-full group"
           >
@@ -471,6 +455,20 @@ onUnmounted(() => {
             </button>
           </div>
         </div>
+
+        <div
+          v-if="!photosLoading && feedLoading"
+          class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 mt-3"
+        >
+          <USkeleton v-for="i in 3" :key="`more-${i}`" class="h-48 rounded-xl" />
+        </div>
+
+        <div
+          v-if="items.length"
+          ref="photosSentinelEl"
+          class="h-1 w-full shrink-0"
+          aria-hidden="true"
+        />
       </UContainer>
     </div>
 

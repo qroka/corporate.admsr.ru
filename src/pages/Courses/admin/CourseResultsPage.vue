@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import type { BreadcrumbItem, DropdownMenuItem } from '@nuxt/ui';
@@ -361,7 +361,7 @@ async function confirmReset() {
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full max-w-full min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
+  <UMain class="flex flex-1 flex-col w-full min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
     <UBreadcrumb :items="crumbs" />
     <div class="flex items-center justify-between gap-3 flex-wrap min-w-0">
       <h1 class="text-2xl font-medium text-highlighted">Результаты курса</h1>

@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { BreadcrumbItem } from '@nuxt/ui';
@@ -147,7 +147,7 @@ async function onRetake() {
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full max-w-full min-w-0 h-full min-h-0 gap-3 overflow-x-hidden">
+  <UMain class="flex flex-1 flex-col w-full min-w-0 h-full min-h-0 gap-3 overflow-x-hidden">
     <UBreadcrumb :items="crumbs" />
     <h1 class="sr-only">{{ form.title || 'Прохождение теста' }}</h1>
 

@@ -10,12 +10,11 @@ import NewsPage from '../pages/News/NewsPage.vue';
 import NewsDetailsPage from '../pages/News/NewsDetailsPage.vue';
 import AppKiosk from '../AppKiosk.vue';
 import KioskHomePage from '../pages/Kiosk/KioskHomePage.vue';
-import NewcomersPage from '../pages/NewcomersPage.vue';
-import CulturePage from '../pages/CulturePage.vue';
 import ProfilePage from '../pages/ProfilePage.vue';
 import AbsenceJournalPage from '../pages/AbsenceJournalPage.vue';
 import ApplicationsPage from '../pages/ApplicationsPage.vue';
-import KnowledgeBasePage from '../pages/KnowledgeBasePage.vue';
+import DocumentationPage from '../pages/DocumentationPage.vue';
+import FeedbackPage from '../pages/FeedbackPage.vue';
 import PersonnelReservePage from '../pages/PersonnelReservePage.vue';
 import TestsPage from '../pages/TestsPage.vue';
 import TestsBlankPage from '../pages/TestsBlankPage.vue';
@@ -25,7 +24,6 @@ import AdminDashboardPage from '../pages/Admin/AdminDashboardPage.vue';
 import BirthdaysPage from '../pages/BirthdaysPage.vue';
 import LoginPage from '../pages/login.vue';
 import OnboardingPage from '../pages/OnboardingPage.vue';
-import ChatBotPage from '../pages/ChatBotPage.vue';
 import TestLinkPage from '../pages/TestLinkPage.vue';
 import CoursesListPage from '../pages/Courses/admin/CoursesListPage.vue';
 import CourseCreatePage from '../pages/Courses/admin/CourseCreatePage.vue';
@@ -49,7 +47,7 @@ const routes = [
   { path: '/t/:token', name: 'test-link', component: TestLinkPage, meta: { title: 'Прохождение', public: true } },
   { path: '/login', name: 'login', component: LoginPage, meta: { title: 'Вход', layout: 'auth' } },
   { path: '/welcome', name: 'onboarding', component: OnboardingPage, meta: { title: 'Добро пожаловать', layout: 'auth' } },
-  { path: '/', name: 'home', component: HomePage, meta: { title: 'Главная' } },
+  { path: '/', name: 'home', component: HomePage, meta: { title: 'Рабочий стол' } },
   {
     path: '/kiosk',
     component: AppKiosk,
@@ -62,13 +60,11 @@ const routes = [
       { path: 'events/:id', name: 'kiosk-event-details', component: EventDetailsPage, meta: { title: 'Мероприятие', kiosk: true } },
       { path: 'gallery', name: 'kiosk-gallery', component: GalleryPage, meta: { title: 'Фотогалерея', kiosk: true } },
       { path: 'gallery/:albumId', name: 'kiosk-gallery-album', component: GalleryAlbumPage, meta: { title: 'Альбом', kiosk: true } },
-      { path: 'newcomers', name: 'kiosk-newcomers', component: NewcomersPage, meta: { title: 'Новичкам', kiosk: true } },
-      { path: 'culture', name: 'kiosk-culture', component: CulturePage, meta: { title: 'Корпоративная культура', kiosk: true } },
       { path: 'birthdays', name: 'kiosk-birthdays', component: BirthdaysPage, meta: { title: 'Дни рождения коллег', kiosk: true } },
       { path: 'profile', name: 'kiosk-profile', component: ProfilePage, meta: { title: 'Профиль', kiosk: true } },
       { path: 'absence-journal', name: 'kiosk-absence-journal', component: AbsenceJournalPage, meta: { title: 'Журнал отсутствия', kiosk: true } },
       { path: 'applications', name: 'kiosk-applications', component: ApplicationsPage, meta: { title: 'Заявки', kiosk: true } },
-      { path: 'knowledge-base', name: 'kiosk-knowledge-base', component: KnowledgeBasePage, meta: { title: 'База знаний', kiosk: true } },
+      { path: 'documentation', name: 'kiosk-documentation', component: DocumentationPage, meta: { title: 'Документация', kiosk: true } },
       { path: 'personnel-reserve', name: 'kiosk-personnel-reserve', component: PersonnelReservePage, meta: { title: 'Кадровый резерв', kiosk: true } },
       { path: 'tests', name: 'kiosk-tests', component: TestsPage, meta: { title: 'Тесты', kiosk: true } },
       { path: 'services', name: 'kiosk-services', component: ServicesPage, meta: { title: 'Сервисы', kiosk: true } },
@@ -87,20 +83,20 @@ const routes = [
   },
   { path: '/gallery', name: 'gallery', component: GalleryPage, meta: { title: 'Фотогалерея' } },
   { path: '/gallery/:albumId', name: 'gallery-album', component: GalleryAlbumPage, meta: { title: 'Альбом' } },
-  { path: '/newcomers', name: 'newcomers', component: NewcomersPage, meta: { title: 'Новичкам' } },
-  { path: '/culture', name: 'culture', component: CulturePage, meta: { title: 'Корпоративная культура' } },
   { path: '/birthdays', name: 'birthdays', component: BirthdaysPage, meta: { title: 'Дни рождения коллег' } },
   { path: '/profile', name: 'profile', component: ProfilePage, meta: { title: 'Профиль' } },
   { path: '/absence-journal', name: 'absence-journal', component: AbsenceJournalPage, meta: { title: 'Журнал отсутствия' } },
   { path: '/applications', name: 'applications', component: ApplicationsPage, meta: { title: 'Заявки' } },
-  { path: '/knowledge-base', name: 'knowledge-base', component: KnowledgeBasePage, meta: { title: 'База знаний' } },
+  { path: '/documentation', name: 'documentation', component: DocumentationPage, meta: { title: 'Документация' } },
+  { path: '/feedback', name: 'feedback', component: FeedbackPage, meta: { title: 'Обратная связь' } },
   { path: '/personnel-reserve', name: 'personnel-reserve', component: PersonnelReservePage, meta: { title: 'Кадровый резерв' } },
   { path: '/tests', name: 'tests', component: TestsBlankPage, meta: { title: 'Тесты' } },
   { path: '/tests/old', name: 'tests-old', component: TestsPage, meta: { title: 'Тесты (старые)' } },
   { path: '/services', name: 'services', component: ServicesPage, meta: { title: 'Сервисы' } },
   { path: '/development-motivation', name: 'development-motivation', component: DevelopmentMotivationDepartmentPage, meta: { title: 'Отдел развития и мотивации' } },
   { path: '/admin', name: 'admin', component: AdminDashboardPage, meta: { title: 'Дэшборд администратора', requiresAdmin: true } },
-  { path: '/chatbot', name: 'chatbot', component: ChatBotPage, meta: { title: 'AI Ассистент' } },
+  { path: '/knowledge-base', redirect: { name: 'documentation' } },
+  { path: '/chatbot', redirect: { name: 'feedback' } },
 
   // ── Курсы: админ ───────────────────────────────────────────────────────────
   { path: '/admin/courses', name: 'admin-courses', component: CoursesListPage, meta: { title: 'Управление курсами', requiresSection: 'courses' } },
@@ -145,13 +141,11 @@ const kioskRouteNameByName = {
   'event-details': 'kiosk-event-details',
   gallery: 'kiosk-gallery',
   'gallery-album': 'kiosk-gallery-album',
-  newcomers: 'kiosk-newcomers',
-  culture: 'kiosk-culture',
   birthdays: 'kiosk-birthdays',
   profile: 'kiosk-profile',
   'absence-journal': 'kiosk-absence-journal',
   applications: 'kiosk-applications',
-  'knowledge-base': 'kiosk-knowledge-base',
+  documentation: 'kiosk-documentation',
   'personnel-reserve': 'kiosk-personnel-reserve',
   tests: 'kiosk-tests',
   services: 'kiosk-services',

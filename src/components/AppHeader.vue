@@ -281,9 +281,9 @@ const userMenuItems = computed(() => {
           root: 'min-w-0',
           list: 'min-w-0 flex-nowrap overflow-hidden',
           item: 'min-w-0',
-          linkLeadingIcon: 'size-3.5 text-muted',
-          linkLabel: 'text-xs font-medium truncate',
-          separatorIcon: 'size-3.5 text-muted',
+          linkLeadingIcon: 'size-5 text-muted',
+          linkLabel: 'text-sm font-medium truncate',
+          separatorIcon: 'size-5 text-muted',
         }"
       />
     </template>
@@ -294,75 +294,73 @@ const userMenuItems = computed(() => {
           label="Искать сотрудника, памятку, документ..."
           color="neutral"
           variant="outline"
-          size="sm"
-          class="hidden md:inline-flex w-[340px] max-w-[340px] justify-start"
+          size="md"
+          class="hidden md:inline-flex h-8 w-[340px] max-w-[340px] justify-start"
           :kbds="['meta', 'K']"
         />
 
         <UButton
           color="neutral"
           variant="outline"
-          size="sm"
+          size="md"
           square
+          class="h-8"
           icon="i-lucide-bell"
           aria-label="Уведомления"
         />
-      </div>
 
-      <USeparator orientation="vertical" class="h-6" />
+        <UDropdownMenu
+          v-model:open="userMenuOpen"
+          :items="userMenuItems"
+          :disabled="loading"
+          :content="{ align: 'end', side: 'bottom', sideOffset: 8 }"
+          :ui="{ content: 'w-72' }"
+        >
+          <template #default="{ open }">
+            <UButton
+              type="button"
+              color="neutral"
+              variant="outline"
+              size="md"
+              class="h-8 min-w-0 data-[state=open]:bg-elevated"
+              :aria-label="profileTriggerLabel"
+              :aria-expanded="open"
+              aria-haspopup="menu"
+            >
+              <template v-if="loading">
+                <USkeleton class="size-5 rounded-full" />
+                <USkeleton class="h-3.5 w-28 hidden sm:block" />
+              </template>
+              <template v-else>
+                <UAvatar
+                  :src="avatarSrc"
+                  :alt="headerName"
+                  size="2xs"
+                  icon="i-lucide-user"
+                />
+                <span class="hidden sm:inline text-sm font-medium leading-none text-highlighted truncate max-w-[140px]">
+                  {{ headerName }}
+                </span>
+                <UIcon
+                  name="i-lucide-chevron-down"
+                  class="size-5 text-muted shrink-0 transition-transform"
+                  :class="open ? 'rotate-180' : ''"
+                />
+              </template>
+            </UButton>
+          </template>
 
-      <UDropdownMenu
-        v-model:open="userMenuOpen"
-        :items="userMenuItems"
-        :disabled="loading"
-        :content="{ align: 'end', side: 'bottom', sideOffset: 8 }"
-        :ui="{ content: 'w-72' }"
-      >
-        <template #default="{ open }">
-          <UButton
-            type="button"
-            color="neutral"
-            variant="ghost"
-            size="sm"
-            class="min-w-0 hover:bg-accented/50 data-[state=open]:bg-accented/50"
-            :aria-label="profileTriggerLabel"
-            :aria-expanded="open"
-            aria-haspopup="menu"
-          >
-            <template v-if="loading">
-              <USkeleton class="size-7 rounded-full" />
-              <USkeleton class="h-3 w-28 hidden sm:block" />
-            </template>
-            <template v-else>
-              <UAvatar
-                :src="avatarSrc"
-                :alt="headerName"
-                size="xs"
-                icon="i-lucide-user"
+          <template #chip-leading="{ item }">
+            <span class="inline-flex items-center justify-center shrink-0 size-5">
+              <span
+                class="rounded-full size-2 ring ring-bg bg-(--chip-light) dark:bg-(--chip-dark)"
+                :style="{
+                  '--chip-light': `var(--color-${item.chip}-500)`,
+                  '--chip-dark': `var(--color-${item.chip}-400)`,
+                }"
               />
-              <span class="hidden sm:inline text-xs font-medium text-highlighted truncate max-w-[140px]">
-                {{ headerName }}
-              </span>
-              <UIcon
-                name="i-lucide-chevron-down"
-                class="size-4 text-muted shrink-0 transition-transform"
-                :class="open ? 'rotate-180' : ''"
-              />
-            </template>
-          </UButton>
-        </template>
-
-        <template #chip-leading="{ item }">
-          <span class="inline-flex items-center justify-center shrink-0 size-5">
-            <span
-              class="rounded-full size-2 ring ring-bg bg-(--chip-light) dark:bg-(--chip-dark)"
-              :style="{
-                '--chip-light': `var(--color-${item.chip}-500)`,
-                '--chip-dark': `var(--color-${item.chip}-400)`,
-              }"
-            />
-          </span>
-        </template>
+            </span>
+          </template>
 
         <template #role>
           <UTabs
@@ -399,6 +397,7 @@ const userMenuItems = computed(() => {
           />
         </template>
       </UDropdownMenu>
+      </div>
     </template>
   </UDashboardNavbar>
 </template>

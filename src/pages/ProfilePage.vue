@@ -336,7 +336,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <UMain class="profile-page flex flex-col w-full h-full min-h-0 mx-0 max-w-none">
+  <UMain class="profile-page flex flex-col w-full h-full min-h-0">
     <!-- Обложка -->
     <div class="profile-cover">
       <div class="profile-cover__gradient" />

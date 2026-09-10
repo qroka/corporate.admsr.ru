@@ -14,6 +14,14 @@ export default defineConfig({
         container: {
           base: 'p-0 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0',
         },
+        main: {
+          base: 'min-h-[calc(100vh-var(--ui-header-height))] w-full max-w-[1600px] mx-auto',
+        },
+        pageHeader: {
+          slots: {
+            root: 'relative border-b border-default py-4',
+          },
+        },
       },
     }),
   ],

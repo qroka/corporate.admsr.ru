@@ -54,20 +54,14 @@ function mapApiRecord(row: JsonRow, ofoMap: Record<string, string>): AbsenceReco
 }
 
 function formatDateTime(dt: Date): string {
-  return dt.toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-function formatDateTimeWrap(dt: Date): string {
   if (Number.isNaN(dt.getTime())) return '—';
   const date = dt.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const time = dt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-  return `${date}\n${time}`;
+  return `${date}, ${time}`;
+}
+
+function formatDateTimeWrap(dt: Date): string {
+  return formatDateTime(dt);
 }
 
 function two(n: number) {
@@ -97,7 +91,18 @@ function formatDurationRu(ms: number): string {
   const totalMinutes = Math.round(abs / 60000);
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  const base = hours > 0 ? `${hours}ч ${minutes}м` : `${minutes}м`;
+  const base = hours > 0 ? `${hours}ч ${minutes}мин` : `${minutes}мин`;
+  return sign < 0 ? `−${base}` : base;
+}
+
+function formatDurationRuSpaced(ms: number): string {
+  if (!Number.isFinite(ms)) return '—';
+  const sign = ms < 0 ? -1 : 1;
+  const abs = Math.abs(ms);
+  const totalMinutes = Math.round(abs / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const base = hours > 0 ? `${hours} ч ${minutes} мин` : `${minutes} мин`;
   return sign < 0 ? `−${base}` : base;
 }
 
@@ -118,9 +123,32 @@ const currentUser = ref<CurrentUser | null>(null);
 const ofoTitleById = ref<Record<string, string>>({});
 
 const startAbsenceAt = ref(toLocalDateTimeInputValue(new Date()));
+const startDate = ref('');
+const startTime = ref('');
+const startReason = ref('');
 const filterPeriod = ref<'all' | 'today' | 'week' | 'month'>('all');
+const mySortDesc = ref(true);
+const historySearchOpen = ref(false);
+const historyFilterOpen = ref(false);
 const myRecordsStore = ref<AbsenceRecord[]>([]);
 const adminRecordsStore = ref<AbsenceRecord[]>([]);
+
+function syncStartPartsFromCombined() {
+  const d = parseDateTimeInputValue(startAbsenceAt.value) ?? new Date();
+  startDate.value = `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
+  startTime.value = `${two(d.getHours())}:${two(d.getMinutes())}`;
+}
+
+function syncCombinedFromParts() {
+  if (!startDate.value || !startTime.value) return;
+  startAbsenceAt.value = `${startDate.value}T${startTime.value}`;
+}
+
+syncStartPartsFromCombined();
+
+watch([startDate, startTime], () => {
+  syncCombinedFromParts();
+});
 
 const MY_PAGE_SIZE = 200;
 const myOffset = ref(0);
@@ -153,10 +181,6 @@ const hasOfo = computed(() => {
   const v = (currentUser.value?.ofoId ?? '').trim();
   return /^[0-9]+$/.test(v) && Number(v) > 0;
 });
-
-const canStartAbsence = computed(() =>
-  Boolean(startAbsenceAt.value) && Boolean(currentUser.value) && hasOfo.value && !activeRecord.value,
-);
 
 const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
 ensureSectionAccess();
@@ -208,6 +232,39 @@ const filteredMyRecords = computed(() => {
 
 const activeRecord = computed(() => myRecords.value.find((r) => r.status === 'active') ?? null);
 
+const monthStats = computed(() => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const monthLabel = now.toLocaleDateString('ru-RU', { month: 'long' });
+  const list = myRecordsStore.value.filter(
+    (r) => r.startAt.getFullYear() === y && r.startAt.getMonth() === m,
+  );
+  let totalMs = 0;
+  for (const r of list) {
+    totalMs += r.endAt ? diffMs(r.startAt, r.endAt) : diffMs(r.startAt, now);
+  }
+  return {
+    label: `За ${monthLabel}`,
+    count: list.length,
+    duration: formatDurationRuSpaced(totalMs),
+  };
+});
+
+const workplaceStatusText = computed(() =>
+  activeRecord.value
+    ? 'Сейчас вы отсутствуете'
+    : 'Сейчас вы на рабочем месте',
+);
+
+const canStartAbsence = computed(() =>
+  Boolean(startAbsenceAt.value)
+  && Boolean(startReason.value.trim())
+  && Boolean(currentUser.value)
+  && hasOfo.value
+  && !activeRecord.value,
+);
+
 watch([filterPeriod], () => {
   if (!currentUser.value) return;
   void resetAndLoadMy();
@@ -226,6 +283,7 @@ const USlideover = resolveComponent('USlideover');
 const UBadge = resolveComponent('UBadge');
 const UButton = resolveComponent('UButton');
 const UDropdownMenu = resolveComponent('UDropdownMenu');
+const UIcon = resolveComponent('UIcon');
 
 const { toast } = useAppToast();
 
@@ -491,6 +549,12 @@ async function startAbsence() {
     return;
   }
 
+  const reason = startReason.value.trim();
+  if (!reason) {
+    toast.add({ title: 'Не указана причина', description: 'Укажите причину отсутствия.', color: 'error', icon: 'i-lucide-alert-circle' });
+    return;
+  }
+
   loading.value = true;
   try {
     const data = await apiSessionFetch('/api/absence_journal.php', {
@@ -501,6 +565,7 @@ async function startAbsence() {
         ofo:            Number(u.ofoId),
         role:           u.role,
         start_datetime: toLocalDateTimeInputValue(start).replace('T', ' ') + ':00',
+        reason,
       },
     });
     if (!data.success) throw new Error(data.message || (data as any).error || 'Ошибка создания записи');
@@ -508,6 +573,7 @@ async function startAbsence() {
     const newRecord = mapApiRecord(data.data as JsonRow, ofoTitleById.value);
     myRecordsStore.value = [newRecord, ...myRecordsStore.value];
     if (isAdmin.value) adminRecordsStore.value = [newRecord, ...adminRecordsStore.value];
+    startReason.value = '';
     toast.add({ title: 'Отсутствие начато', description: `Начало: ${formatDateTime(start)}.`, color: 'success', icon: 'i-lucide-circle-check' });
   } catch (e) {
     toast.add({ title: 'Ошибка', description: e instanceof Error ? e.message : 'Не удалось создать запись', color: 'error', icon: 'i-lucide-alert-circle' });
@@ -678,10 +744,11 @@ type AbsenceRow = AbsenceRecord & {
   startLabel: string;
   endLabel: string;
   durationLabel: string;
+  createdLabel: string;
 };
 
-const tableRows = computed<AbsenceRow[]>(() =>
-  filteredMyRecords.value.map((r) => {
+const tableRows = computed<AbsenceRow[]>(() => {
+  const rows = filteredMyRecords.value.map((r) => {
     const end = r.endAt;
     const durationMs = end ? diffMs(r.startAt, end) : diffMs(r.startAt, new Date());
     return {
@@ -689,9 +756,57 @@ const tableRows = computed<AbsenceRow[]>(() =>
       startLabel: formatDateTimeWrap(r.startAt),
       endLabel: end ? formatDateTimeWrap(end) : '—',
       durationLabel: formatDurationRu(durationMs),
+      createdLabel: formatDateTimeWrap(r.createdAt),
     };
-  }),
-);
+  });
+  return mySortDesc.value
+    ? rows
+    : [...rows].reverse();
+});
+
+function headerWithIcon(icon: string, label: string) {
+  return () =>
+    h('div', { class: 'flex items-center gap-1.5 text-highlighted' }, [
+      h(UIcon, { name: icon, class: 'size-4 shrink-0 text-muted' }),
+      h('span', label),
+    ]);
+}
+
+function exportMyHistory() {
+  const rows = tableRows.value;
+  if (!rows.length) {
+    toast.add({
+      title: 'Нечего выгружать',
+      description: 'История отсутствия пуста.',
+      color: 'neutral',
+      icon: 'i-lucide-info',
+    });
+    return;
+  }
+  const header = ['Статус', 'Создание записи', 'Начало', 'Конец', 'Длительность', 'Причина'];
+  const lines = rows.map((r) =>
+    [
+      recordStatusLabel(r.status),
+      r.createdLabel,
+      r.startLabel,
+      r.endLabel,
+      r.durationLabel,
+      r.reason || '',
+    ]
+      .map((cell) => `"${String(cell).replace(/"/g, '""')}"`)
+      .join(';'),
+  );
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + [header.join(';'), ...lines].join('\n')], {
+    type: 'text/csv;charset=utf-8',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `absence-history-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 type AbsenceAdminRow = AbsenceRow & {
   fioLabel: string;
@@ -822,6 +937,7 @@ function rowMenuItems(row: AbsenceRecord) {
       icon: 'i-lucide-edit-2',
       onSelect() {
         startAbsenceAt.value = toLocalDateTimeInputValue(row.startAt);
+        syncStartPartsFromCombined();
       },
     },
   ];
@@ -830,41 +946,51 @@ function rowMenuItems(row: AbsenceRecord) {
 const columns: TableColumn<AbsenceRow>[] = [
   {
     accessorKey: 'status',
-    header: 'Статус',
-    meta: { class: { th: 'w-[140px]', td: 'whitespace-nowrap' } },
+    header: headerWithIcon('i-lucide-settings-2', 'Статус'),
+    meta: { class: { th: 'w-[160px]', td: 'whitespace-nowrap' } },
     cell: ({ row }) => {
       const s = row.getValue('status') as AbsenceStatus;
       return h(
         UBadge,
-        { variant: 'subtle', color: recordStatusColor(s), leading: true, leadingIcon: s === 'active' ? 'i-lucide-timer' : 'i-lucide-check' },
+        {
+          variant: 'subtle',
+          color: recordStatusColor(s),
+          leading: true,
+          leadingIcon: s === 'active' ? 'i-lucide-timer' : 'i-lucide-check',
+        },
         () => recordStatusLabel(s),
       );
     },
   },
   {
+    accessorKey: 'createdLabel',
+    header: headerWithIcon('i-lucide-pencil', 'Создание записи'),
+    meta: { class: { th: 'min-w-[160px]', td: 'tabular-nums whitespace-nowrap' } },
+  },
+  {
     accessorKey: 'startLabel',
-    header: 'Начало',
-    meta: { class: { th: 'min-w-[150px]', td: 'tabular-nums whitespace-pre-line' } },
+    header: headerWithIcon('i-lucide-calendar-clock', 'Начало'),
+    meta: { class: { th: 'min-w-[160px]', td: 'tabular-nums whitespace-nowrap' } },
   },
   {
     accessorKey: 'endLabel',
-    header: 'Конец',
-    meta: { class: { th: 'min-w-[150px]', td: 'tabular-nums whitespace-pre-line' } },
+    header: headerWithIcon('i-lucide-calendar-check-2', 'Конец'),
+    meta: { class: { th: 'min-w-[160px]', td: 'tabular-nums whitespace-nowrap' } },
   },
   {
     accessorKey: 'durationLabel',
-    header: 'Длительность',
-    meta: { class: { th: 'w-[120px]', td: 'tabular-nums whitespace-nowrap' } },
+    header: headerWithIcon('i-lucide-timer', 'Длительность'),
+    meta: { class: { th: 'w-[130px]', td: 'tabular-nums whitespace-nowrap' } },
   },
   {
     accessorKey: 'reason',
-    header: 'Причина',
-    meta: { class: { th: 'min-w-[280px]', td: 'whitespace-normal' } },
+    header: headerWithIcon('i-lucide-message-circle', 'Причина'),
+    meta: { class: { th: 'min-w-[200px]', td: 'whitespace-normal' } },
     cell: ({ row }) => {
       const r = row.original as AbsenceRow;
       return h(
         'span',
-        { class: [r.reason ? 'text-default' : 'text-muted', 'break-words whitespace-pre-line'].join(' ') },
+        { class: [r.reason ? 'text-default' : 'text-muted', 'break-words'].join(' ') },
         r.reason || '—',
       );
     },
@@ -985,12 +1111,25 @@ const adminColumns: TableColumn<AbsenceAdminRow>[] = [
   },
 ];
 
-const tabItems = [
-  { label: 'Мои отсутствия', value: 'my', slot: 'my' },
-  { label: 'Отсутствия по ОФО', value: 'ofo', slot: 'ofo' },
-] satisfies TabsItem[];
+const tabItems = computed<TabsItem[]>(() => [
+  { label: 'Мои отсутствия', value: 'my' },
+  {
+    label: 'Отсутствия подразделения',
+    value: 'ofo',
+    badge: isAdmin.value && adminRecordsStore.value.length
+      ? String(adminRecordsStore.value.length)
+      : undefined,
+  },
+]);
 
-const adminTab = ref<(typeof tabItems)[number]['value']>('my');
+const adminTab = ref<'my' | 'ofo'>('my');
+
+watch(adminTab, (tab) => {
+  if (tab !== 'ofo' || !isAdmin.value) return;
+  if (ofoFilter.value === '_none' && currentUser.value?.ofoId) {
+    ofoFilter.value = currentUser.value.ofoId;
+  }
+});
 
 onMounted(() => {
   void load();
@@ -1006,152 +1145,400 @@ watch(
 </script>
 
 <template>
-  <UMain class="w-full h-full min-h-0 p-px">
-    <UContainer class="flex flex-col gap-6 py-1 mx-0 max-w-full h-full min-h-0">
-      <UPageHeader class="border-none p-0 w-full max-w-none">
+  <UMain class="w-full h-full min-h-0">
+    <div class="flex flex-col gap-6 w-full max-w-[1600px] mx-auto h-full min-h-0">
+      <UPageHeader
+        description="Отмечайте рабочие отсутствия и просматривайте историю"
+        class="border-none p-0 w-full"
+      >
+        <template #headline>
+          <RouterLink to="/services" class="text-primary hover:underline">
+            Сервисы
+          </RouterLink>
+        </template>
         <template #title>
           <h1 class="text-4xl font-normal font-unbounded">Журнал отсутствия</h1>
         </template>
       </UPageHeader>
 
-      <UAlert v-if="error" color="error" variant="soft" icon="i-lucide-alert-triangle" title="Ошибка загрузки"
-        :description="error" />
+      <UAlert
+        v-if="error"
+        color="error"
+        variant="soft"
+        icon="i-lucide-alert-triangle"
+        title="Ошибка загрузки"
+        :description="error"
+      />
 
-      <UTabs v-if="isAdmin" v-model="adminTab" :items="tabItems" size="xl" class="w-full" />
+      <UTabs
+        v-model="adminTab"
+        :items="tabItems"
+        variant="link"
+        color="primary"
+        size="md"
+        :content="false"
+        class="w-full border-b border-default"
+        :ui="{
+          list: 'w-full gap-1',
+          trigger: 'grow-0',
+        }"
+      />
 
-      <!-- Мои отсутствия (как у обычного пользователя) -->
-      <UContainer v-if="!isAdmin || adminTab === 'my'" class="flex flex-row items-start gap-3 max-w-full w-full h-full min-h-0">
-        <UCard class="overflow-hidden w-96 shrink-0">
-          <template #header>
-            <UContainer class="flex flex-wrap items-start justify-between gap-3">
-              <UContainer class="space-y-1">
-                <h2 class="text-xl font-semibold">Старт отсутствия</h2>
-                <p class="text-sm text-muted">
-                  {{ activeRecord ? 'Есть незавершённая запись — завершите её.' : 'Выберите дату и время начала, затем нажмите «Отметить отсутствие»' }}
-                </p>
-              </UContainer>
-            </UContainer>
-          </template>
+      <!-- Мои отсутствия -->
+      <div
+        v-if="adminTab === 'my'"
+        class="flex flex-col gap-6 w-full min-h-0 flex-1"
+      >
+        <UCard
+          variant="soft"
+          class="w-full rounded-panel"
+          :ui="{
+            root: 'rounded-panel bg-elevated ring-0 border-0 divide-y-0',
+            body: 'flex flex-col gap-4 p-4 sm:p-5',
+          }"
+        >
+          <div class="flex items-center gap-2 text-sm">
+            <span
+              class="size-2 rounded-full shrink-0"
+              :class="activeRecord ? 'bg-warning' : 'bg-success'"
+              aria-hidden="true"
+            />
+            <span :class="activeRecord ? 'text-warning' : 'text-muted'">
+              {{ workplaceStatusText }}
+            </span>
+          </div>
 
-          <UContainer class="flex flex-col gap-3">
-            <div v-if="currentUser && !hasOfo" class="rounded-lg ring-1 ring-warning/40 bg-warning/5 p-3 text-sm text-warning flex items-start gap-2">
-              <UIcon name="i-lucide-alert-triangle" class="size-4 shrink-0 mt-0.5" />
-              <span>У вас не указано подразделение (ОФО). Отметить отсутствие нельзя — обратитесь к администратору, чтобы заполнить ОФО в профиле.</span>
+          <div
+            v-if="currentUser && !hasOfo"
+            class="rounded-lg ring-1 ring-warning/40 bg-warning/5 p-3 text-sm text-warning flex items-start gap-2"
+          >
+            <UIcon name="i-lucide-alert-triangle" class="size-4 shrink-0 mt-0.5" />
+            <span>
+              У вас не указано подразделение (ОФО). Отметить отсутствие нельзя — обратитесь к администратору, чтобы заполнить ОФО в профиле.
+            </span>
+          </div>
+
+          <div class="flex flex-col xl:flex-row xl:items-end gap-4 xl:gap-6">
+            <div class="flex min-w-0 flex-1 flex-col gap-3">
+              <div class="flex items-center gap-1">
+                <h2 class="text-lg font-semibold text-highlighted">
+                  {{ activeRecord ? 'Завершить отсутствие' : 'Начать отсутствие' }}
+                </h2>
+                <UTooltip
+                  :text="activeRecord
+                    ? 'Завершите текущую запись, чтобы начать новую'
+                    : 'Укажите дату, время и причину начала отсутствия'"
+                >
+                  <UButton
+                    type="button"
+                    color="neutral"
+                    variant="ghost"
+                    size="xs"
+                    icon="i-lucide-info"
+                    square
+                    aria-label="Подсказка"
+                  />
+                </UTooltip>
+              </div>
+
+              <div class="flex flex-col lg:flex-row gap-2 lg:items-center">
+                <template v-if="!activeRecord">
+                  <UInput
+                    v-model="startDate"
+                    type="date"
+                    color="neutral"
+                    size="xl"
+                    icon="i-lucide-calendar"
+                    class="w-full lg:w-44"
+                    :disabled="loading"
+                  />
+                  <UInput
+                    v-model="startTime"
+                    type="time"
+                    color="neutral"
+                    size="xl"
+                    icon="i-lucide-clock"
+                    class="w-full lg:w-36"
+                    :disabled="loading"
+                  />
+                  <UInput
+                    v-model="startReason"
+                    color="neutral"
+                    size="xl"
+                    placeholder="Причина отсутствия"
+                    class="w-full min-w-0 flex-1"
+                    :disabled="loading"
+                    @keydown.enter="startAbsence"
+                  />
+                  <UButton
+                    color="primary"
+                    variant="solid"
+                    size="xl"
+                    class="shrink-0 justify-center"
+                    :disabled="!canStartAbsence || loading"
+                    @click="startAbsence"
+                  >
+                    Начать отсутствие
+                  </UButton>
+                </template>
+                <UButton
+                  v-else
+                  color="primary"
+                  variant="solid"
+                  size="xl"
+                  class="w-full lg:w-auto justify-center"
+                  icon="i-lucide-check-circle-2"
+                  @click="openFinish(activeRecord)"
+                >
+                  Завершить отсутствие
+                </UButton>
+              </div>
             </div>
 
-            <UFormField size="xl" label="Дата и время начала">
-              <UInput v-model="startAbsenceAt" class="w-full" type="datetime-local"
-                :disabled="loading || Boolean(activeRecord)" />
-            </UFormField>
+            <div class="hidden xl:block w-px self-stretch bg-default shrink-0" aria-hidden="true" />
 
-            <UButton v-if="activeRecord" color="primary" variant="solid" size="xl" class="w-full justify-center"
-              icon="i-lucide-check-circle-2" @click="openFinish(activeRecord)">
-              Завершить отсутствие
-            </UButton>
-
-            <UButton v-else color="primary" variant="solid" size="xl" class="w-full justify-center"
-              :disabled="!canStartAbsence || loading" icon="i-lucide-play-circle" @click="startAbsence">
-              Отметить отсутствие
-            </UButton>
-          </UContainer>
+            <div class="flex flex-col gap-2 xl:min-w-[280px] xl:shrink-0">
+              <p class="text-sm text-muted capitalize">{{ monthStats.label }}</p>
+              <div class="flex flex-wrap gap-6">
+                <div>
+                  <p class="text-2xl font-semibold text-highlighted tabular-nums leading-none">
+                    {{ monthStats.count }}
+                  </p>
+                  <p class="text-sm text-muted mt-1">отсутствия</p>
+                </div>
+                <div>
+                  <p class="text-2xl font-semibold text-highlighted tabular-nums leading-none">
+                    {{ monthStats.duration }}
+                  </p>
+                  <p class="text-sm text-muted mt-1">общее время отсутствия</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </UCard>
 
+        <section class="flex flex-col gap-4 min-h-0 flex-1" aria-label="История отсутствия">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="flex items-baseline gap-2 min-w-0">
+              <h2 class="text-lg font-semibold text-highlighted">История отсутствия</h2>
+              <span class="text-sm text-muted shrink-0">
+                {{ tableRows.length }}
+                {{ tableRows.length === 1 ? 'запись' : tableRows.length > 1 && tableRows.length < 5 ? 'записи' : 'записей' }}
+              </span>
+            </div>
 
-        <UContainer v-if="loading" class="py-6 text-sm text-muted">Загрузка...</UContainer>
-        <UContainer v-else class="w-full max-w-none flex flex-col gap-4 h-full min-h-0">
-          <UContainer class="flex flex-row gap-3 w-full max-w-none">
-            <UInput v-model="mySearchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline"
-              placeholder="Поиск по причине, дате, статусу…" class="w-full sm:flex-1 sm:min-w-[240px]" />
-            <USelectMenu v-model="filterPeriod" :items="periodOptions" value-key="value" label-key="label" size="xl"
-              color="neutral" placeholder="Период" class="w-full sm:w-52"
-              :content="{ align: 'start', sideOffset: 8 }" />
-            <UButton color="neutral" variant="outline" size="xl" icon="i-lucide-rotate-ccw" class="shrink-0"
-              @click="resetMyFilters">
-              Сбросить
-            </UButton>
-          </UContainer>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <UTooltip text="Сортировка по дате">
+                <UButton
+                  type="button"
+                  color="neutral"
+                  variant="ghost"
+                  size="md"
+                  :icon="mySortDesc ? 'i-lucide-arrow-down-narrow-wide' : 'i-lucide-arrow-up-narrow-wide'"
+                  square
+                  aria-label="Сортировка"
+                  @click="mySortDesc = !mySortDesc"
+                />
+              </UTooltip>
 
-          <UContainer v-if="!tableRows.length" class="py-4 text-sm text-muted">Записей не найдено</UContainer>
+              <UPopover v-model:open="historyFilterOpen">
+                <UButton
+                  type="button"
+                  color="neutral"
+                  :variant="filterPeriod !== 'all' ? 'soft' : 'ghost'"
+                  size="md"
+                  icon="i-lucide-funnel"
+                  square
+                  aria-label="Фильтр периода"
+                />
+                <template #content>
+                  <div class="p-3 w-56">
+                    <USelectMenu
+                      v-model="filterPeriod"
+                      :items="periodOptions"
+                      value-key="value"
+                      label-key="label"
+                      size="md"
+                      color="neutral"
+                      class="w-full"
+                    />
+                  </div>
+                </template>
+              </UPopover>
+
+              <UPopover v-model:open="historySearchOpen">
+                <UButton
+                  type="button"
+                  color="neutral"
+                  :variant="mySearchQuery ? 'soft' : 'ghost'"
+                  size="md"
+                  icon="i-lucide-search"
+                  square
+                  aria-label="Поиск"
+                />
+                <template #content>
+                  <div class="p-3 w-72">
+                    <UInput
+                      v-model="mySearchQuery"
+                      icon="i-lucide-search"
+                      size="md"
+                      color="neutral"
+                      placeholder="Поиск по причине, дате…"
+                      class="w-full"
+                    />
+                  </div>
+                </template>
+              </UPopover>
+
+              <UButton
+                color="neutral"
+                variant="solid"
+                size="md"
+                trailing-icon="i-lucide-download"
+                @click="exportMyHistory"
+              >
+                Выгрузить историю
+              </UButton>
+            </div>
+          </div>
+
+          <p v-if="loading" class="text-sm text-muted py-4">Загрузка…</p>
+
+          <UEmpty
+            v-else-if="!tableRows.length"
+            variant="naked"
+            icon="i-lucide-calendar-off"
+            title="Записей не найдено"
+            description="Начните отсутствие — запись появится в истории."
+            class="w-full py-10"
+          />
+
           <div
             v-else
-            class="flex-1 min-h-0 w-full rounded-lg border border-default overflow-auto"
+            class="flex-1 min-h-0 w-full rounded-panel bg-elevated overflow-auto"
             @scroll.passive="onMyScroll"
           >
             <UTable
               :columns="columns"
               :data="tableRows"
-              class="w-full h-full"
+              class="w-full"
               :ui="{
-                table: 'w-full',
-                th: 'px-4 sm:px-6 py-3 text-xs font-semibold text-muted whitespace-normal',
-                td: 'px-4 sm:px-6 py-3 text-sm align-top',
-                tr: 'hover:bg-muted/40',
+                root: 'bg-transparent',
+                base: 'min-w-full',
+                thead: 'bg-elevated',
+                th: 'px-4 py-3 text-xs font-semibold',
+                td: 'px-4 py-3 text-sm',
+                tr: 'border-b border-default last:border-0',
               }"
             />
 
             <div class="p-4 text-sm text-muted flex items-center justify-center gap-3">
               <span v-if="myLoadingMore">Загрузка…</span>
-              <template v-else>
-                <UButton
-                  v-if="myHasMore"
-                  color="neutral"
-                  variant="soft"
-                  size="sm"
-                  icon="i-lucide-arrow-down"
-                  @click="loadMoreMy"
-                >
-                  Загрузить ещё
-                </UButton>
-              </template>
+              <UButton
+                v-else-if="myHasMore"
+                color="neutral"
+                variant="soft"
+                size="sm"
+                icon="i-lucide-arrow-down"
+                @click="loadMoreMy"
+              >
+                Загрузить ещё
+              </UButton>
             </div>
           </div>
-        </UContainer>
-      </UContainer>
+        </section>
+      </div>
 
+      <!-- Отсутствия подразделения -->
+      <div
+        v-else
+        class="flex flex-col gap-4 w-full min-h-0 flex-1"
+      >
+        <template v-if="!isAdmin">
+          <UEmpty
+            variant="naked"
+            icon="i-lucide-shield"
+            title="Недостаточно прав"
+            description="Просмотр отсутствий подразделения доступен сотрудникам с доступом к журналу."
+            class="w-full py-10"
+          />
+        </template>
 
-      <!-- Отсутствия по ОФО (только таблица) -->
-      <UContainer v-else class="w-full max-w-none flex flex-col gap-4 h-full min-h-0">
-        <UContainer class="flex flex-row gap-3 w-full max-w-none">
-          <UInput v-model="adminSearchQuery" icon="i-lucide-search" size="xl" color="neutral" variant="outline"
-            placeholder="Поиск по ФИО, причине, дате…" class="w-full sm:flex-1 sm:min-w-[240px]" />
-          <USelectMenu v-model="ofoFilter" :items="ofoItems" size="xl" color="neutral" placeholder="ОФО"
-            class="w-full sm:w-64" value-key="value" label-key="label" :content="{ align: 'start', sideOffset: 8 }" />
-          <UButton color="neutral" variant="outline" size="xl" icon="i-lucide-rotate-ccw" class="shrink-0"
-            @click="resetAdminFilters">
-            Сбросить
-          </UButton>
-        </UContainer>
+        <template v-else>
+          <div class="flex flex-col sm:flex-row gap-3 w-full">
+            <UInput
+              v-model="adminSearchQuery"
+              icon="i-lucide-search"
+              size="xl"
+              color="neutral"
+              variant="outline"
+              placeholder="Поиск по ФИО, причине, дате…"
+              class="w-full sm:flex-1 sm:min-w-[240px]"
+            />
+            <USelectMenu
+              v-model="ofoFilter"
+              :items="ofoItems"
+              size="xl"
+              color="neutral"
+              placeholder="Подразделение"
+              class="w-full sm:w-72"
+              value-key="value"
+              label-key="label"
+              :content="{ align: 'start', sideOffset: 8 }"
+            />
+            <UButton
+              color="neutral"
+              variant="outline"
+              size="xl"
+              icon="i-lucide-rotate-ccw"
+              class="shrink-0"
+              @click="resetAdminFilters"
+            >
+              Сбросить
+            </UButton>
+          </div>
 
-        <UContainer v-if="ofoFilter === '_none'" class="py-10 text-sm text-muted">
-          Выберите ОФО, чтобы посмотреть отсутствия сотрудников.
-        </UContainer>
-
-        <UContainer v-else-if="adminInitialLoaded && !adminTableRows.length" class="py-4 text-sm text-muted">
-          Записей не найдено
-        </UContainer>
-
-        <div
-          v-else
-          class="flex-1 min-h-0 w-full rounded-lg border border-default overflow-auto"
-          @scroll.passive="onAdminScroll"
-        >
-          <UTable
-            :columns="adminColumns"
-            :data="adminTableRows"
-            class="w-full"
-            :ui="{
-              table: 'w-full',
-              th: 'px-4 sm:px-6 py-3 text-xs font-semibold text-muted whitespace-normal',
-              td: 'px-4 sm:px-6 py-3 text-sm align-top',
-              tr: 'hover:bg-muted/40',
-            }"
+          <UEmpty
+            v-if="ofoFilter === '_none'"
+            variant="naked"
+            icon="i-lucide-building-2"
+            title="Выберите подразделение"
+            description="Укажите ОФО, чтобы посмотреть отсутствия сотрудников."
+            class="w-full py-10"
           />
 
-          <div class="p-4 text-sm text-muted flex items-center justify-center gap-3">
-            <span v-if="adminLoadingMore">Загрузка…</span>
-            <template v-else>
+          <UEmpty
+            v-else-if="adminInitialLoaded && !adminTableRows.length"
+            variant="naked"
+            icon="i-lucide-calendar-off"
+            title="Записей не найдено"
+            description="В выбранном подразделении пока нет завершённых отсутствий."
+            class="w-full py-10"
+          />
+
+          <div
+            v-else
+            class="flex-1 min-h-0 w-full rounded-panel bg-elevated overflow-auto"
+            @scroll.passive="onAdminScroll"
+          >
+            <UTable
+              :columns="adminColumns"
+              :data="adminTableRows"
+              class="w-full"
+              :ui="{
+                root: 'bg-transparent',
+                base: 'min-w-full',
+                thead: 'bg-elevated',
+                th: 'px-4 py-3 text-xs font-semibold',
+                td: 'px-4 py-3 text-sm',
+                tr: 'border-b border-default last:border-0',
+              }"
+            />
+
+            <div class="p-4 text-sm text-muted flex items-center justify-center gap-3">
+              <span v-if="adminLoadingMore">Загрузка…</span>
               <UButton
-                v-if="adminHasMore"
+                v-else-if="adminHasMore"
                 color="neutral"
                 variant="soft"
                 size="sm"
@@ -1160,22 +1547,30 @@ watch(
               >
                 Загрузить ещё
               </UButton>
-            </template>
+            </div>
           </div>
-        </div>
-      </UContainer>
+        </template>
+      </div>
 
       <USlideover v-model:open="finishOpen" title="Завершение отсутствия">
         <template #body>
           <UContainer class="space-y-4">
-            <UAlert v-if="finishingRecord?.status === 'active'" color="warning" variant="subtle" icon="i-lucide-info"
+            <UAlert
+              v-if="finishingRecord?.status === 'active'"
+              color="warning"
+              variant="subtle"
+              icon="i-lucide-info"
               title="Запись не завершена"
-              description="Пока вы не завершите отсутствие, оно будет отображаться как «Не завершено»." />
+              description="Пока вы не завершите отсутствие, оно будет отображаться как «Не завершено»."
+            />
 
             <UContainer class="grid grid-cols-1 gap-3">
               <UFormField size="xl" label="Начало">
-                <UInput class="w-full" :model-value="finishingRecord ? formatDateTime(finishingRecord.startAt) : ''"
-                  readonly />
+                <UInput
+                  class="w-full"
+                  :model-value="finishingRecord ? formatDateTime(finishingRecord.startAt) : ''"
+                  readonly
+                />
               </UFormField>
 
               <UFormField size="xl" label="Время окончания">
@@ -1183,34 +1578,72 @@ watch(
               </UFormField>
 
               <UFormField size="xl" label="Причина">
-                <UTextarea class="w-full" v-model="finishForm.reason" placeholder="Например: К врачу, работа вне офиса…"
-                  :rows="4" />
+                <UTextarea
+                  class="w-full"
+                  v-model="finishForm.reason"
+                  placeholder="Например: К врачу, работа вне офиса…"
+                  :rows="4"
+                />
 
                 <UContainer class="mt-2 flex flex-wrap gap-2">
-                  <UButton v-for="p in reasonPresets" :key="p" color="neutral" variant="soft" size="md"
-                    @click="finishForm.reason = p">
+                  <UButton
+                    v-for="p in reasonPresets"
+                    :key="p"
+                    color="neutral"
+                    variant="soft"
+                    size="md"
+                    @click="finishForm.reason = p"
+                  >
                     {{ p }}
                   </UButton>
                 </UContainer>
               </UFormField>
             </UContainer>
 
-            <UAlert v-if="finishError" color="error" variant="subtle" icon="i-lucide-alert-circle"
-              :description="finishError" />
+            <UAlert
+              v-if="finishError"
+              color="error"
+              variant="subtle"
+              icon="i-lucide-alert-circle"
+              :description="finishError"
+            />
 
             <p v-if="finishingRecord" class="text-md text-muted">
-              Длительность: <span class="tabular-nums">{{ formatDurationRu(diffMs(finishingRecord.startAt,
-                parseDateTimeInputValue(finishForm.endAt) || finishingRecord.startAt)) }}</span>
+              Длительность:
+              <span class="tabular-nums">
+                {{
+                  formatDurationRu(
+                    diffMs(
+                      finishingRecord.startAt,
+                      parseDateTimeInputValue(finishForm.endAt) || finishingRecord.startAt,
+                    ),
+                  )
+                }}
+              </span>
             </p>
           </UContainer>
         </template>
 
         <template #footer>
           <UContainer class="flex justify-between gap-3 items-center w-full">
-            <UButton color="neutral" variant="outline" size="xl" class="w-full justify-center"
-              @click="finishOpen = false">Пока не завершать</UButton>
-            <UButton color="primary" size="xl" class="w-full justify-center" :disabled="!canFinish"
-              @click="finishAbsence">Завершить</UButton>
+            <UButton
+              color="neutral"
+              variant="outline"
+              size="xl"
+              class="w-full justify-center"
+              @click="finishOpen = false"
+            >
+              Пока не завершать
+            </UButton>
+            <UButton
+              color="primary"
+              size="xl"
+              class="w-full justify-center"
+              :disabled="!canFinish"
+              @click="finishAbsence"
+            >
+              Завершить
+            </UButton>
           </UContainer>
         </template>
       </USlideover>
@@ -1237,25 +1670,48 @@ watch(
               </UFormField>
 
               <UFormField size="xl" label="Причина">
-                <UTextarea class="w-full" v-model="editForm.reason" placeholder="Причина отсутствия" :rows="4" />
+                <UTextarea
+                  class="w-full"
+                  v-model="editForm.reason"
+                  placeholder="Причина отсутствия"
+                  :rows="4"
+                />
               </UFormField>
             </UContainer>
 
-            <UAlert v-if="editError" color="error" variant="subtle" icon="i-lucide-alert-circle" :description="editError" />
+            <UAlert
+              v-if="editError"
+              color="error"
+              variant="subtle"
+              icon="i-lucide-alert-circle"
+              :description="editError"
+            />
           </UContainer>
         </template>
 
         <template #footer>
           <UContainer class="flex justify-between gap-3 items-center w-full">
-            <UButton color="neutral" variant="outline" size="xl" class="w-full justify-center" @click="editOpen = false">
+            <UButton
+              color="neutral"
+              variant="outline"
+              size="xl"
+              class="w-full justify-center"
+              @click="editOpen = false"
+            >
               Отмена
             </UButton>
-            <UButton color="primary" size="xl" class="w-full justify-center" :disabled="!canSaveEdit" @click="saveEdit">
+            <UButton
+              color="primary"
+              size="xl"
+              class="w-full justify-center"
+              :disabled="!canSaveEdit"
+              @click="saveEdit"
+            >
               Сохранить
             </UButton>
           </UContainer>
         </template>
       </USlideover>
-    </UContainer>
+    </div>
   </UMain>
 </template>

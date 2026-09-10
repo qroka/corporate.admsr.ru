@@ -60,6 +60,8 @@ switch ($method) {
             $row = $stmt->fetch();
             if (!$row) jsonError(404, 'Альбом не найден');
             jsonOk(fmtAlbum($row));
+        } elseif (isset($_GET['limit']) || array_key_exists('cursor', $_GET)) {
+            jsonOk(fetchGalleryCursorPage($pdo, $_GET));
         } else {
             $stmt = $pdo->query(
                 "SELECT g.id, g.name, g.description, g.date,
@@ -144,6 +146,114 @@ function fmtAlbum(array $r): array
         'date'        => isset($r['date']) ? substr($r['date'], 0, 10) : '',
         'cover'       => $r['cover'] ?? null,
     ];
+}
+
+/**
+ * Cursor page for album list.
+ * Sort: date DESC NULLS LAST, id DESC.
+ */
+function fetchGalleryCursorPage(PDO $pdo, array $get): array
+{
+    $limit = isset($get['limit']) ? (int)$get['limit'] : 12;
+    if ($limit < 1) $limit = 12;
+    if ($limit > 48) $limit = 48;
+
+    $cond   = [];
+    $params = [];
+
+    if (!empty($get['search'])) {
+        $cond[] = '(g.name ILIKE :search OR g.description ILIKE :search)';
+        $params[':search'] = '%' . trim((string)$get['search']) . '%';
+    }
+
+    $cursorRaw = isset($get['cursor']) ? trim((string)$get['cursor']) : '';
+    if ($cursorRaw !== '') {
+        $cursor = decodeGalleryCursor($cursorRaw);
+        if ($cursor === null) {
+            jsonError(400, 'Некорректный cursor');
+        }
+        // date DESC, id DESC (NULL dates last)
+        $cond[] = '(
+            COALESCE(g.date, DATE \'0001-01-01\') < :cursor_date
+            OR (COALESCE(g.date, DATE \'0001-01-01\') = :cursor_date AND g.id < :cursor_id)
+        )';
+        $params[':cursor_date'] = $cursor['date'];
+        $params[':cursor_id'] = $cursor['id'];
+    }
+
+    $where = $cond ? (' WHERE ' . implode(' AND ', $cond)) : '';
+    $fetchLimit = $limit + 1;
+
+    $sql =
+        "SELECT g.id, g.name, g.description, g.date,
+                (SELECT image_small_url FROM public.gallery_base
+                 WHERE album_id = g.id ORDER BY id ASC LIMIT 1) AS cover
+         FROM public.gallery g" .
+        $where .
+        ' ORDER BY g.date DESC NULLS LAST, g.id DESC' .
+        ' LIMIT :fetch_limit';
+
+    $stmt = $pdo->prepare($sql);
+    foreach ($params as $key => $value) {
+        if ($key === ':cursor_id') {
+            $stmt->bindValue($key, (int)$value, PDO::PARAM_INT);
+        } else {
+            $stmt->bindValue($key, $value);
+        }
+    }
+    $stmt->bindValue(':fetch_limit', $fetchLimit, PDO::PARAM_INT);
+    $stmt->execute();
+    $rows = $stmt->fetchAll();
+
+    $hasMore = count($rows) > $limit;
+    if ($hasMore) {
+        $rows = array_slice($rows, 0, $limit);
+    }
+
+    $items = array_map('fmtAlbum', $rows);
+    $nextCursor = null;
+    if ($hasMore && count($rows) > 0) {
+        $last = $rows[count($rows) - 1];
+        $date = isset($last['date']) && $last['date'] !== null
+            ? substr((string)$last['date'], 0, 10)
+            : '0001-01-01';
+        $nextCursor = encodeGalleryCursor($date, (int)$last['id']);
+    }
+
+    return [
+        'items' => $items,
+        'nextCursor' => $nextCursor,
+        'hasMore' => $hasMore,
+    ];
+}
+
+function encodeGalleryCursor(string $date, int $id): string
+{
+    $payload = json_encode(['d' => $date, 'i' => $id], JSON_UNESCAPED_UNICODE);
+    return rtrim(strtr(base64_encode($payload !== false ? $payload : ''), '+/', '-_'), '=');
+}
+
+/** @return array{date: string, id: int}|null */
+function decodeGalleryCursor(string $raw): ?array
+{
+    $b64 = strtr($raw, '-_', '+/');
+    $pad = strlen($b64) % 4;
+    if ($pad > 0) {
+        $b64 .= str_repeat('=', 4 - $pad);
+    }
+    $json = base64_decode($b64, true);
+    if ($json === false || $json === '') return null;
+
+    $data = json_decode($json, true);
+    if (!is_array($data)) return null;
+
+    $date = isset($data['d']) ? trim((string)$data['d']) : '';
+    $id = isset($data['i']) ? (int)$data['i'] : 0;
+
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) return null;
+    if ($id < 1) return null;
+
+    return ['date' => $date, 'id' => $id];
 }
 
 function jsonBody(): array

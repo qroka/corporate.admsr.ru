@@ -10,7 +10,6 @@ import { attachAbsenceStorageSync, hasActiveAbsence } from '../stores/absenceJou
 import { useSectionAccess } from '../composables/useSectionAccess';
 import { apiSessionUpload } from '../composables/useAuthSession';
 import { useHeaderUser } from '../composables/useHeaderUser';
-import { useOfoData } from '../composables/useOfoData';
 import { useAppToast } from '../composables/useAppToast';
 import LearningHomeWidget from './Courses/components/LearningHomeWidget.vue';
 import HomeNewsCard from '../components/home/HomeNewsCard.vue';
@@ -23,8 +22,6 @@ ensureSectionAccess();
 const canEditBirthdays = computed(() => canEditSection('birthdays'));
 
 const { profile, headerName } = useHeaderUser();
-const { ofoRows, ensureDirectoryLoaded } = useOfoData();
-ensureDirectoryLoaded();
 
 const greetingTitle = computed(() => {
   const hour = new Date().getHours();
@@ -39,13 +36,6 @@ const greetingTitle = computed(() => {
   return `${prefix}, ${name}!`;
 });
 
-const ofoTabLabel = computed(() => {
-  const id = String(profile.value?.ofo ?? '').trim();
-  if (!id) return 'Моё ОФО';
-  const row = ofoRows.value.find((r) => String(r.id) === id);
-  return row?.title?.trim() || 'Моё ОФО';
-});
-
 type HomeService = {
   id: string;
   label: string;
@@ -58,26 +48,26 @@ const homeServices: HomeService[] = [
   {
     id: 'absence',
     label: 'Журнал отсутствия',
-    icon: 'i-lucide-brain-circuit',
+    icon: 'i-lucide-calendar-off',
     to: '/absence-journal',
   },
   {
     id: 'applications',
     label: 'Заявки',
-    icon: 'i-lucide-brain-circuit',
+    icon: 'i-lucide-file-text',
     to: '/applications',
   },
   {
     id: 'sed',
     label: 'СЭД',
-    icon: 'i-lucide-brain-circuit',
+    icon: 'i-lucide-file-stack',
     action: 'sed',
   },
   {
     id: 'knowledge',
-    label: 'Справочник',
-    icon: 'i-lucide-brain-circuit',
-    to: '/knowledge-base',
+    label: 'Документация',
+    icon: 'i-lucide-book-open',
+    to: '/documentation',
   },
   {
     id: 'all',
@@ -194,10 +184,30 @@ function newsPreviewText(html: string, maxLen: number): string {
   return plain.length > maxLen ? `${plain.slice(0, maxLen)}…` : plain;
 }
 
-function ofoCategoryFilter(): string | null {
-  const label = ofoTabLabel.value.trim();
-  if (!label || label.toLowerCase() === 'моё офо') return null;
-  return label;
+const DEPARTMENT_TABS = [
+  {
+    value: 'municipal',
+    label: 'Отдел муниципальной службы',
+  },
+  {
+    value: 'hr',
+    label: 'Отдел кадров',
+  },
+  {
+    value: 'motivation',
+    label: 'Отдел развития и мотивации персонала',
+  },
+] as const;
+
+type DepartmentTabValue = (typeof DEPARTMENT_TABS)[number]['value'];
+
+function isDepartmentTab(tab: string): tab is DepartmentTabValue {
+  return DEPARTMENT_TABS.some((d) => d.value === tab);
+}
+
+function departmentCategoryFilter(tab: string): string | null {
+  const found = DEPARTMENT_TABS.find((d) => d.value === tab);
+  return found?.label ?? null;
 }
 
 const newsItems = computed<NewsFeedItem[]>(() =>
@@ -221,27 +231,19 @@ const newsItems = computed<NewsFeedItem[]>(() =>
 
 const newsTabItems = computed<TabsItem[]>(() => [
   { label: 'Лента новостей', value: 'feed', class: 'shrink-0' },
-  {
-    label: ofoTabLabel.value,
-    value: 'ofo',
+  ...DEPARTMENT_TABS.map((d) => ({
+    label: d.label,
+    value: d.value,
     class: 'min-w-0',
     ui: { label: 'truncate' },
-  },
+  })),
 ]);
 
 const { isLiked: isNewsLiked, toggleLike: toggleNewsLike } = useNewsReactions();
 
-/** Вкладка ОФО без привязки категории — пустой экран, стор ленты не трогаем. */
-const ofoUnbound = computed(
-  () => newsTab.value === 'ofo' && !ofoCategoryFilter(),
-);
-
-const displayNewsItems = computed(() =>
-  ofoUnbound.value ? [] : newsItems.value,
-);
+const displayNewsItems = computed(() => newsItems.value);
 
 const feedSentinelEnabled = computed(() => {
-  if (ofoUnbound.value) return false;
   if (feedLoading.value || feedError.value || !feedHasMore.value) return false;
   return true;
 });
@@ -256,9 +258,13 @@ useFeedSentinel({
   rootMargin: '600px 0px',
 });
 
+if (newsTab.value === 'ofo') {
+  newsTab.value = 'feed';
+}
+
 watch(newsTab, (tab) => {
-  if (tab === 'ofo') {
-    const cat = ofoCategoryFilter();
+  if (isDepartmentTab(tab)) {
+    const cat = departmentCategoryFilter(tab);
     if (!cat) return;
     void loadInitial({ category: cat, force: true });
     return;
@@ -293,7 +299,9 @@ function retryFeed() {
     return;
   }
   void refresh({
-    category: newsTab.value === 'ofo' ? ofoCategoryFilter() : null,
+    category: isDepartmentTab(newsTab.value)
+      ? departmentCategoryFilter(newsTab.value)
+      : null,
   });
 }
 
@@ -385,13 +393,10 @@ onMounted(() => {
   attachAbsenceStorageSync();
   void fetchHomeEvents();
 
-  const cat =
-    newsTab.value === 'ofo' ? ofoCategoryFilter() : null;
-  if (!(newsTab.value === 'ofo' && !cat)) {
-    void loadInitial({ category: cat }).then(() => restoreHomeScroll());
-  } else {
-    void restoreHomeScroll();
-  }
+  const cat = isDepartmentTab(newsTab.value)
+    ? departmentCategoryFilter(newsTab.value)
+    : null;
+  void loadInitial({ category: cat }).then(() => restoreHomeScroll());
 
   const el = homeScrollEl.value;
   if (el) el.addEventListener('scroll', onHomeScroll, { passive: true });
@@ -407,7 +412,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full max-w-none min-w-0 h-full min-h-0 max-h-full overflow-hidden">
+  <UMain class="flex flex-1 flex-col w-full min-w-0 h-full min-h-0 max-h-full overflow-hidden">
     <UAlert
       v-if="hasActiveAbsence"
       color="primary"
@@ -429,14 +434,14 @@ onUnmounted(() => {
 
     <div
       ref="homeScrollEl"
-      class="flex w-full max-w-none flex-1 flex-col gap-2 min-h-0 overflow-y-auto scrollbar-hide"
+      class="flex w-full flex-1 flex-col gap-2 min-h-0 overflow-y-auto scrollbar-hide"
     >
       <UPageHeader
         :title="greetingTitle"
-        class="border-none py-4 px-0 w-full max-w-none"
+        class="border-none py-4 px-0 w-full"
         :ui="{
-          root: 'w-full max-w-none',
-          container: 'w-full max-w-none mx-0',
+          root: 'w-full',
+          container: 'w-full mx-0',
           wrapper: 'w-full',
           title: 'text-2xl font-bold leading-8 text-highlighted',
         }"
@@ -483,14 +488,6 @@ onUnmounted(() => {
             :on-click="svc.action === 'sed' ? onSedClick : undefined"
             variant="soft"
             class="bg-elevated"
-            :ui="{
-              root: 'h-[92px] cursor-pointer rounded-panel ring-0 border-0 bg-elevated',
-              container: 'items-center justify-center text-center gap-2 p-4 h-full',
-              wrapper: 'items-center',
-              leading: 'mb-0',
-              leadingIcon: svc.id === 'all' ? 'size-8 text-muted' : 'size-8 text-primary',
-              title: 'text-sm font-semibold leading-5 text-highlighted',
-            }"
           />
         </div>
       </section>
@@ -591,11 +588,11 @@ onUnmounted(() => {
             </div>
 
             <UEmpty
-              v-else-if="newsTab === 'ofo'"
+              v-else-if="isDepartmentTab(newsTab)"
               variant="naked"
               icon="i-lucide-building-2"
-              title="Нет новостей ОФО"
-              description="У новостей пока нет привязки к ОФО. Вкладка покажет материалы, если категория совпадёт с названием вашего подразделения."
+              title="Нет новостей отдела"
+              description="Вкладка покажет материалы, если категория новости совпадёт с названием отдела."
               class="w-full py-10"
             />
             <UEmpty
@@ -625,7 +622,20 @@ onUnmounted(() => {
           >
             <template #header>
               <div class="flex items-center justify-between gap-1">
-                <h2 class="text-lg font-bold leading-7 text-highlighted truncate">Мероприятия</h2>
+                <div class="flex items-center gap-1 min-w-0">
+                  <h2 class="text-lg font-bold leading-7 text-highlighted truncate">Мероприятия</h2>
+                  <UTooltip text="Ближайшие корпоративные мероприятия">
+                    <UButton
+                      type="button"
+                      color="neutral"
+                      variant="ghost"
+                      size="xs"
+                      icon="i-lucide-info"
+                      square
+                      aria-label="О мероприятиях"
+                    />
+                  </UTooltip>
+                </div>
                 <UButton
                   to="/events"
                   color="neutral"
@@ -667,7 +677,20 @@ onUnmounted(() => {
           >
             <template #header>
               <div class="flex items-center justify-between gap-1">
-                <h2 class="text-lg font-bold leading-7 text-highlighted truncate">Дни рождения коллег</h2>
+                <div class="flex items-center gap-1 min-w-0">
+                  <h2 class="text-lg font-bold leading-7 text-highlighted truncate">Дни рождения коллег</h2>
+                  <UTooltip text="Именинники на сегодня и ближайшие дни">
+                    <UButton
+                      type="button"
+                      color="neutral"
+                      variant="ghost"
+                      size="xs"
+                      icon="i-lucide-info"
+                      square
+                      aria-label="О днях рождения"
+                    />
+                  </UTooltip>
+                </div>
                 <UButton
                   to="/birthdays"
                   color="neutral"
@@ -742,21 +765,23 @@ onUnmounted(() => {
             }"
           >
             <template #header>
-              <div class="flex items-center justify-between gap-1">
+              <div class="flex items-center gap-1 min-w-0">
                 <h2 class="text-lg font-bold leading-7 text-highlighted truncate">Новые сотрудники</h2>
-                <UButton
-                  to="/newcomers"
-                  color="neutral"
-                  variant="ghost"
-                  size="xs"
-                  icon="i-lucide-arrow-up-right"
-                  square
-                  aria-label="Открыть «Новичкам»"
-                />
+                <UTooltip text="Недавно появившиеся в коллективе сотрудники">
+                  <UButton
+                    type="button"
+                    color="neutral"
+                    variant="ghost"
+                    size="xs"
+                    icon="i-lucide-info"
+                    square
+                    aria-label="О новых сотрудниках"
+                  />
+                </UTooltip>
               </div>
             </template>
             <p class="text-sm text-muted">
-              Раздел для новых сотрудников в разработке.
+              Здесь будут отображаться новые сотрудники.
             </p>
           </UCard>
         </aside>

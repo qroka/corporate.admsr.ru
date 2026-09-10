@@ -48,9 +48,22 @@ function open(e: EnrollmentSummary) {
   >
     <template #header>
       <div class="flex items-center justify-between gap-1">
-        <h2 id="learning-home-title" class="text-lg font-bold leading-7 text-highlighted truncate">
-          Моё обучение
-        </h2>
+        <div class="flex items-center gap-1 min-w-0">
+          <h2 id="learning-home-title" class="text-lg font-bold leading-7 text-highlighted truncate">
+            Моё обучение
+          </h2>
+          <UTooltip text="Активные и просроченные курсы">
+            <UButton
+              type="button"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              icon="i-lucide-info"
+              square
+              aria-label="Об обучении"
+            />
+          </UTooltip>
+        </div>
         <UButton
           to="/courses"
           color="neutral"

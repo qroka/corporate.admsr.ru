@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useCoursesStore, type EnrollmentSummary } from '../../../composables/useCoursesStore';
@@ -154,7 +154,7 @@ function ctaLabel(e: EnrollmentSummary) {
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full max-w-full min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
+  <UMain class="flex flex-1 flex-col w-full min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
     <div class="flex items-center justify-between gap-3 flex-wrap shrink-0 min-w-0">
       <h1 class="text-2xl font-medium text-highlighted">Мои курсы</h1>
       <div class="flex items-center gap-2 flex-wrap">
@@ -179,7 +179,7 @@ function ctaLabel(e: EnrollmentSummary) {
 
     <section class="flex-1 min-h-0 min-w-0 w-full max-w-full flex flex-col">
       <div class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden p-1">
-        <!-- ── Назначенные мне ─────────────────────────────────────────── -->
+        <!-- -- Назначенные мне ------------------------------------------- -->
         <template v-if="tab === 'mine'">
           <div v-if="loadingMine" class="flex flex-col gap-3">
             <USkeleton v-for="n in 4" :key="n" class="h-20 w-full rounded-xl" />
@@ -209,7 +209,7 @@ function ctaLabel(e: EnrollmentSummary) {
             </template>
           </UEmpty>
 
-          <div v-else class="flex flex-col gap-3 w-full max-w-full min-w-0">
+          <div v-else class="flex flex-col gap-3 w-full min-w-0">
             <section v-if="overdue.length" class="flex flex-col gap-2 min-w-0">
               <h2 class="text-lg font-medium text-error">Просроченные</h2>
               <div
@@ -287,9 +287,9 @@ function ctaLabel(e: EnrollmentSummary) {
           </div>
         </template>
 
-        <!-- ── Управление курсами (админ) ──────────────────────────────── -->
+        <!-- -- Управление курсами (админ) -------------------------------- -->
         <template v-else-if="tab === 'manage' && isCourseAdmin">
-          <div class="flex flex-col gap-3 w-full max-w-full min-w-0">
+          <div class="flex flex-col gap-3 w-full min-w-0">
             <div v-if="loadingManage" class="flex flex-col gap-3">
               <USkeleton v-for="n in 4" :key="n" class="h-20 w-full rounded-xl" />
             </div>

@@ -1,6 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { onMounted } from 'vue';
 import { useSidebarNavItems } from '../composables/usePortalNavigation';
 import { attachAbsenceStorageSync } from '../stores/absenceJournal';
 
@@ -13,17 +12,11 @@ defineProps({
 
 defineEmits(['toggle-theme']);
 
-const router = useRouter();
 const { mainItems, footerItems } = useSidebarNavItems();
-const onboardingProgress = ref(60);
 
 onMounted(() => {
   attachAbsenceStorageSync();
 });
-
-function goNextStep() {
-  router.push({ name: 'onboarding' });
-}
 </script>
 
 <template>
@@ -93,34 +86,6 @@ function goNextStep() {
         v-if="!collapsed"
         class="mt-auto flex flex-col gap-2 w-full"
       >
-        <div
-          class="flex flex-col gap-2 rounded-lg px-4 py-2.5 bg-primary/20"
-        >
-          <p class="text-sm font-medium text-highlighted">
-            Прогресс изучения портала
-          </p>
-          <UProgress
-            v-model="onboardingProgress"
-            color="primary"
-            size="md"
-            :ui="{ base: 'bg-accented' }"
-          />
-          <p class="text-xs font-medium text-muted">
-            Курс • {{ onboardingProgress }}% завершено
-          </p>
-          <UButton
-            color="neutral"
-            variant="solid"
-            size="xs"
-            block
-            trailing-icon="i-lucide-move-right"
-            class="bg-inverted text-inverted hover:bg-inverted/90"
-            @click="goNextStep"
-          >
-            Следующий шаг
-          </UButton>
-        </div>
-
         <UNavigationMenu
           :items="footerItems"
           orientation="vertical"

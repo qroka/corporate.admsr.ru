@@ -242,7 +242,7 @@ function fmtDate(iso?: string): string {
 </script>
 
 <template>
-  <div class="flex flex-col flex-1 min-h-0 w-full gap-3 pt-1">
+  <div class="flex flex-col flex-1 min-h-0 w-full max-w-[1600px] mx-auto gap-3 pt-1">
     <!-- Тулбар: разделы + шаги в одну строку -->
     <div class="flex items-center gap-3 flex-wrap">
       <UTabs v-model="section" :items="sectionItems" size="md" class="w-fit" />

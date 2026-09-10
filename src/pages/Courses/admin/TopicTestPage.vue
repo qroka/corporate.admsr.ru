@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import type { BreadcrumbItem } from '@nuxt/ui';
@@ -116,7 +116,7 @@ async function onSave() {
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full max-w-full min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
+  <UMain class="flex flex-1 flex-col w-full min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
     <UBreadcrumb :items="crumbs" />
 
     <div v-if="loading" class="flex flex-col gap-3">

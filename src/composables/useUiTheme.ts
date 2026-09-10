@@ -1,4 +1,5 @@
 export const PRIMARY_COLORS = [
+  'white',
   'red',
   'orange',
   'amber',
@@ -31,6 +32,7 @@ export const NEUTRAL_COLORS = [
 ] as const;
 
 export const PRIMARY_COLOR_LABELS: Record<(typeof PRIMARY_COLORS)[number], string> = {
+  white: 'Белый / чёрный',
   red: 'Красный',
   orange: 'Оранжевый',
   amber: 'Янтарный',
@@ -64,11 +66,6 @@ export const NEUTRAL_COLOR_LABELS: Record<(typeof NEUTRAL_COLORS)[number], strin
 
 export const FONT_OPTIONS = [
   {
-    id: 'public-sans',
-    label: 'Public Sans',
-    value: "'Public Sans', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-  },
-  {
     id: 'inter',
     label: 'Inter',
     value: "'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
@@ -84,9 +81,9 @@ export const FONT_OPTIONS = [
     value: "'Comic Sans MS', 'Comic Sans', 'Chalkboard SE', 'Comic Neue', cursive",
   },
   {
-    id: 'system',
-    label: 'Системный',
-    value: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    id: 'montserrat',
+    label: 'Montserrat',
+    value: "'Montserrat', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
   },
 ] as const;
 
@@ -123,7 +120,7 @@ const STORAGE_KEY = 'ui-theme-selection:v1';
 export const DEFAULT_THEME: UiThemeSelection = {
   primary: 'emerald',
   neutral: 'zinc',
-  font: 'public-sans',
+  font: 'inter',
   radius: 'md',
 };
 
@@ -208,6 +205,7 @@ export function applyUiTheme(selection: UiThemeSelection) {
 
   const font = getFontOption(theme.font);
   el.style.setProperty('--font-sans', font.value);
+  el.dataset.uiFont = theme.font;
 
   const radius = getRadiusOption(theme.radius);
   el.style.setProperty('--ui-radius', radius.value);

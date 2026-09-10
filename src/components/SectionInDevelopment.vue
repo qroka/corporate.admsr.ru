@@ -6,7 +6,7 @@ defineProps<{
 </script>
 
 <template>
-  <UMain class="flex flex-1 min-h-0 h-full w-full mx-0">
+  <UMain class="flex flex-1 min-h-0 h-full w-full">
     <UContainer class="flex flex-col gap-4 w-full max-w-none min-h-0 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0">
       <UPageHeader title="" class="border-none p-0 w-full">
         <template #title>

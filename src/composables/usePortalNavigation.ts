@@ -170,10 +170,9 @@ const BREADCRUMB_ICONS: Record<string, string> = {
   'absence-journal': 'i-lucide-calendar-off',
   gallery: 'i-lucide-images',
   'gallery-album': 'i-lucide-images',
-  newcomers: 'i-lucide-sparkles',
-  culture: 'i-lucide-users',
   birthdays: 'i-lucide-cake',
-  'knowledge-base': 'i-lucide-book-open',
+  documentation: 'i-lucide-book-open',
+  feedback: 'i-lucide-message-square-more',
   tests: 'i-lucide-clipboard-list',
   'tests-old': 'i-lucide-clipboard-list',
   'test-link': 'i-lucide-clipboard-list',
@@ -201,7 +200,6 @@ const BREADCRUMB_ICONS: Record<string, string> = {
   'admin-course-final-test-q-create': 'i-lucide-clipboard-list',
   'admin-course-final-test-q-edit': 'i-lucide-clipboard-list',
   profile: 'i-lucide-user',
-  chatbot: 'i-lucide-bot',
   admin: 'i-lucide-layout-dashboard',
   'personnel-reserve': 'i-lucide-users-round',
   'development-motivation': 'i-lucide-trending-up',
@@ -219,7 +217,7 @@ function iconForRouteName(name: string): string {
   return 'i-lucide-file';
 }
 
-/** Хлебные крошки тулбара: всегда «Главная», затем цепочка раздела / текущей страницы. */
+/** Хлебные крошки тулбара: всегда «Рабочий стол», затем цепочка раздела / текущей страницы. */
 export function usePortalBreadcrumbs() {
   const route = useRoute();
   const router = useRouter();
@@ -227,7 +225,7 @@ export function usePortalBreadcrumbs() {
   return computed<BreadcrumbItem[]>(() => {
     if (route.name === 'home' || route.name === 'kiosk') {
       return [{
-        label: 'Главная',
+        label: 'Рабочий стол',
         icon: 'i-lucide-grip',
         ui: { linkLeadingIcon: 'text-primary' },
       }];
@@ -235,7 +233,7 @@ export function usePortalBreadcrumbs() {
 
     const items: BreadcrumbItem[] = [
       {
-        label: 'Главная',
+        label: 'Рабочий стол',
         icon: 'i-lucide-grip',
         to: { name: 'home' } satisfies RouteLocationRaw,
       },
@@ -286,14 +284,13 @@ export function useSidebarNavItems() {
       label: 'Мероприятия',
       icon: 'i-lucide-calendar',
       to: '/events',
-      badge: '4',
       active: isRouteMatch(route.name, ['events', 'event-details']),
     },
     {
       label: 'Сервисы',
       icon: 'i-lucide-layout-grid',
       to: '/services',
-      defaultOpen: isRouteMatch(route.name, ['services', 'absence-journal']),
+      defaultOpen: true,
       active: isRouteMatch(route.name, ['services', 'absence-journal']),
       onSelect: () => {
         void router.push({ name: 'services' });
@@ -320,28 +317,10 @@ export function useSidebarNavItems() {
       active: isRouteMatch(route.name, ['gallery']),
     },
     {
-      label: 'Новичкам',
-      icon: 'i-lucide-sparkles',
-      to: '/newcomers',
-      active: route.name === 'newcomers',
-    },
-    {
-      label: 'Корпоративная культура',
-      icon: 'i-lucide-users',
-      to: '/culture',
-      active: route.name === 'culture',
-    },
-    {
       label: 'Дни рождения',
       icon: 'i-lucide-cake',
       to: '/birthdays',
       active: route.name === 'birthdays',
-    },
-    {
-      label: 'Справочник',
-      icon: 'i-lucide-book-open',
-      to: '/knowledge-base',
-      active: route.name === 'knowledge-base',
     },
     {
       label: 'Формы',
@@ -369,13 +348,13 @@ export function useSidebarNavItems() {
     {
       label: 'Обратная связь',
       icon: 'i-lucide-message-square-more',
-      to: '/chatbot',
+      to: '/feedback',
       trailingIcon: 'i-lucide-arrow-up-right',
     },
     {
       label: 'Документация',
       icon: 'i-lucide-book-open',
-      to: '/newcomers',
+      to: '/documentation',
       trailingIcon: 'i-lucide-arrow-up-right',
     },
   ]);
@@ -396,15 +375,13 @@ export function usePortalSearchGroups() {
         { label: 'Журнал отсутствия', icon: 'i-lucide-calendar-off', to: '/absence-journal' },
         { label: 'Новости', icon: 'i-lucide-newspaper', to: '/news' },
         { label: 'Фотогалерея', icon: 'i-lucide-images', to: '/gallery' },
-        { label: 'Новичкам', icon: 'i-lucide-sparkles', to: '/newcomers' },
-        { label: 'Корпоративная культура', icon: 'i-lucide-users', to: '/culture' },
         { label: 'Дни рождения', icon: 'i-lucide-cake', to: '/birthdays' },
         { label: 'Заявки', icon: 'i-lucide-file-text', to: '/applications' },
-        { label: 'Справочник', icon: 'i-lucide-book-open', to: '/knowledge-base' },
+        { label: 'Документация', icon: 'i-lucide-book-open', to: '/documentation' },
+        { label: 'Обратная связь', icon: 'i-lucide-message-square-more', to: '/feedback' },
         { label: 'Формы', icon: 'i-lucide-clipboard-list', to: '/tests' },
         { label: 'Обучение', icon: 'i-lucide-graduation-cap', to: '/courses' },
         { label: 'Профиль', icon: 'i-lucide-user', to: '/profile' },
-        { label: 'AI Ассистент', icon: 'i-lucide-bot', to: '/chatbot' },
       ],
     },
   ]);

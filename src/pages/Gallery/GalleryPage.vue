@@ -7,8 +7,12 @@ import { apiSessionFetch, apiSessionUpload } from '../../composables/useAuthSess
 import { useGalleryData } from '../../composables/useGalleryData';
 import { useAppToast } from '../../composables/useAppToast';
 import { formatDateRuLong } from '../../utils/date';
+import { useCursorFeed } from '../../composables/useCursorFeed';
+import { useFeedSentinel } from '../../composables/useFeedSentinel';
 
 type Album = BlogPostProps & { id: string; date: string; rawDate: string };
+
+const GALLERY_PAGE_LIMIT = 12;
 
 /** Видео не может быть обложкой <img> — отличаем по .mp4 и подставляем заглушку. */
 function isVideo(url: string): boolean {
@@ -34,8 +38,67 @@ function albumCover(image?: string): string {
 const route = useRoute();
 const isKiosk = computed(() => route.matched?.some((r) => r.meta?.kiosk));
 
-const { loading, error, albums: albumRecords, ensureLoaded, reload } = useGalleryData();
-ensureLoaded();
+const { reload: reloadGalleryCache } = useGalleryData();
+
+const searchQuery = ref('');
+const searchForApi = ref('');
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+watch(searchQuery, (q) => {
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    searchForApi.value = q.trim();
+  }, 300);
+});
+
+const sortKey = ref<'newest' | 'oldest' | 'title-asc' | 'title-desc'>('newest');
+
+const sortOptions = [
+  { value: 'newest', label: 'Сначала новые' },
+  { value: 'oldest', label: 'Сначала старые' },
+  { value: 'title-asc', label: 'По названию (А‑Я)' },
+  { value: 'title-desc', label: 'По названию (Я‑А)' },
+];
+
+function mapAlbum(raw: any): Album {
+  const rawDate = String(raw?.date ?? '').slice(0, 10);
+  return {
+    id: String(raw.id),
+    title: String(raw.name ?? ''),
+    description: String(raw.description ?? ''),
+    rawDate,
+    date: formatDateRuLong(rawDate) || rawDate,
+    to: `/gallery/${raw.id}`,
+    image: { src: albumCover(raw.cover ?? undefined), alt: 'Обложка альбома' },
+  };
+}
+
+const {
+  items: albumItems,
+  loading: feedLoading,
+  initialLoading,
+  error,
+  hasMore,
+  loadInitial,
+  loadMore,
+  refresh,
+  sentinelEnabled,
+} = useCursorFeed<Album>({
+  buildUrl: (cursor) => {
+    const params = new URLSearchParams();
+    params.set('limit', String(GALLERY_PAGE_LIMIT));
+    if (cursor) params.set('cursor', cursor);
+    if (searchForApi.value) params.set('search', searchForApi.value);
+    return `/api/gallery.php?${params.toString()}`;
+  },
+  mapItem: (raw) => mapAlbum(raw),
+  getId: (item) => item.id,
+});
+
+const loading = computed(() => initialLoading.value);
+
+watch(searchForApi, () => {
+  void loadInitial(true);
+});
 
 const { toast } = useAppToast();
 const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
@@ -54,41 +117,9 @@ watch(
   { immediate: true },
 );
 
-const albums = computed<Album[]>(() =>
-  albumRecords.value.map((a) => ({
-    id: a.id,
-    title: a.title,
-    description: a.description,
-    rawDate: a.date,
-    date: formatDateRuLong(a.date) || a.date,
-    to: `/gallery/${a.id}`,
-    image: { src: albumCover(a.image), alt: 'Обложка альбома' },
-  })),
-);
-
-const searchQuery = ref('');
-const sortKey = ref<'newest' | 'oldest' | 'title-asc' | 'title-desc'>('newest');
-
-const sortOptions = [
-  { value: 'newest', label: 'Сначала новые' },
-  { value: 'oldest', label: 'Сначала старые' },
-  { value: 'title-asc', label: 'По названию (А‑Я)' },
-  { value: 'title-desc', label: 'По названию (Я‑А)' },
-];
-
 const filteredAlbums = computed(() => {
-  let list = albums.value;
-
-  if (searchQuery.value.trim()) {
-    const q = searchQuery.value.trim().toLowerCase();
-    list = list.filter((a) => {
-      const title = a.title ?? '';
-      const description = a.description ?? '';
-      return title.toLowerCase().includes(q) || description.toLowerCase().includes(q);
-    });
-  }
-
-  return [...list].sort((a, b) => {
+  const list = [...albumItems.value];
+  return list.sort((a, b) => {
     if (sortKey.value === 'newest') return (b.rawDate ?? '').localeCompare(a.rawDate ?? '');
     if (sortKey.value === 'oldest') return (a.rawDate ?? '').localeCompare(b.rawDate ?? '');
     if (sortKey.value === 'title-asc') return (a.title ?? '').localeCompare(b.title ?? '', 'ru');
@@ -173,7 +204,8 @@ async function handleCreateSubmit() {
     }
 
     // 3. Обновляем список
-    await reload();
+    await refresh();
+    void reloadGalleryCache();
     createOpen.value = false;
     resetCreateForm();
     toast.add({
@@ -190,6 +222,7 @@ async function handleCreateSubmit() {
 
 // ── Floating header on scroll up ──────────────────────────────────────────────
 const mainScrollEl = ref<HTMLElement | null>(null);
+const gallerySentinelEl = ref<HTMLElement | null>(null);
 const showFloatingHeader = ref(false);
 let lastScrollTop = 0;
 let rafPending = false;
@@ -231,7 +264,16 @@ function onMainScroll() {
   });
 }
 
+useFeedSentinel({
+  root: mainScrollEl,
+  sentinel: gallerySentinelEl,
+  enabled: sentinelEnabled,
+  onIntersect: () => { void loadMore(); },
+  rootMargin: '600px 0px',
+});
+
 onMounted(() => {
+  void loadInitial();
   const el = mainScrollEl.value;
   if (!el) return;
   lastScrollTop = el.scrollTop;
@@ -245,6 +287,7 @@ onUnmounted(() => {
   if (!el) return;
   el.removeEventListener('scroll', onMainScroll);
   window.removeEventListener('resize', updateFloatingRect as any);
+  if (searchTimer) clearTimeout(searchTimer);
 });
 </script>
 
@@ -328,6 +371,20 @@ onUnmounted(() => {
             </template>
           </UBlogPost>
         </UContainer>
+
+        <div
+          v-if="!loading && feedLoading"
+          class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 mt-3"
+        >
+          <USkeleton v-for="i in 3" :key="`more-${i}`" class="h-64 rounded-2xl" />
+        </div>
+
+        <div
+          v-if="filteredAlbums.length"
+          ref="gallerySentinelEl"
+          class="h-1 w-full shrink-0"
+          aria-hidden="true"
+        />
       </UContainer>
     </div>
 

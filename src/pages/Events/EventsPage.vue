@@ -8,12 +8,16 @@ import { apiSessionFetch } from '../../composables/useAuthSession';
 import { formatDateRuLong } from '../../utils/date';
 import { useGalleryData } from '../../composables/useGalleryData';
 import { slideoverPopoverContent, slideoverSelectContent } from '../../composables/slideoverFieldUi';
+import { useCursorFeed } from '../../composables/useCursorFeed';
+import { useFeedSentinel } from '../../composables/useFeedSentinel';
 
 type EventPost = BlogPostProps & {
   id?: number;
   badge?: string;
   rawDate?: string;
 };
+
+const EVENTS_PAGE_LIMIT = 12;
 
 // ─── State ───────────────────────────────────────────────────────────────────
 const route = useRoute();
@@ -28,12 +32,17 @@ const albumSelectItems = computed(() => [
   ...albums.value.map((a) => ({ label: a.title, value: String(a.id) })),
 ]);
 
-const posts = ref<EventPost[]>([]);
-const loading = ref(false);
-const fetchError = ref<string | null>(null);
-
 // ─── Filters ─────────────────────────────────────────────────────────────────
 const searchQuery = ref('');
+const searchForApi = ref('');
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+watch(searchQuery, (q) => {
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    searchForApi.value = q.trim();
+  }, 300);
+});
+
 const badgeFilter = ref('_all');
 
 const sortKey = ref<'newest' | 'oldest' | 'title-asc' | 'title-desc'>('newest');
@@ -73,42 +82,37 @@ function mapEvent(raw: any): EventPost {
   };
 }
 
-async function fetchEvents() {
-  loading.value = true;
-  fetchError.value = null;
-  try {
+const {
+  items: posts,
+  loading: feedLoading,
+  initialLoading,
+  error: fetchError,
+  hasMore,
+  loadInitial,
+  loadMore,
+  refresh,
+  sentinelEnabled,
+} = useCursorFeed<EventPost>({
+  buildUrl: (cursor) => {
     const params = new URLSearchParams();
+    params.set('limit', String(EVENTS_PAGE_LIMIT));
+    if (cursor) params.set('cursor', cursor);
+    if (searchForApi.value) params.set('search', searchForApi.value);
     if (badgeFilter.value && badgeFilter.value !== '_all') params.set('badge', badgeFilter.value);
+    return `/api/events.php?${params.toString()}`;
+  },
+  mapItem: (raw) => mapEvent(raw),
+  getId: (item) => String(item.id ?? item.title ?? ''),
+});
 
-    const qs = params.toString();
-    const res = await fetch(`/api/events.php${qs ? '?' + qs : ''}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+const loading = computed(() => initialLoading.value);
 
-    const json = await res.json();
-    if (!json.success) throw new Error(json.message || 'Ошибка загрузки');
-
-    posts.value = (json.data as any[]).map(mapEvent);
-  } catch (e: any) {
-    fetchError.value = e.message ?? 'Не удалось загрузить мероприятия';
-  } finally {
-    loading.value = false;
-  }
-}
-
-onMounted(fetchEvents);
-watch(badgeFilter, fetchEvents);
-
-const filteredPosts = computed(() => {
-  if (!searchQuery.value.trim()) return posts.value;
-  const q = searchQuery.value.trim().toLowerCase();
-  return posts.value.filter(p =>
-    (p.title ?? '').toLowerCase().includes(q) ||
-    (p.description ?? '').toLowerCase().includes(q)
-  );
+watch([searchForApi, badgeFilter], () => {
+  void loadInitial(true);
 });
 
 const sortedPosts = computed(() => {
-  const list = [...filteredPosts.value];
+  const list = [...posts.value];
   list.sort((a, b) => {
     if (sortKey.value === 'newest')     return String(b.rawDate ?? '').localeCompare(String(a.rawDate ?? ''));
     if (sortKey.value === 'oldest')     return String(a.rawDate ?? '').localeCompare(String(b.rawDate ?? ''));
@@ -238,7 +242,7 @@ async function handleCreateSubmit() {
 
     createOpen.value = false;
     resetCreateForm();
-    await fetchEvents();
+    await refresh();
   } catch (e: any) {
     createError.value = e.message ?? 'Ошибка при создании мероприятия';
   } finally {
@@ -248,6 +252,7 @@ async function handleCreateSubmit() {
 
 // ── Floating header on scroll up (same as GalleryPage) ────────────────────────
 const mainScrollEl = ref<HTMLElement | null>(null);
+const eventsSentinelEl = ref<HTMLElement | null>(null);
 const showFloatingHeader = ref(false);
 let lastScrollTop = 0;
 let rafPending = false;
@@ -289,7 +294,16 @@ function onMainScroll() {
   });
 }
 
+useFeedSentinel({
+  root: mainScrollEl,
+  sentinel: eventsSentinelEl,
+  enabled: sentinelEnabled,
+  onIntersect: () => { void loadMore(); },
+  rootMargin: '600px 0px',
+});
+
 onMounted(() => {
+  void loadInitial();
   const el = mainScrollEl.value;
   if (!el) return;
   lastScrollTop = el.scrollTop;
@@ -302,6 +316,7 @@ onUnmounted(() => {
   const el = mainScrollEl.value;
   if (el) el.removeEventListener('scroll', onMainScroll);
   window.removeEventListener('resize', updateFloatingRect as any);
+  if (searchTimer) clearTimeout(searchTimer);
 });
 </script>
 
@@ -340,8 +355,8 @@ onUnmounted(() => {
             </UContainer>
           </template>
 
-          <p v-if="!isKiosk && !loading && filteredPosts.length !== posts.length" class="text-sm text-muted -mt-2">
-            Найдено: {{ filteredPosts.length }} из {{ posts.length }}
+          <p v-if="!isKiosk && searchForApi && !loading" class="text-sm text-muted -mt-2">
+            Найдено: {{ sortedPosts.length }}{{ hasMore ? '+' : '' }}
           </p>
         </div>
       </div>
@@ -367,8 +382,8 @@ onUnmounted(() => {
           </UContainer>
         </template>
 
-        <p v-if="!isKiosk && !loading && filteredPosts.length !== posts.length" class="text-sm text-muted -mt-2">
-          Найдено: {{ filteredPosts.length }} из {{ posts.length }}
+        <p v-if="!isKiosk && searchForApi && !loading" class="text-sm text-muted -mt-2">
+          Найдено: {{ sortedPosts.length }}{{ hasMore ? '+' : '' }}
         </p>
       </UContainer>
 
@@ -382,7 +397,7 @@ onUnmounted(() => {
           class="mb-4"
         >
           <template #footer>
-            <UButton size="sm" color="error" variant="ghost" @click="fetchEvents">
+            <UButton size="sm" color="error" variant="ghost" @click="refresh">
               Повторить
             </UButton>
           </template>
@@ -420,6 +435,20 @@ onUnmounted(() => {
             </template>
           </UBlogPost>
         </div>
+
+        <div
+          v-if="!loading && feedLoading"
+          class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 mt-3"
+        >
+          <USkeleton v-for="i in 3" :key="`more-${i}`" class="h-64 rounded-2xl" />
+        </div>
+
+        <div
+          v-if="sortedPosts.length"
+          ref="eventsSentinelEl"
+          class="h-1 w-full shrink-0"
+          aria-hidden="true"
+        />
       </UContainer>
     </div>
 

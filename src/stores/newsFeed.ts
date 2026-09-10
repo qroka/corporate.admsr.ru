@@ -2,7 +2,12 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import type { NewsRecord } from '../composables/useNewsData';
 
-export type NewsFeedTab = 'feed' | 'ofo';
+export type NewsFeedTab =
+  | 'feed'
+  | 'municipal'
+  | 'hr'
+  | 'motivation'
+  | 'ofo'; // legacy — мигрируем на feed
 
 /**
  * In-memory SPA store for home news feed: loaded pages + scroll position.
