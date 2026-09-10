@@ -84,3 +84,29 @@ export function formatUnixSecondsRuDate(unixSeconds: number | null): string | un
   return formatDateRuLongOrUndefined(new Date(unixSeconds * 1000));
 }
 
+/** Относительное время на русском («6 часов назад», «вчера»). */
+export function formatRelativeRu(value: unknown): string {
+  const d = parseDateLike(value);
+  if (!d) return '';
+
+  const diffSec = Math.round((d.getTime() - Date.now()) / 1000);
+  const rtf = new Intl.RelativeTimeFormat('ru', { numeric: 'auto' });
+  const abs = Math.abs(diffSec);
+
+  if (abs < 60) return rtf.format(diffSec, 'second');
+
+  const diffMin = Math.round(diffSec / 60);
+  if (Math.abs(diffMin) < 60) return rtf.format(diffMin, 'minute');
+
+  const diffHour = Math.round(diffSec / 3600);
+  if (Math.abs(diffHour) < 24) return rtf.format(diffHour, 'hour');
+
+  const diffDay = Math.round(diffSec / 86400);
+  if (Math.abs(diffDay) < 30) return rtf.format(diffDay, 'day');
+
+  const diffMonth = Math.round(diffSec / 2592000);
+  if (Math.abs(diffMonth) < 12) return rtf.format(diffMonth, 'month');
+
+  return rtf.format(Math.round(diffSec / 31536000), 'year');
+}
+

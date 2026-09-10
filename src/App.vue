@@ -1,31 +1,47 @@
 <template>
-  <div class="app-root h-screen overflow-hidden">
+  <div class="app-root h-dvh overflow-hidden">
     <UApp :locale="ru">
       <RouterView v-if="isKiosk || isAuth || isPublic" />
 
-      <!-- Основной лейаут приложения -->
-      <div
+      <UDashboardGroup
         v-else
-        class="h-screen w-full max-w-[1600px] mx-auto overflow-hidden flex flex-col justify-start p-6 gap-6 transition-colors"
-        :class="containerClass"
+        unit="px"
+        storage-key="portal-dashboard"
+        class="h-dvh w-full"
+        :ui="{ base: 'bg-default text-highlighted' }"
       >
-        <AppHeader
+        <AppAside
           :is-dark="isDark"
-          :active-nav="activeNav"
           @toggle-theme="startThemeTransition"
         />
 
-        <main class="flex flex-1 w-full h-full gap-6 min-h-0">
-          <AppAside
-            :is-dark="isDark"
-            @toggle-theme="startThemeTransition"
-          />
+        <UDashboardSearch
+          placeholder="Искать сотрудника, памятку, документ..."
+          :groups="searchGroups"
+          :color-mode="false"
+        />
 
-          <section class="flex-1 min-w-0 min-h-0 overflow-y-auto max-h-full">
+        <UDashboardPanel
+          id="portal-main"
+          class="bg-default"
+          :ui="{
+            root: 'bg-default',
+            body: 'p-4 sm:p-4 pt-4 bg-default',
+          }"
+        >
+          <template #header>
+            <AppHeader
+              :is-dark="isDark"
+              :active-nav="activeNav"
+              @toggle-theme="startThemeTransition"
+            />
+          </template>
+
+          <template #body>
             <RouterView />
-          </section>
-        </main>
-      </div>
+          </template>
+        </UDashboardPanel>
+      </UDashboardGroup>
     </UApp>
   </div>
 </template>
@@ -38,23 +54,20 @@ import AppHeader from './components/AppHeader.vue';
 import AppAside from './components/AppAside.vue';
 import { startSessionActivity } from './composables/useSessionActivity';
 import { useColorMode } from './composables/useColorMode';
+import { usePortalSearchGroups } from './composables/usePortalNavigation';
 
-// Текущий маршрут (используется для подсветки активных пунктов навигации)
 const route = useRoute();
 const router = useRouter();
+const searchGroups = usePortalSearchGroups();
 
-// Авто-логаут по 24ч бездействия (heartbeat + проверка статуса)
 onMounted(() => startSessionActivity(router));
 
-// Имя активного пункта верхнего меню (events / gallery / newcomers / culture)
 const activeNav = computed(() => (route.name ?? 'events'));
 
 const isKiosk = computed(() => route.matched.some((r) => r.meta?.kiosk));
 const isAuth = computed(() => route.meta?.layout === 'auth');
 const isPublic = computed(() => route.meta?.public === true);
 
-
-// --- Поддержка светлой / тёмной темы для Nuxt UI ---
 const isDark = ref(false);
 const { syncFromStorage, toggleColorMode } = useColorMode(isDark, {
   enabled: computed(() => !isKiosk.value),
@@ -64,7 +77,6 @@ watch(isKiosk, (kiosk) => {
   if (!kiosk) syncFromStorage();
 });
 
-// Анимированная смена темы с помощью View Transitions API
 const startThemeTransition = (event) => {
   const anyDoc = document;
 
@@ -73,8 +85,8 @@ const startThemeTransition = (event) => {
     return;
   }
 
-  const x = event.clientX;
-  const y = event.clientY;
+  const x = event?.clientX ?? window.innerWidth / 2;
+  const y = event?.clientY ?? window.innerHeight / 2;
   const endRadius =
     Math.hypot(
       Math.max(x, window.innerWidth - x),
@@ -102,9 +114,6 @@ const startThemeTransition = (event) => {
     );
   });
 };
-
-// Класс фона/текста для корневого контейнера (визуальное переключение темы)
-const containerClass = computed(() => 'bg-(--ui-bg) text-(--ui-text-highlighted)');
 </script>
 
 <style>

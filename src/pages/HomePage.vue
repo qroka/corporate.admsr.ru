@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted } from 'vue';
-import type { ButtonProps } from '@nuxt/ui'
-import type { BlogPostProps } from '@nuxt/ui'
+import type { TabsItem } from '@nuxt/ui';
 import { useRouter } from 'vue-router';
 import { useNewsData, resolveNewsImageSrc } from '../composables/useNewsData';
 import { useNewsReactions } from '../composables/useNewsReactions';
@@ -10,29 +9,14 @@ import { attachAbsenceStorageSync, hasActiveAbsence } from '../stores/absenceJou
 import { currentRole } from '../stores/role';
 import { useSectionAccess } from '../composables/useSectionAccess';
 import { apiSessionUpload } from '../composables/useAuthSession';
+import { useHeaderUser } from '../composables/useHeaderUser';
+import { useOfoData } from '../composables/useOfoData';
+import { useAppToast } from '../composables/useAppToast';
 import LearningHomeWidget from './Courses/components/LearningHomeWidget.vue';
+import HomeNewsCard from '../components/home/HomeNewsCard.vue';
 
-const eventsLinks = <ButtonProps[]>([
-  {
-    icon: 'i-lucide-arrow-up-right',
-    to: '/events',
-    size: 'xl',
-    color: 'neutral',
-    variant: 'outline',
-    class: 'rounded-full',
-  },
-])
-
-const newsLinks = <ButtonProps[]>([
-  {
-    icon: 'i-lucide-arrow-up-right',
-    to: '/news',
-    size: 'xl',
-    color: 'neutral',
-    variant: 'outline',
-    class: 'rounded-full',
-  },
-])
+const router = useRouter();
+const { toast, success } = useAppToast();
 
 const isAdmin = computed(() => currentRole.value === 'admin');
 
@@ -40,35 +24,78 @@ const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess()
 ensureSectionAccess();
 const canEditBirthdays = computed(() => canEditSection('birthdays'));
 
-const birthdayLinks = <ButtonProps[]>([
-  {
-    icon: 'i-lucide-arrow-up-right',
-    to: '/birthdays',
-    size: 'xl',
-    color: 'neutral',
-    variant: 'outline',
-    class: 'rounded-full',
-  },
-])
+const { profile, headerName } = useHeaderUser();
+const { ofoRows, ensureDirectoryLoaded } = useOfoData();
+ensureDirectoryLoaded();
 
-/** Карточки «Актуальные события»: клик ведёт на детальную страницу мероприятия */
-type ActualEventItem = {
+const greetingTitle = computed(() => {
+  const hour = new Date().getHours();
+  let prefix = 'Добрый день';
+  if (hour < 6) prefix = 'Доброй ночи';
+  else if (hour < 12) prefix = 'Доброе утро';
+  else if (hour >= 18) prefix = 'Добрый вечер';
+
+  const p = profile.value;
+  const namePatronymic = [p?.firstname, p?.lastname].filter(Boolean).join(' ').trim();
+  const name = namePatronymic || headerName.value || 'коллега';
+  return `${prefix}, ${name}!`;
+});
+
+const ofoTabLabel = computed(() => {
+  const id = String(profile.value?.ofo ?? '').trim();
+  if (!id) return 'Моё ОФО';
+  const row = ofoRows.value.find((r) => String(r.id) === id);
+  return row?.title?.trim() || 'Моё ОФО';
+});
+
+type HomeService = {
   id: string;
-  eventId: number;
-  post: BlogPostProps;
+  label: string;
+  icon: string;
+  to?: string;
+  action?: 'sed';
 };
 
-const router = useRouter();
+const homeServices: HomeService[] = [
+  {
+    id: 'absence',
+    label: 'Журнал отсутствия',
+    icon: 'i-lucide-brain-circuit',
+    to: '/absence-journal',
+  },
+  {
+    id: 'applications',
+    label: 'Заявки',
+    icon: 'i-lucide-brain-circuit',
+    to: '/applications',
+  },
+  {
+    id: 'sed',
+    label: 'СЭД',
+    icon: 'i-lucide-brain-circuit',
+    action: 'sed',
+  },
+  {
+    id: 'knowledge',
+    label: 'Справочник',
+    icon: 'i-lucide-brain-circuit',
+    to: '/knowledge-base',
+  },
+  {
+    id: 'all',
+    label: 'Все сервисы',
+    icon: 'i-lucide-layout-grid',
+    to: '/services',
+  },
+];
 
-const eventCoverModules = (import.meta as any).glob('../img/EventsWebp/*.webp', {
-  eager: true,
-  import: 'default',
-});
-const eventCoverSrcs = Object.entries(eventCoverModules)
-  .sort(([a], [b]) => a.localeCompare(b))
-  .map(([, src]) => src as string);
-function eventCoverAt(index: number): string {
-  return eventCoverSrcs.length ? eventCoverSrcs[index % eventCoverSrcs.length] : '/src/img/Logo.svg';
+function onSedClick() {
+  toast.add({
+    title: 'СЭД',
+    description: 'Внешняя ссылка на систему электронного документооборота пока не настроена.',
+    color: 'neutral',
+    icon: 'i-lucide-file-stack',
+  });
 }
 
 type HomeEventRecord = {
@@ -79,23 +106,14 @@ type HomeEventRecord = {
   badge?: string;
   image?: string;
   image_full?: string;
-  coverIndex?: number;
 };
 
 const homeEvents = ref<HomeEventRecord[]>([]);
 const eventsLoading = ref(false);
 const eventsError = ref<string | null>(null);
 
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function isArchivedBadge(value: unknown) {
   return String(value ?? '').trim().toLowerCase().includes('архив');
-}
-
-function isNewBadge(value: unknown) {
-  return String(value ?? '').trim().toLowerCase().includes('нов');
 }
 
 function mapHomeEvent(raw: any): HomeEventRecord {
@@ -107,7 +125,6 @@ function mapHomeEvent(raw: any): HomeEventRecord {
     badge: raw?.badge ? String(raw.badge) : undefined,
     image: raw?.image ? String(raw.image) : undefined,
     image_full: raw?.image_full ? String(raw.image_full) : undefined,
-    coverIndex: typeof raw?.coverIndex === 'number' ? raw.coverIndex : undefined,
   };
 }
 
@@ -129,41 +146,28 @@ async function fetchHomeEvents() {
   }
 }
 
-onMounted(() => {
-  attachAbsenceStorageSync();
-  void fetchHomeEvents();
-});
-
-const actualEvents = computed<ActualEventItem[]>(() =>
+const upcomingEvents = computed(() =>
   homeEvents.value
     .filter((e) => !isArchivedBadge(e.badge))
-    .filter((e) => isNewBadge(e.badge))
-    .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? ''), 'ru-RU') || (b.id ?? 0) - (a.id ?? 0))
-    .map((e, idx) => ({
-      id: `evt-${e.id}`,
-      eventId: e.id,
-      post: {
-        title: e.title,
-        description: e.description,
-        image: e.image_full || e.image || eventCoverAt(e.coverIndex ?? idx),
-        date: e.date,
-        badge: e.badge,
-      },
-    })),
+    .sort((a, b) => String(a.date ?? '').localeCompare(String(b.date ?? ''), 'ru-RU') || (a.id ?? 0) - (b.id ?? 0))
+    .slice(0, 5),
 );
-
-const hasActualEvents = computed(() => !eventsLoading.value && !eventsError.value && actualEvents.value.length > 0);
 
 function openEventDetails(eventId: number) {
   void router.push(`/events/${eventId}`);
 }
 
-/** Лента новостей: карточка + просмотры; лайк — отдельное состояние */
-type NewsItem = {
+type NewsFeedItem = {
   id: string;
   likes: number;
   views: number;
-  post: BlogPostProps;
+  title: string;
+  description: string;
+  imageSrc: string;
+  to: string;
+  date?: string;
+  createdAt?: string | null;
+  category: string;
 };
 
 const { sortedNews, ensureLoaded: ensureNewsLoaded } = useNewsData();
@@ -171,8 +175,8 @@ ensureNewsLoaded();
 
 const newsPageSize = 6;
 const visibleNewsCount = ref(newsPageSize);
+const newsTab = ref<'feed' | 'ofo'>('feed');
 
-/** Превью без HTML: иначе обрезка по 220 символов рвёт теги и даёт мусор в тексте */
 function newsPreviewText(html: string, maxLen: number): string {
   const plain = String(html ?? '')
     .replace(/<[^>]*>/g, ' ')
@@ -181,46 +185,86 @@ function newsPreviewText(html: string, maxLen: number): string {
   return plain.length > maxLen ? `${plain.slice(0, maxLen)}…` : plain;
 }
 
-function formatCountRu(n: number): string {
-  const v = Number.isFinite(Number(n)) ? Number(n) : 0;
-  return Math.max(0, Math.round(v)).toLocaleString('ru-RU');
-}
-
-const allNewsItems = computed<NewsItem[]>(() =>
+const allNewsItems = computed<NewsFeedItem[]>(() =>
   sortedNews.value.map((n) => {
     const imageSrc = resolveNewsImageSrc(n.imagePath);
     return {
       id: n.id,
       likes: n.likes ?? 0,
       views: n.views ?? 0,
-      post: {
-        title: n.title || `Новость #${n.id}`,
-        description: newsPreviewText(n.description, 220),
-        image: imageSrc ? { src: imageSrc, alt: n.title || 'Новость' } : { src: '/src/img/Logo.svg', alt: n.title || 'Новость' },
-        to: `/news/${n.id}`,
-        // ISO YYYY-MM-DD — UBlogPost сам форматирует дату; русская строка даёт Invalid Date и ломает рендер
-        date: n.date || undefined,
-        badge: n.category || 'Новости',
-      },
+      title: n.title || `Новость #${n.id}`,
+      description: newsPreviewText(n.description, 220),
+      imageSrc: imageSrc || '/src/img/Logo.svg',
+      to: `/news/${n.id}`,
+      date: n.date || undefined,
+      createdAt: n.createdAt,
+      category: n.category || 'Новости',
     };
   }),
 );
 
-const newsItems = computed<NewsItem[]>(() => allNewsItems.value.slice(0, visibleNewsCount.value));
-const hasMoreNews = computed(() => visibleNewsCount.value < allNewsItems.value.length);
+/** У новостей нет поля ОФО — вкладка показывает совпадение категории с названием ОФО, иначе пусто. */
+const ofoFilteredNews = computed(() => {
+  const label = ofoTabLabel.value.trim().toLowerCase();
+  if (!label || label === 'моё офо') return [] as NewsFeedItem[];
+  return allNewsItems.value.filter((n) => n.category.toLowerCase().includes(label));
+});
+
+const activeNewsPool = computed(() =>
+  newsTab.value === 'ofo' ? ofoFilteredNews.value : allNewsItems.value,
+);
+
+const newsItems = computed(() => activeNewsPool.value.slice(0, visibleNewsCount.value));
+const hasMoreNews = computed(() => visibleNewsCount.value < activeNewsPool.value.length);
+
+watch(newsTab, () => {
+  visibleNewsCount.value = newsPageSize;
+});
+
+const newsTabItems = computed<TabsItem[]>(() => [
+  { label: 'Лента новостей', value: 'feed' },
+  { label: ofoTabLabel.value, value: 'ofo' },
+]);
 
 const { isLiked: isNewsLiked, toggleLike: toggleNewsLike } = useNewsReactions();
 
 function showMoreNews() {
-  visibleNewsCount.value = Math.min(allNewsItems.value.length, visibleNewsCount.value + newsPageSize);
+  visibleNewsCount.value = Math.min(activeNewsPool.value.length, visibleNewsCount.value + newsPageSize);
 }
 
-const { birthdayGroups, loading: birthdaysLoading, error: birthdaysError, ensureLoaded: ensureBirthdaysLoaded, reload: reloadBirthdays } =
-  useBirthdayColleagues();
+const {
+  birthdayGroups,
+  loading: birthdaysLoading,
+  error: birthdaysError,
+  ensureLoaded: ensureBirthdaysLoaded,
+  reload: reloadBirthdays,
+} = useBirthdayColleagues();
 ensureBirthdaysLoaded();
 
+const visibleBirthdayGroups = computed(() =>
+  birthdayGroups.value.filter((g) => g.people.length > 0),
+);
+
+function congratulate(name: string) {
+  success('Поздравление', `Открыть карточку «${name}» можно на странице дней рождения.`);
+  void router.push('/birthdays');
+}
+
 // ── Админ: загрузка дат рождений из xlsx ──────────────────────────────────────
-const MONTH_NAMES = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+const MONTH_NAMES = [
+  'январь',
+  'февраль',
+  'март',
+  'апрель',
+  'май',
+  'июнь',
+  'июль',
+  'август',
+  'сентябрь',
+  'октябрь',
+  'ноябрь',
+  'декабрь',
+];
 const birthdayUploadOpen = ref(false);
 const birthdayFile = ref<File | File[] | undefined>(undefined);
 const birthdayUploading = ref(false);
@@ -240,7 +284,9 @@ async function loadBirthdayManifest() {
     const res = await fetch('/api/birthdays.php?manifest=1');
     const json = await res.json();
     if (json.success) birthdayManifest.value = json.data ?? {};
-  } catch { /* молча */ }
+  } catch {
+    /* молча */
+  }
 }
 
 function openBirthdayUpload() {
@@ -270,10 +316,14 @@ watch(birthdayFile, async (val) => {
   }
 });
 
+onMounted(() => {
+  attachAbsenceStorageSync();
+  void fetchHomeEvents();
+});
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full h-full gap-4 min-h-0 max-h-full overflow-hidden">
+  <UMain class="flex flex-1 flex-col w-full h-full min-h-0 max-h-full overflow-hidden">
     <UAlert
       v-if="hasActiveAbsence"
       color="primary"
@@ -293,205 +343,332 @@ watch(birthdayFile, async (val) => {
       ]"
     />
 
-    <UContainer class="flex flex-1 flex-row w-full gap-6 min-h-0 max-h-full overflow-hidden max-w-none">
-    <UContainer
-      v-if="eventsLoading || hasActualEvents"
-      class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-96 shrink-0"
-    >
-      <UPageHeader title="" :links="eventsLinks" class="border-none p-0">
-        <template #title>
-          <h1 class="text-2xl font-medium">Актуальные мероприятия</h1>
-        </template>
-      </UPageHeader>
-      <UContainer class="overflow-y-auto sm:p-px md:p-px lg:p-px xl:p-px scrollbar-hide">
-        <UContainer v-if="eventsLoading" class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0">
-          <USkeleton v-for="n in 3" :key="n" class="h-32 w-full rounded-2xl" />
-        </UContainer>
-        <UContainer v-else-if="hasActualEvents" class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0">
-          <UBlogPost
-            v-for="item in actualEvents"
-            :key="item.id"
-            v-bind="item.post"
-            class="w-full cursor-pointer"
-            @click="openEventDetails(item.eventId)"
-          >
-            <template #badge>
-              <UBadge v-if="item.post.badge" color="primary" variant="solid">
-                {{ item.post.badge }}
-              </UBadge>
-            </template>
-          </UBlogPost>
-        </UContainer>
-        <p v-else-if="eventsError" class="px-1 py-2 text-sm text-error">
-          {{ eventsError }}
-        </p>
-      </UContainer>
-    </UContainer>
-    <UContainer class="flex flex-1 flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 min-h-0 min-w-0">
-      <UPageHeader title="" :links="newsLinks" class="border-none p-0">
-        <template #title>
-          <h1 class="text-2xl font-medium">Лента новостей</h1>
-        </template>
-      </UPageHeader>
-
-      <UScrollArea class="flex-1 min-h-0 min-w-0 sm:p-px md:p-px lg:p-px xl:p-px scrollbar-hide">
-        <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0">
-          <UBlogPost
-            v-for="item in newsItems"
-            :key="item.id"
-            v-bind="item.post"
-            class="w-full"
-          >
-            <template #description>
-              <p class="text-base text-pretty text-muted">
-                {{ item.post.description }}
-              </p>
-              <UContainer
-                class="relative z-10 flex justify-between items-center gap-3 w-full mt-2"
-                @click.stop
-              >
-                <UBadge
-                  as="button"
-                  type="button"
-                  :color="isNewsLiked(item.id) ? 'primary' : 'neutral'"
-                  variant="soft"
-                  size="lg"
-                  leading
-                  icon="i-lucide-heart"
-                  :label="formatCountRu(item.likes)"
-                  :class="[
-                    'relative z-10 cursor-pointer shrink-0 [&_svg]:stroke-[1.75]',
-                    isNewsLiked(item.id)
-                      ? '[&_svg]:stroke-primary [&_svg_path]:fill-primary [&_svg_path]:stroke-primary'
-                      : '[&_svg]:stroke-current [&_svg_path]:fill-none [&_svg_path]:stroke-current',
-                  ]"
-                  @click.stop.prevent="toggleNewsLike(item.id)"
-                />
-                <span class="shrink-0 text-sm text-muted">
-                  {{ formatCountRu(item.views) }} просмотров
-                </span>
-              </UContainer>
-            </template>
-
-          </UBlogPost>
-
-          <UButton
-            v-if="hasMoreNews"
-            type="button"
-            color="neutral"
-            variant="outline"
-            size="xl"
-            class="relative z-10 w-full shrink-0 justify-center"
-            icon="i-lucide-chevron-down"
-            @click="showMoreNews"
-          >
-            Показать ещё
-          </UButton>
-        </UContainer>
-      </UScrollArea>
-    </UContainer>
-    <UContainer class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-96 shrink-0">
-      <LearningHomeWidget v-if="!isAdmin" class="shrink-0" />
-      <UPageHeader title="" :links="birthdayLinks" class="border-none p-0">
-        <template #title>
-          <h1 class="text-2xl font-medium">Дни рождения коллег</h1>
-        </template>
-      </UPageHeader>
-      <UButton
-        v-if="canEditBirthdays"
-        label="Загрузить даты xlsx"
-        icon="i-lucide-upload"
-        color="neutral"
-        variant="outline"
-        size="xl"
-        block
-        class="shrink-0"
-        @click="openBirthdayUpload"
+    <div class="flex w-full flex-1 flex-col gap-2 min-h-0 overflow-y-auto scrollbar-hide">
+      <UPageHeader
+        :title="greetingTitle"
+        class="border-none py-4 px-0"
+        :ui="{ title: 'text-2xl font-bold leading-8 text-highlighted' }"
       />
-      <UContainer class="overflow-y-auto sm:p-px md:p-px lg:p-px xl:p-px scrollbar-hide">
-        <UContainer v-if="birthdaysLoading" class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-full">
-          <USkeleton v-for="n in 3" :key="n" class="h-32 w-full rounded-lg" />
-        </UContainer>
-        <p v-else-if="birthdaysError" class="text-sm text-error w-full">
-          {{ birthdaysError }}
-        </p>
-        <UContainer v-else class="flex flex-col gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-full">
+
+      <div class="flex flex-col xl:flex-row gap-4 min-h-0 items-start">
+        <div class="flex min-w-0 flex-1 flex-col gap-4">
+      <section class="flex flex-col gap-4" aria-labelledby="home-services-title">
+        <div class="flex items-center justify-between gap-1">
+          <div class="flex items-center gap-1 min-w-0">
+            <h2 id="home-services-title" class="text-lg font-bold leading-7 text-highlighted">
+              Сервисы
+            </h2>
+            <UTooltip text="Быстрый доступ к корпоративным сервисам">
+              <UButton
+                type="button"
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                icon="i-lucide-info"
+                square
+                aria-label="О сервисах"
+              />
+            </UTooltip>
+          </div>
+          <UButton
+            to="/services"
+            color="neutral"
+            variant="ghost"
+            size="xs"
+            icon="i-lucide-pencil"
+            square
+            aria-label="Все сервисы"
+          />
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <UPageCard
+            v-for="svc in homeServices"
+            :key="svc.id"
+            :title="svc.label"
+            :icon="svc.icon"
+            :to="svc.to"
+            :on-click="svc.action === 'sed' ? onSedClick : undefined"
+            variant="soft"
+            class="bg-elevated/50"
+            :ui="{
+              root: 'h-[92px] cursor-pointer rounded-[10px] ring-0 border-0 bg-elevated/50',
+              container: 'items-center justify-center text-center gap-2 p-4 h-full',
+              wrapper: 'items-center',
+              leading: 'mb-0',
+              leadingIcon: svc.id === 'all' ? 'size-8 text-muted' : 'size-8 text-primary',
+              title: 'text-sm font-semibold leading-5 text-highlighted',
+            }"
+          />
+        </div>
+      </section>
+
+        <!-- Центр: лента -->
+        <section class="flex flex-col gap-4 min-w-0 w-full" aria-label="Лента новостей">
+          <UTabs
+            v-model="newsTab"
+            :items="newsTabItems"
+            variant="link"
+            color="primary"
+            size="md"
+            :content="false"
+            class="w-full border-b border-default"
+            :ui="{
+              list: 'h-12 gap-1.5 overflow-x-auto',
+              trigger: 'h-12 shrink-0 justify-start focus-visible:outline-none focus-visible:ring-0',
+              label: 'truncate max-w-[min(100%,28rem)]',
+            }"
+          />
+
+          <div class="flex flex-col gap-4">
+            <template v-if="newsItems.length">
+              <HomeNewsCard
+                v-for="item in newsItems"
+                :key="item.id"
+                :id="item.id"
+                :title="item.title"
+                :description="item.description"
+                :image-src="item.imageSrc"
+                :image-alt="item.title"
+                :to="item.to"
+                :date="item.date"
+                :created-at="item.createdAt"
+                :likes="item.likes"
+                :views="item.views"
+                :liked="isNewsLiked(item.id)"
+                :author-role="item.category"
+                @toggle-like="toggleNewsLike(item.id)"
+              />
+
+              <UButton
+                v-if="hasMoreNews"
+                type="button"
+                color="neutral"
+                variant="outline"
+                size="lg"
+                class="w-full justify-center"
+                icon="i-lucide-chevron-down"
+                @click="showMoreNews"
+              >
+                Показать ещё
+              </UButton>
+            </template>
+
+            <UEmpty
+              v-else-if="newsTab === 'ofo'"
+              variant="naked"
+              icon="i-lucide-building-2"
+              title="Нет новостей ОФО"
+              description="У новостей пока нет привязки к ОФО. Вкладка покажет материалы, если категория совпадёт с названием вашего подразделения."
+              class="py-10"
+            />
+            <UEmpty
+              v-else
+              variant="naked"
+              icon="i-lucide-newspaper"
+              title="Новостей пока нет"
+              description="Как только появятся публикации, они отобразятся здесь."
+              class="py-10"
+            />
+          </div>
+        </section>
+        </div>
+
+        <!-- Правая колонка -->
+        <aside class="w-full xl:w-[420px] shrink-0 flex flex-col gap-4">
+          <LearningHomeWidget v-if="!isAdmin" />
+
           <UCard
-            v-for="group in birthdayGroups"
-            :key="group.id"
+            variant="soft"
+            class="w-full rounded-[10px]"
+            :ui="{
+              root: 'rounded-[10px] bg-elevated/50 ring-0 border-0 divide-y-0',
+              header: 'px-4 py-4 sm:px-4',
+              body: 'flex flex-col gap-2 px-4 pb-4 pt-0 sm:px-4 sm:pb-4 sm:pt-0',
+            }"
           >
-            <UContainer class="flex flex-col gap-4 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-full">
-              <UContainer class="flex items-center gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0">
-                <h2 class="text-2xl font-medium leading-none text-highlighted">
-                  {{ group.dateLabel }}
-                </h2>
-                <UBadge
-                  :color="group.dayColor"
-                  :variant="group.dayLabel === 'Сегодня' ? 'solid' : 'subtle'"
-                  size="md"
-                  :label="group.dayLabel"
+            <template #header>
+              <div class="flex items-center justify-between gap-1">
+                <h2 class="text-lg font-bold leading-7 text-highlighted truncate">Мероприятия</h2>
+                <UButton
+                  to="/events"
+                  color="neutral"
+                  variant="ghost"
+                  size="xs"
+                  icon="i-lucide-arrow-up-right"
+                  square
+                  aria-label="Все мероприятия"
                 />
-              </UContainer>
-              <p v-if="!group.people.length" class="text-sm text-muted w-full">
-                В этот день никого нет
+              </div>
+            </template>
+            <div v-if="eventsLoading" class="flex flex-col gap-2">
+              <USkeleton v-for="n in 2" :key="n" class="h-12 w-full rounded-lg" />
+            </div>
+            <p v-else-if="eventsError" class="text-sm text-error">{{ eventsError }}</p>
+            <p v-else-if="!upcomingEvents.length" class="text-sm text-muted">
+              Ближайших мероприятий нет
+            </p>
+            <button
+              v-for="evt in upcomingEvents"
+              :key="evt.id"
+              type="button"
+              class="flex flex-col gap-0.5 rounded-lg p-2 text-left hover:bg-elevated transition-colors"
+              @click="openEventDetails(evt.id)"
+            >
+              <span class="text-sm font-medium text-highlighted line-clamp-2">{{ evt.title }}</span>
+              <span class="text-xs text-dimmed">{{ evt.date }}</span>
+            </button>
+          </UCard>
+
+          <UCard
+            variant="soft"
+            class="w-full rounded-[10px]"
+            :ui="{
+              root: 'rounded-[10px] bg-elevated/50 ring-0 border-0 divide-y-0',
+              header: 'px-4 py-4 sm:px-4',
+              body: 'flex flex-col gap-3 px-4 pb-4 pt-0 sm:px-4 sm:pb-4 sm:pt-0',
+            }"
+          >
+            <template #header>
+              <div class="flex items-center justify-between gap-1">
+                <h2 class="text-lg font-bold leading-7 text-highlighted truncate">Дни рождения коллег</h2>
+                <UButton
+                  to="/birthdays"
+                  color="neutral"
+                  variant="ghost"
+                  size="xs"
+                  icon="i-lucide-arrow-up-right"
+                  square
+                  aria-label="Календарь дней рождения"
+                />
+              </div>
+            </template>
+            <UButton
+              v-if="canEditBirthdays"
+              label="Загрузить даты xlsx"
+              icon="i-lucide-upload"
+              color="neutral"
+              variant="outline"
+              size="sm"
+              block
+              @click="openBirthdayUpload"
+            />
+            <div v-if="birthdaysLoading" class="flex flex-col gap-2">
+              <USkeleton v-for="n in 3" :key="n" class="h-12 w-full rounded-lg" />
+            </div>
+            <p v-else-if="birthdaysError" class="text-sm text-error">{{ birthdaysError }}</p>
+            <p v-else-if="!visibleBirthdayGroups.length" class="text-sm text-muted">
+              В ближайшие дни именинников нет
+            </p>
+            <div
+              v-for="group in visibleBirthdayGroups"
+              :key="group.id"
+              class="flex flex-col gap-2"
+            >
+              <p class="text-xs font-medium leading-4 text-muted">
+                {{ group.dayLabel }}
               </p>
-              <UContainer
+              <div
                 v-for="person in group.people"
                 :key="person.id"
-                class="flex items-center gap-3 sm:p-0 md:p-0 lg:p-0 xl:p-0 w-full"
+                class="flex items-center gap-2"
               >
                 <UUser
                   :name="person.name"
-                  :description="person.role"
-                  :avatar="{ src: person.avatar }"
-                  size="xl"
-                  class="w-full"
+                  :description="person.role || undefined"
+                  :avatar="{ src: person.avatar, alt: person.name }"
+                  size="md"
+                  class="min-w-0 flex-1"
                 />
-              </UContainer>
-            </UContainer>
+                <UTooltip text="Поздравить">
+                  <UButton
+                    type="button"
+                    color="neutral"
+                    variant="outline"
+                    size="sm"
+                    icon="i-lucide-gift"
+                    square
+                    aria-label="Поздравить"
+                    @click="congratulate(person.name)"
+                  />
+                </UTooltip>
+              </div>
+            </div>
           </UCard>
-        </UContainer>
-      </UContainer>
-    </UContainer>
-  </UContainer>
-  <!-- Админ: окно загрузки дат рождений (xlsx) -->
-  <USlideover v-model:open="birthdayUploadOpen" side="right" title="Загрузка дат рождений (xlsx)" description="">
-    <template #body>
-      <div class="space-y-4">
-        <UFileUpload
-          v-model="birthdayFile"
-          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          label="Перетащите xlsx сюда"
-          description="Один файл = один месяц. A1 — месяц, B1 — год, далее ФИО и дата."
-          class="w-full min-h-32"
-        />
-        <UAlert
-          v-if="birthdayUploadError"
-          color="error"
-          variant="subtle"
-          icon="i-lucide-alert-circle"
-          :description="birthdayUploadError"
-        />
-        <p v-if="birthdayUploading" class="text-sm text-muted">Загрузка…</p>
 
-        <div class="flex flex-col divide-y divide-default rounded-lg ring ring-default">
-          <div
-            v-for="m in birthdayMonths"
-            :key="m.month"
-            class="flex items-center justify-between gap-3 px-3 py-2"
+          <UCard
+            variant="soft"
+            class="w-full rounded-[10px]"
+            :ui="{
+              root: 'rounded-[10px] bg-elevated/50 ring-0 border-0 divide-y-0',
+              header: 'px-4 py-4 sm:px-4',
+              body: 'flex flex-col gap-2 px-4 pb-4 pt-0 sm:px-4 sm:pb-4 sm:pt-0',
+            }"
           >
-            <span class="text-sm capitalize">{{ m.name }}</span>
-            <span
-              class="text-sm truncate max-w-[60%]"
-              :class="m.filename ? 'text-default' : 'text-muted italic'"
-              :title="m.filename || 'не загружено'"
+            <template #header>
+              <div class="flex items-center justify-between gap-1">
+                <h2 class="text-lg font-bold leading-7 text-highlighted truncate">Новые сотрудники</h2>
+                <UButton
+                  to="/newcomers"
+                  color="neutral"
+                  variant="ghost"
+                  size="xs"
+                  icon="i-lucide-arrow-up-right"
+                  square
+                  aria-label="Открыть «Новичкам»"
+                />
+              </div>
+            </template>
+            <p class="text-sm text-muted">
+              Раздел для новых сотрудников в разработке.
+            </p>
+          </UCard>
+        </aside>
+      </div>
+    </div>
+
+    <USlideover
+      v-model:open="birthdayUploadOpen"
+      side="right"
+      title="Загрузка дат рождений (xlsx)"
+      description=""
+    >
+      <template #body>
+        <div class="space-y-4">
+          <UFileUpload
+            v-model="birthdayFile"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            label="Перетащите xlsx сюда"
+            description="Один файл = один месяц. A1 — месяц, B1 — год, далее ФИО и дата."
+            class="w-full min-h-32"
+          />
+          <UAlert
+            v-if="birthdayUploadError"
+            color="error"
+            variant="subtle"
+            icon="i-lucide-alert-circle"
+            :description="birthdayUploadError"
+          />
+          <p v-if="birthdayUploading" class="text-sm text-muted">Загрузка…</p>
+
+          <div class="flex flex-col divide-y divide-default rounded-lg ring ring-default">
+            <div
+              v-for="m in birthdayMonths"
+              :key="m.month"
+              class="flex items-center justify-between gap-3 px-3 py-2"
             >
-              {{ m.filename || 'не загружено' }}
-            </span>
+              <span class="text-sm capitalize">{{ m.name }}</span>
+              <span
+                class="text-sm truncate max-w-[60%]"
+                :class="m.filename ? 'text-default' : 'text-muted italic'"
+                :title="m.filename || 'не загружено'"
+              >
+                {{ m.filename || 'не загружено' }}
+              </span>
+            </div>
           </div>
         </div>
-      </div>
-    </template>
-  </USlideover>
+      </template>
+    </USlideover>
   </UMain>
 </template>

@@ -19,9 +19,8 @@ import KnowledgeBasePage from '../pages/KnowledgeBasePage.vue';
 import PersonnelReservePage from '../pages/PersonnelReservePage.vue';
 import TestsPage from '../pages/TestsPage.vue';
 import TestsBlankPage from '../pages/TestsBlankPage.vue';
-import HrDepartmentPage from '../pages/HrDepartmentPage.vue';
-import MunicipalServiceDepartmentPage from '../pages/MunicipalServiceDepartmentPage.vue';
 import DevelopmentMotivationDepartmentPage from '../pages/DevelopmentMotivationDepartmentPage.vue';
+import ServicesPage from '../pages/ServicesPage.vue';
 import AdminDashboardPage from '../pages/Admin/AdminDashboardPage.vue';
 import BirthdaysPage from '../pages/BirthdaysPage.vue';
 import LoginPage from '../pages/login.vue';
@@ -72,8 +71,7 @@ const routes = [
       { path: 'knowledge-base', name: 'kiosk-knowledge-base', component: KnowledgeBasePage, meta: { title: 'База знаний', kiosk: true } },
       { path: 'personnel-reserve', name: 'kiosk-personnel-reserve', component: PersonnelReservePage, meta: { title: 'Кадровый резерв', kiosk: true } },
       { path: 'tests', name: 'kiosk-tests', component: TestsPage, meta: { title: 'Тесты', kiosk: true } },
-      { path: 'hr-department', name: 'kiosk-hr-department', component: HrDepartmentPage, meta: { title: 'Отдел кадров', kiosk: true } },
-      { path: 'municipal-service', name: 'kiosk-municipal-service', component: MunicipalServiceDepartmentPage, meta: { title: 'Отдел муниципальной службы', kiosk: true } },
+      { path: 'services', name: 'kiosk-services', component: ServicesPage, meta: { title: 'Сервисы', kiosk: true } },
       { path: 'development-motivation', name: 'kiosk-development-motivation', component: DevelopmentMotivationDepartmentPage, meta: { title: 'Отдел развития и мотивации', kiosk: true } },
       { path: 'admin', name: 'kiosk-admin', component: AdminDashboardPage, meta: { title: 'Дэшборд администратора', requiresAdmin: true, kiosk: true } },
     ],
@@ -99,8 +97,7 @@ const routes = [
   { path: '/personnel-reserve', name: 'personnel-reserve', component: PersonnelReservePage, meta: { title: 'Кадровый резерв' } },
   { path: '/tests', name: 'tests', component: TestsBlankPage, meta: { title: 'Тесты' } },
   { path: '/tests/old', name: 'tests-old', component: TestsPage, meta: { title: 'Тесты (старые)' } },
-  { path: '/hr-department', name: 'hr-department', component: HrDepartmentPage, meta: { title: 'Отдел кадров' } },
-  { path: '/municipal-service', name: 'municipal-service', component: MunicipalServiceDepartmentPage, meta: { title: 'Отдел муниципальной службы' } },
+  { path: '/services', name: 'services', component: ServicesPage, meta: { title: 'Сервисы' } },
   { path: '/development-motivation', name: 'development-motivation', component: DevelopmentMotivationDepartmentPage, meta: { title: 'Отдел развития и мотивации' } },
   { path: '/admin', name: 'admin', component: AdminDashboardPage, meta: { title: 'Дэшборд администратора', requiresAdmin: true } },
   { path: '/chatbot', name: 'chatbot', component: ChatBotPage, meta: { title: 'AI Ассистент' } },
@@ -157,8 +154,7 @@ const kioskRouteNameByName = {
   'knowledge-base': 'kiosk-knowledge-base',
   'personnel-reserve': 'kiosk-personnel-reserve',
   tests: 'kiosk-tests',
-  'hr-department': 'kiosk-hr-department',
-  'municipal-service': 'kiosk-municipal-service',
+  services: 'kiosk-services',
   'development-motivation': 'kiosk-development-motivation',
   admin: 'kiosk-admin',
 };

@@ -1,25 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import type { ButtonProps } from '@nuxt/ui';
 import { useCoursesStore, type EnrollmentSummary } from '../../../composables/useCoursesStore';
-import CourseStatusBadge from './CourseStatusBadge.vue';
 
 const router = useRouter();
 const store = useCoursesStore();
 const loading = ref(true);
 const items = ref<EnrollmentSummary[]>([]);
-
-const learningLinks = <ButtonProps[]>[
-  {
-    icon: 'i-lucide-arrow-up-right',
-    to: '/courses',
-    size: 'xl',
-    color: 'neutral',
-    variant: 'outline',
-    class: 'rounded-full',
-  },
-];
 
 onMounted(async () => {
   loading.value = true;
@@ -42,7 +29,7 @@ onMounted(async () => {
   }
 });
 
-const visible = computed(() => !loading.value && items.value.length > 0);
+const primary = computed(() => items.value[0] ?? null);
 
 function open(e: EnrollmentSummary) {
   router.push({ name: 'course-enrollment', params: { enrollmentId: String(e.id) } });
@@ -50,40 +37,79 @@ function open(e: EnrollmentSummary) {
 </script>
 
 <template>
-  <section
-    v-if="visible"
-    class="flex flex-col gap-3 w-full max-w-full min-w-0"
-    aria-labelledby="learning-home-title"
+  <UCard
+    variant="soft"
+    class="w-full rounded-[10px]"
+    :ui="{
+      root: 'rounded-[10px] bg-elevated/50 ring-0 border-0 divide-y-0',
+      header: 'px-4 py-4 sm:px-4',
+      body: 'flex flex-col gap-2 px-4 pb-4 pt-0 sm:px-4 sm:pb-4 sm:pt-0',
+    }"
   >
-    <UPageHeader title="" :links="learningLinks" class="border-none p-0">
-      <template #title>
-        <h1 id="learning-home-title" class="text-2xl font-medium">Моё обучение</h1>
-      </template>
-    </UPageHeader>
+    <template #header>
+      <div class="flex items-center justify-between gap-1">
+        <h2 id="learning-home-title" class="text-lg font-bold leading-7 text-highlighted truncate">
+          Моё обучение
+        </h2>
+        <UButton
+          to="/courses"
+          color="neutral"
+          variant="ghost"
+          size="xs"
+          icon="i-lucide-arrow-up-right"
+          square
+          aria-label="Открыть курсы"
+        />
+      </div>
+    </template>
 
-    <div class="min-w-0 w-full max-w-full p-1">
-      <ul class="flex flex-col gap-2 list-none p-0 m-0 min-w-0">
+    <div v-if="loading" class="flex flex-col gap-2">
+      <USkeleton class="h-4 w-3/4 rounded" />
+      <USkeleton class="h-2 w-full rounded" />
+    </div>
+
+    <template v-else-if="primary">
+      <button
+        type="button"
+        class="flex w-full flex-col gap-2 text-left rounded-lg p-2 -mx-2 hover:bg-elevated/60 transition-colors"
+        @click="open(primary)"
+      >
+        <div class="flex flex-col gap-1 min-w-0">
+          <p class="font-medium text-sm leading-5 text-highlighted min-w-0 break-words">
+            {{ primary.courseTitle }}
+          </p>
+          <p class="text-xs font-medium leading-4 text-muted">
+            Курс • {{ primary.progressPercent ?? 0 }}% завершено
+          </p>
+        </div>
+        <UProgress
+          :model-value="primary.progressPercent ?? 0"
+          size="md"
+          color="primary"
+          :ui="{ base: 'bg-accented' }"
+          :aria-label="`Завершено ${primary.topicsCompleted ?? 0} из ${primary.topicsTotal ?? 0} тем, ${primary.progressPercent ?? 0} процентов`"
+        />
+      </button>
+
+      <ul v-if="items.length > 1" class="flex flex-col gap-2 list-none p-0 m-0 min-w-0">
         <li
-          v-for="e in items"
+          v-for="e in items.slice(1)"
           :key="e.id"
-          class="rounded-xl ring-1 ring-default bg-elevated/30 p-3 flex flex-col gap-2 cursor-pointer hover:bg-elevated/60 transition-colors min-w-0"
+          class="rounded-lg bg-elevated/30 p-2.5 flex flex-col gap-1.5 cursor-pointer hover:bg-elevated/60 transition-colors min-w-0"
           @click="open(e)"
         >
-          <div class="flex items-start justify-between gap-2 min-w-0">
-            <p class="font-medium text-highlighted text-sm min-w-0 break-words">{{ e.courseTitle }}</p>
-            <CourseStatusBadge :status="e.status" class="shrink-0" />
-          </div>
+          <p class="font-medium text-highlighted text-xs min-w-0 break-words">{{ e.courseTitle }}</p>
           <UProgress
             :model-value="e.progressPercent ?? 0"
             size="sm"
             color="primary"
-            :aria-label="`Завершено ${e.topicsCompleted ?? 0} из ${e.topicsTotal ?? 0} тем, ${e.progressPercent ?? 0} процентов`"
           />
-          <p class="text-xs text-dimmed">
-            Завершено {{ e.topicsCompleted ?? 0 }} из {{ e.topicsTotal ?? 0 }} тем · {{ e.progressPercent ?? 0 }}%
-          </p>
         </li>
       </ul>
-    </div>
-  </section>
+    </template>
+
+    <p v-else class="text-sm text-muted">
+      Активных курсов пока нет
+    </p>
+  </UCard>
 </template>

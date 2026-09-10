@@ -1,9 +1,8 @@
 <script setup>
-import { onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-import { currentRole } from '../stores/role';
-import { attachAbsenceStorageSync, hasActiveAbsence } from '../stores/absenceJournal';
-import { clearAuthStorage } from '../composables/useAuthSession';
+import { onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
+import { useSidebarNavItems } from '../composables/usePortalNavigation';
+import { attachAbsenceStorageSync } from '../stores/absenceJournal';
 
 defineProps({
   isDark: {
@@ -12,273 +11,139 @@ defineProps({
   },
 });
 
-const emit = defineEmits(['toggle-theme']);
-const route = useRoute();
+defineEmits(['toggle-theme']);
+
 const router = useRouter();
-
-function navigate(name) {
-  router.push({ name });
-}
-
-const isNewsActive = () =>
-  route.name === 'news' || route.name === 'news-details';
-
-const isCoursesActive = () =>
-  typeof route.name === 'string'
-  && (route.name === 'courses' || route.name.startsWith('course-') || route.name.startsWith('admin-course'));
-
-async function logout() {
-  try {
-    const user = JSON.parse(localStorage.getItem('auth-user') || 'null');
-    if (user?.id) {
-      await fetch('/api/logout.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: user.id }),
-      });
-    }
-  } finally {
-    clearAuthStorage();
-    router.push({ name: 'login' });
-  }
-}
+const { mainItems, footerItems } = useSidebarNavItems();
+const onboardingProgress = ref(60);
 
 onMounted(() => {
   attachAbsenceStorageSync();
 });
+
+function goNextStep() {
+  router.push({ name: 'onboarding' });
+}
 </script>
 
 <template>
-  <UContainer as="aside" class="flex flex-col justify-between w-fit gap-0 z-0 mx-0">
-    <!-- Верхняя группа: функциональные сервисы для сотрудников -->
-    <UContainer class="flex flex-col w-fit gap-6 z-0 mx-0">
-      <!-- Блок быстрых ссылок на основные сервисы -->
-      <UContainer class="flex flex-col bg-elevated relative rounded-full w-fit gap-0 sm:p-3 md:p-3 lg:p-3 xl:p-3 z-0 mx-0">
-        <UTooltip arrow :content="{side: 'right'}" text="Журнал отсутствия">
-          <div class="relative">
-            <UButton
-              type="button"
-              color="neutral"
-              square
-              class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
-              :class="route.name === 'absence-journal'
-                ? 'z-10 bg-primary text-neutral-50 shadow-none dark:shadow-brand [&_svg]:text-neutral-50 hover:bg-primary hover:text-neutral-50 active:bg-primary active:text-neutral-50 active:[&_svg]:text-neutral-50'
-                : ''"
-              size="xl"
-              icon="i-lucide-calendar"
-              @click="navigate('absence-journal')"
+  <UDashboardSidebar
+    id="portal-sidebar"
+    collapsible
+    resizable
+    :default-size="268"
+    :min-size="220"
+    :max-size="400"
+    :collapsed-size="0"
+    :ui="{
+      root: 'border-0 border-e-0 bg-elevated/50 rounded-2xl my-4 ms-4 min-h-0 h-[calc(100dvh-2rem)]',
+      header: 'h-[60px] shrink-0 px-4',
+      body: 'px-4 py-2 flex flex-col gap-4',
+      footer: 'px-4 pb-4 pt-2 gap-2',
+    }"
+  >
+    <template #header="{ collapsed }">
+      <RouterLink
+        :to="{ name: 'home' }"
+        class="flex items-center gap-1 min-w-0 flex-1"
+        :class="collapsed ? 'justify-center' : ''"
+      >
+        <span class="relative size-7 shrink-0 text-primary">
+          <svg
+            class="size-7 fill-current"
+            viewBox="0 0 48 48"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <path
+              d="M37.6895 8C38.963 8.00009 39.9969 9.0301 39.9971 10.2988V11.2412L40 24.0781C40 32.8696 32.8431 40 24.0186 40H8L35.2393 12.8623L30.3594 8H37.6895ZM24.0586 23.9971L8.00195 39.9971V34.5879H12.252V30.3545H8.00195V26.1172H12.252V21.8799H8.00195V17.6426H12.252V13.4092H8.00195V8L24.0586 23.9971ZM12.2578 26.1143V30.3506H16.5107V26.1143H12.2578ZM16.5176 21.8799V26.1172H20.7705V21.8799H16.5176ZM12.2578 17.6426V21.8799H16.5107V17.6426H12.2578Z"
             />
+          </svg>
+        </span>
+        <span
+          v-if="!collapsed"
+          class="text-sm font-semibold text-highlighted truncate"
+        >
+          Корпоративный портал
+        </span>
+      </RouterLink>
 
-            <UChip
-              v-if="hasActiveAbsence"
-              color="primary"
-              inset
-              size="3xl"
-              class="absolute -top-0.5 -right-0.5 z-30"
-            />
-          </div>
-        </UTooltip>
+      <UButton
+        v-if="!collapsed"
+        color="neutral"
+        variant="ghost"
+        size="xs"
+        square
+        icon="i-lucide-chevrons-up-down"
+        class="shrink-0"
+        aria-label="Переключить раздел"
+      />
+    </template>
 
-        <UTooltip arrow :content="{side: 'right'}" text="Новости">
-          <UButton
-            type="button"
-            color="neutral"
-            square
-            class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
-            :class="isNewsActive()
-              ? 'z-10 bg-primary text-neutral-50 shadow-none dark:shadow-brand [&_svg]:text-neutral-50 hover:bg-primary hover:text-neutral-50 active:bg-primary active:text-neutral-50 active:[&_svg]:text-neutral-50'
-              : ''"
-            size="xl"
-            icon="i-lucide-newspaper"
-            @click="navigate('news')"
+    <template #default="{ collapsed }">
+      <UNavigationMenu
+        :collapsed="collapsed"
+        :items="mainItems"
+        orientation="vertical"
+        class="w-full"
+      />
+
+      <div
+        v-if="!collapsed"
+        class="mt-auto flex flex-col gap-2 w-full"
+      >
+        <div
+          class="flex flex-col gap-2 rounded-lg px-4 py-2.5 bg-primary/20"
+        >
+          <p class="text-sm font-medium text-highlighted">
+            Прогресс изучения портала
+          </p>
+          <UProgress
+            v-model="onboardingProgress"
+            color="primary"
+            size="md"
+            :ui="{ base: 'bg-accented' }"
           />
-        </UTooltip>
-
-        <UTooltip arrow :content="{side: 'right'}" text="Дни рождения коллег">
+          <p class="text-xs font-medium text-muted">
+            Курс • {{ onboardingProgress }}% завершено
+          </p>
           <UButton
-            type="button"
             color="neutral"
-            square
-            class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
-            :class="route.name === 'birthdays'
-              ? 'z-10 bg-primary text-neutral-50 shadow-none dark:shadow-brand [&_svg]:text-neutral-50 hover:bg-primary hover:text-neutral-50 active:bg-primary active:text-neutral-50 active:[&_svg]:text-neutral-50'
-              : ''"
-            size="xl"
-            icon="i-lucide-cake"
-            @click="navigate('birthdays')"
-          />
-        </UTooltip>
+            variant="solid"
+            size="xs"
+            block
+            trailing-icon="i-lucide-move-right"
+            class="bg-inverted text-inverted hover:bg-inverted/90"
+            @click="goNextStep"
+          >
+            Следующий шаг
+          </UButton>
+        </div>
 
-        <UTooltip arrow :content="{side: 'right'}" text="Заявки">
-          <UButton
-            type="button"
-            color="neutral"
-            square
-            class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
-            :class="route.name === 'applications'
-              ? 'z-10 bg-primary text-neutral-50 shadow-none dark:shadow-brand [&_svg]:text-neutral-50 hover:bg-primary hover:text-neutral-50 active:bg-primary active:text-neutral-50 active:[&_svg]:text-neutral-50'
-              : ''"
-            size="xl"
-            icon="i-lucide-book-open"
-            @click="navigate('applications')"
-          />
-        </UTooltip>
-
-        <UTooltip arrow :content="{side: 'right'}" text="База знаний">
-          <UButton
-            type="button"
-            color="neutral"
-            square
-            class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
-            :class="route.name === 'knowledge-base'
-              ? 'z-10 bg-primary text-neutral-50 shadow-none dark:shadow-brand [&_svg]:text-neutral-50 hover:bg-primary hover:text-neutral-50 active:bg-primary active:text-neutral-50 active:[&_svg]:text-neutral-50'
-              : ''"
-            size="xl"
-            icon="i-lucide-book-open"
-            @click="navigate('knowledge-base')"
-          />
-        </UTooltip>
-
-        <UTooltip arrow :content="{side: 'right'}" text="Кадровый резерв">
-          <UButton
-            type="button"
-            color="neutral"
-            square
-            class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
-            :class="route.name === 'personnel-reserve'
-              ? 'z-10 bg-primary text-neutral-50 shadow-none dark:shadow-brand [&_svg]:text-neutral-50 hover:bg-primary hover:text-neutral-50 active:bg-primary active:text-neutral-50 active:[&_svg]:text-neutral-50'
-              : ''"
-            size="xl"
-            icon="i-lucide-users"
-            @click="navigate('personnel-reserve')"
-          />
-        </UTooltip>
-
-        <UTooltip arrow :content="{side: 'right'}" text="Тесты">
-          <UButton
-            type="button"
-            color="neutral"
-            square
-            class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
-            :class="route.name === 'tests'
-              ? 'z-10 bg-primary text-neutral-50 shadow-none dark:shadow-brand [&_svg]:text-neutral-50 hover:bg-primary hover:text-neutral-50 active:bg-primary active:text-neutral-50 active:[&_svg]:text-neutral-50'
-              : ''"
-            size="xl"
-            icon="i-lucide-clipboard-check"
-            @click="navigate('tests')"
-          />
-        </UTooltip>
-
-        <UTooltip arrow :content="{side: 'right'}" text="Мои курсы">
-          <UButton
-            type="button"
-            color="neutral"
-            square
-            class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
-            :class="isCoursesActive()
-              ? 'z-10 bg-primary text-neutral-50 shadow-none dark:shadow-brand [&_svg]:text-neutral-50 hover:bg-primary hover:text-neutral-50 active:bg-primary active:text-neutral-50 active:[&_svg]:text-neutral-50'
-              : ''"
-            size="xl"
-            icon="i-lucide-graduation-cap"
-            aria-label="Мои курсы"
-            @click="navigate('courses')"
-          />
-        </UTooltip>
-      </UContainer>
-
-      <!-- Блок ссылок на подразделения HR -->
-      <UContainer class="flex flex-col bg-elevated relative rounded-full w-fit gap-0 sm:p-3 md:p-3 lg:p-3 xl:p-3 z-0 mx-0">
-        <UTooltip arrow :content="{side: 'right'}" text="Отдел кадров">
-          <UButton
-            type="button"
-            color="neutral"
-            square
-            class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
-            :class="route.name === 'hr-department'
-              ? 'z-10 bg-primary text-neutral-50 shadow-none dark:shadow-brand [&_svg]:text-neutral-50 hover:bg-primary hover:text-neutral-50 active:bg-primary active:text-neutral-50 active:[&_svg]:text-neutral-50'
-              : ''"
-            size="xl"
-            icon="i-lucide-building-2"
-            @click="navigate('hr-department')"
-          />
-        </UTooltip>
-
-        <UTooltip arrow :content="{side: 'right'}" text="Отдел муниципальной службы">
-          <UButton
-            type="button"
-            color="neutral"
-            square
-            class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
-            :class="route.name === 'municipal-service'
-              ? 'z-10 bg-primary text-neutral-50 shadow-none dark:shadow-brand [&_svg]:text-neutral-50 hover:bg-primary hover:text-neutral-50 active:bg-primary active:text-neutral-50 active:[&_svg]:text-neutral-50'
-              : ''"
-            size="xl"
-            icon="i-lucide-building"
-            @click="navigate('municipal-service')"
-          />
-        </UTooltip>
-
-        <UTooltip arrow :content="{side: 'right'}" text="Отдел развития и мотивации персонала">
-          <UButton
-            type="button"
-            color="neutral"
-            square
-            class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
-            :class="route.name === 'development-motivation'
-              ? 'z-10 bg-primary text-neutral-50 shadow-none dark:shadow-brand [&_svg]:text-neutral-50 hover:bg-primary hover:text-neutral-50 active:bg-primary active:text-neutral-50 active:[&_svg]:text-neutral-50'
-              : ''"
-            size="xl"
-            icon="i-lucide-sparkles"
-            @click="navigate('development-motivation')"
-          />
-        </UTooltip>
-      </UContainer>
-    </UContainer>
-
-    <!-- Нижний блок: служебные действия (тема, помощь, выход) -->
-    <UContainer class="flex flex-col bg-elevated relative rounded-full w-fit gap-0 sm:p-3 md:p-3 lg:p-3 xl:p-3 z-0 mx-0">
-      <!-- Переключатель светлой / тёмной темы -->
-      <UTooltip arrow :content="{side: 'right'}" :text="isDark ? 'Светлая тема' : 'Тёмная тема'">
-        <UButton
-          type="button"
-          color="neutral"
-          square
-          size="xl"
-          class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
-          :icon="isDark ? 'i-lucide-sun' : 'i-lucide-moon'"
-          @click="emit('toggle-theme', $event)"
+        <UNavigationMenu
+          :items="footerItems"
+          orientation="vertical"
+          class="w-full"
         />
-      </UTooltip>
+      </div>
 
-      <!-- Справка -->
-      <UTooltip v-if="currentRole === 'admin'" arrow :content="{side: 'right'}" text="Дэшборд администратора">
-        <UButton
-          type="button"
-          color="neutral"
-          square
-          size="xl"
-          class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50  [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
-          :class="route.name === 'admin'
-            ? 'z-10 bg-primary text-neutral-50 shadow-none dark:shadow-brand [&_svg]:text-neutral-50 hover:bg-primary hover:text-neutral-50 active:bg-primary active:text-neutral-50 active:[&_svg]:text-neutral-50'
-            : ''"
-          icon="i-lucide-layout-dashboard"
-          @click="navigate('admin')"
-        />
-      </UTooltip>
+      <UNavigationMenu
+        v-else
+        :collapsed="collapsed"
+        :items="footerItems"
+        orientation="vertical"
+        class="mt-auto w-full"
+      />
+    </template>
 
-      <!-- Выход -->
-      <UTooltip arrow :content="{side: 'right'}" text="Выход из личного кабинета">
-        <UButton
-          type="button"
-          color="neutral"
-          square
-          size="xl"
-          class="relative z-0 shadow-none transition-all cursor-pointer duration-300 ease-out rounded-full bg-accented text-toned hover:bg-neutral-900 hover:text-neutral-50 [&_svg]:text-dimmed hover:[&_svg]:text-neutral-50 active:[&_svg]:text-inverted active:text-inverted active:bg-inverted"
-          icon="i-lucide-log-out"
-          @click="logout"
-        />
-      </UTooltip>
-    </UContainer>
-  </UContainer>
+    <template #resize-handle="{ onMouseDown, onTouchStart, onDoubleClick }">
+      <UDashboardResizeHandle
+        class="after:absolute after:inset-y-0 after:right-0 after:w-px hover:after:bg-(--ui-border-accented) after:transition-colors"
+        @mousedown="onMouseDown"
+        @touchstart="onTouchStart"
+        @dblclick="onDoubleClick"
+      />
+    </template>
+  </UDashboardSidebar>
 </template>
-

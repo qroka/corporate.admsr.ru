@@ -3,8 +3,8 @@
 
 @theme {
   --breakpoint-3xl: 1700px;
-  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
-    sans-serif;
+  --font-sans: 'Public Sans', 'Inter', system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
   --font-unbounded: 'Unbounded', system-ui, -apple-system, BlinkMacSystemFont,
     'Segoe UI', sans-serif;
   --color-brand: #50c891;
@@ -90,17 +90,18 @@
   --color-green-900: oklch(39.3% 0.095 152.535);
   --color-green-950: oklch(26.6% 0.065 152.934);
 
-  --color-emerald-50: oklch(97.9% 0.021 166.113);
-  --color-emerald-100: oklch(95% 0.052 163.051);
-  --color-emerald-200: oklch(90.5% 0.093 164.15);
-  --color-emerald-300: oklch(84.5% 0.143 164.978);
-  --color-emerald-400: oklch(76.5% 0.177 163.223);
-  --color-emerald-500: oklch(69.6% 0.17 162.48);
-  --color-emerald-600: oklch(59.6% 0.145 163.225);
-  --color-emerald-700: oklch(50.8% 0.118 165.612);
-  --color-emerald-800: oklch(43.2% 0.095 166.913);
-  --color-emerald-900: oklch(37.8% 0.077 168.94);
-  --color-emerald-950: oklch(26.2% 0.051 172.552);
+  /* Brand emerald tuned to Figma primary #00DC82 */
+  --color-emerald-50: #ecfdf5;
+  --color-emerald-100: #d1fae5;
+  --color-emerald-200: #a7f3d0;
+  --color-emerald-300: #6ee7b7;
+  --color-emerald-400: #34d399;
+  --color-emerald-500: #00DC82;
+  --color-emerald-600: #00c16a;
+  --color-emerald-700: #059669;
+  --color-emerald-800: #065f46;
+  --color-emerald-900: #064e3b;
+  --color-emerald-950: #022c22;
 
   --color-teal-50: oklch(98.4% 0.014 180.72);
   --color-teal-100: oklch(95.3% 0.051 180.801);

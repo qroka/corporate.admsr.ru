@@ -9,7 +9,7 @@ export default defineConfig({
       ui: {
         colors: {
           primary: 'emerald',
-          neutral: 'slate'
+          neutral: 'zinc'
         },
         container: {
           base: 'p-0 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0',
