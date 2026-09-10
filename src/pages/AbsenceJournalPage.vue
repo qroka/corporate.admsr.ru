@@ -143,7 +143,7 @@ const periodOptions = [
 
 const reasonPresets = [
   'Выезд',
-  'Энгильса 10',
+  'Энгельса 10',
   'Работа в архиве',
   'Совещание',
 ] as const;
