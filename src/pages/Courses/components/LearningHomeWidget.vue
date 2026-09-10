@@ -41,7 +41,7 @@ function open(e: EnrollmentSummary) {
     variant="soft"
     class="w-full rounded-[10px]"
     :ui="{
-      root: 'rounded-[10px] bg-elevated/50 ring-0 border-0 divide-y-0',
+      root: 'rounded-[10px] bg-elevated/75 ring-0 border-0 divide-y-0',
       header: 'px-4 py-4 sm:px-4',
       body: 'flex flex-col gap-2 px-4 pb-4 pt-0 sm:px-4 sm:pb-4 sm:pt-0',
     }"

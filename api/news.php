@@ -2,11 +2,13 @@
 /**
  * API: /api/news.php
  *
- * GET    /api/news.php              — список новостей
- * GET    /api/news.php?id=N         — одна новость
- * POST   /api/news.php              — создать новость
- * PUT    /api/news.php?id=N         — обновить новость
- * DELETE /api/news.php?id=N         — удалить новость
+ * GET    /api/news.php                    — список новостей (legacy: полный массив)
+ * GET    /api/news.php?limit=8&cursor=…   — cursor-страница ленты
+ *        → data: { items, nextCursor, hasMore }
+ * GET    /api/news.php?id=N               — одна новость
+ * POST   /api/news.php                    — создать новость
+ * PUT    /api/news.php?id=N               — обновить новость
+ * DELETE /api/news.php?id=N               — удалить новость
  *
  * Table: public.news
  *   id SERIAL PK, title VARCHAR(255), category VARCHAR(100),
@@ -69,10 +71,16 @@ switch ($method) {
       if (!$row) jsonError(404, 'Новость не найдена');
       jsonOk(fmt($row));
     } else {
-      [$sql, $params] = buildQuery($_GET);
-      $stmt = $pdo->prepare($sql);
-      $stmt->execute($params);
-      jsonOk(array_map('fmt', $stmt->fetchAll()));
+      // Cursor / limit mode: ?limit=8&cursor=...
+      // Legacy (no limit): full array — for admin list, kiosk, detail sidebar.
+      if (isset($_GET['limit']) || array_key_exists('cursor', $_GET)) {
+        jsonOk(fetchNewsCursorPage($pdo, $_GET));
+      } else {
+        [$sql, $params] = buildQuery($_GET);
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        jsonOk(array_map('fmt', $stmt->fetchAll()));
+      }
     }
     break;
 
@@ -194,6 +202,115 @@ switch ($method) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Cursor page for social-style feed.
+ * Sort: date DESC, id DESC. Cursor = last item (date + id).
+ *
+ * Response data shape:
+ *   { "items": [...], "nextCursor": "..."|null, "hasMore": bool }
+ */
+function fetchNewsCursorPage(PDO $pdo, array $get): array
+{
+  $limit = isset($get['limit']) ? (int)$get['limit'] : 8;
+  if ($limit < 1) $limit = 8;
+  if ($limit > 30) $limit = 30;
+
+  $cond   = [];
+  $params = [];
+
+  if (!empty($get['search'])) {
+    $cond[]            = '(title ILIKE :search OR description ILIKE :search OR category ILIKE :search)';
+    $params[':search'] = '%' . trim((string)$get['search']) . '%';
+  }
+
+  if (!empty($get['category'])) {
+    $cond[]              = 'category ILIKE :category';
+    $params[':category'] = '%' . trim((string)$get['category']) . '%';
+  }
+
+  $cursorRaw = isset($get['cursor']) ? trim((string)$get['cursor']) : '';
+  if ($cursorRaw !== '') {
+    $cursor = decodeNewsCursor($cursorRaw);
+    if ($cursor === null) {
+      jsonError(400, 'Некорректный cursor');
+    }
+    // Next page for ORDER BY date DESC, id DESC
+    $cond[]                 = '(date < :cursor_date OR (date = :cursor_date AND id < :cursor_id))';
+    $params[':cursor_date'] = $cursor['date'];
+    $params[':cursor_id']   = $cursor['id'];
+  }
+
+  $where = $cond ? (' WHERE ' . implode(' AND ', $cond)) : '';
+  // Fetch one extra row to know if there is another page
+  $fetchLimit = $limit + 1;
+
+  $sql =
+    "SELECT * FROM public.news" .
+    $where .
+    " ORDER BY date DESC, id DESC" .
+    " LIMIT :fetch_limit";
+
+  $stmt = $pdo->prepare($sql);
+  foreach ($params as $key => $value) {
+    if ($key === ':cursor_id') {
+      $stmt->bindValue($key, (int)$value, PDO::PARAM_INT);
+    } else {
+      $stmt->bindValue($key, $value);
+    }
+  }
+  $stmt->bindValue(':fetch_limit', $fetchLimit, PDO::PARAM_INT);
+  $stmt->execute();
+  $rows = $stmt->fetchAll();
+
+  $hasMore = count($rows) > $limit;
+  if ($hasMore) {
+    $rows = array_slice($rows, 0, $limit);
+  }
+
+  $items = array_map('fmt', $rows);
+  $nextCursor = null;
+  if ($hasMore && count($rows) > 0) {
+    $last = $rows[count($rows) - 1];
+    $nextCursor = encodeNewsCursor((string)($last['date'] ?? ''), (int)$last['id']);
+  }
+
+  return [
+    'items'      => $items,
+    'nextCursor' => $nextCursor,
+    'hasMore'    => $hasMore,
+  ];
+}
+
+function encodeNewsCursor(string $date, int $id): string
+{
+  $payload = json_encode(['d' => $date, 'i' => $id], JSON_UNESCAPED_UNICODE);
+  return rtrim(strtr(base64_encode($payload !== false ? $payload : ''), '+/', '-_'), '=');
+}
+
+/** @return array{date: string, id: int}|null */
+function decodeNewsCursor(string $raw): ?array
+{
+  $b64 = strtr($raw, '-_', '+/');
+  $pad = strlen($b64) % 4;
+  if ($pad > 0) {
+    $b64 .= str_repeat('=', 4 - $pad);
+  }
+  $json = base64_decode($b64, true);
+  if ($json === false || $json === '') return null;
+
+  $data = json_decode($json, true);
+  if (!is_array($data)) return null;
+
+  $date = isset($data['d']) ? trim((string)$data['d']) : '';
+  $id   = isset($data['i']) ? (int)$data['i'] : 0;
+
+  // YYYY-MM-DD
+  if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) return null;
+  if ($id < 1) return null;
+
+  return ['date' => $date, 'id' => $id];
+}
+
 function buildQuery(array $get): array
 {
   $cond   = [];
@@ -206,7 +323,7 @@ function buildQuery(array $get): array
 
   if (!empty($get['category'])) {
     $cond[]              = 'category ILIKE :category';
-    $params[':category'] = trim($get['category']);
+    $params[':category'] = '%' . trim((string)$get['category']) . '%';
   }
 
   $allowed = ['date', 'created_at', 'id', 'title'];

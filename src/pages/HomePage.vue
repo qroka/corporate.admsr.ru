@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch, onMounted } from 'vue';
+import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import type { TabsItem } from '@nuxt/ui';
-import { useRouter } from 'vue-router';
-import { useNewsData, resolveNewsImageSrc } from '../composables/useNewsData';
+import { useRouter, onBeforeRouteLeave } from 'vue-router';
+import { resolveNewsImageSrc } from '../composables/useNewsData';
+import { useNewsFeed, useFeedSentinel } from '../composables/useNewsFeed';
 import { useNewsReactions } from '../composables/useNewsReactions';
 import { useBirthdayColleagues } from '../composables/useBirthdayColleagues';
 import { attachAbsenceStorageSync, hasActiveAbsence } from '../stores/absenceJournal';
@@ -170,12 +171,23 @@ type NewsFeedItem = {
   category: string;
 };
 
-const { sortedNews, ensureLoaded: ensureNewsLoaded } = useNewsData();
-ensureNewsLoaded();
+const homeScrollEl = ref<HTMLElement | null>(null);
+const newsSentinelEl = ref<HTMLElement | null>(null);
 
-const newsPageSize = 6;
-const visibleNewsCount = ref(newsPageSize);
-const newsTab = ref<'feed' | 'ofo'>('feed');
+const {
+  items: feedRecords,
+  hasMore: feedHasMore,
+  loading: feedLoading,
+  initialLoading: feedInitialLoading,
+  error: feedError,
+  scrollTop: savedScrollTop,
+  activeTab: newsTab,
+  loadInitial,
+  loadMore,
+  refresh,
+  saveScrollTop,
+  resolveLikesViews,
+} = useNewsFeed();
 
 function newsPreviewText(html: string, maxLen: number): string {
   const plain = String(html ?? '')
@@ -185,13 +197,20 @@ function newsPreviewText(html: string, maxLen: number): string {
   return plain.length > maxLen ? `${plain.slice(0, maxLen)}…` : plain;
 }
 
-const allNewsItems = computed<NewsFeedItem[]>(() =>
-  sortedNews.value.map((n) => {
+function ofoCategoryFilter(): string | null {
+  const label = ofoTabLabel.value.trim();
+  if (!label || label.toLowerCase() === 'моё офо') return null;
+  return label;
+}
+
+const newsItems = computed<NewsFeedItem[]>(() =>
+  feedRecords.value.map((n) => {
     const imageSrc = resolveNewsImageSrc(n.imagePath);
+    const counts = resolveLikesViews(n.id);
     return {
       id: n.id,
-      likes: n.likes ?? 0,
-      views: n.views ?? 0,
+      likes: counts.likes,
+      views: counts.views,
       title: n.title || `Новость #${n.id}`,
       description: newsPreviewText(n.description, 220),
       imageSrc: imageSrc || '/src/img/Logo.svg',
@@ -203,33 +222,82 @@ const allNewsItems = computed<NewsFeedItem[]>(() =>
   }),
 );
 
-/** У новостей нет поля ОФО — вкладка показывает совпадение категории с названием ОФО, иначе пусто. */
-const ofoFilteredNews = computed(() => {
-  const label = ofoTabLabel.value.trim().toLowerCase();
-  if (!label || label === 'моё офо') return [] as NewsFeedItem[];
-  return allNewsItems.value.filter((n) => n.category.toLowerCase().includes(label));
-});
-
-const activeNewsPool = computed(() =>
-  newsTab.value === 'ofo' ? ofoFilteredNews.value : allNewsItems.value,
-);
-
-const newsItems = computed(() => activeNewsPool.value.slice(0, visibleNewsCount.value));
-const hasMoreNews = computed(() => visibleNewsCount.value < activeNewsPool.value.length);
-
-watch(newsTab, () => {
-  visibleNewsCount.value = newsPageSize;
-});
-
 const newsTabItems = computed<TabsItem[]>(() => [
-  { label: 'Лента новостей', value: 'feed' },
-  { label: ofoTabLabel.value, value: 'ofo' },
+  { label: 'Лента новостей', value: 'feed', class: 'shrink-0' },
+  {
+    label: ofoTabLabel.value,
+    value: 'ofo',
+    class: 'min-w-0',
+    ui: { label: 'truncate' },
+  },
 ]);
 
 const { isLiked: isNewsLiked, toggleLike: toggleNewsLike } = useNewsReactions();
 
-function showMoreNews() {
-  visibleNewsCount.value = Math.min(activeNewsPool.value.length, visibleNewsCount.value + newsPageSize);
+/** Вкладка ОФО без привязки категории — пустой экран, стор ленты не трогаем. */
+const ofoUnbound = computed(
+  () => newsTab.value === 'ofo' && !ofoCategoryFilter(),
+);
+
+const displayNewsItems = computed(() =>
+  ofoUnbound.value ? [] : newsItems.value,
+);
+
+const feedSentinelEnabled = computed(() => {
+  if (ofoUnbound.value) return false;
+  if (feedLoading.value || feedError.value || !feedHasMore.value) return false;
+  return true;
+});
+
+useFeedSentinel({
+  root: homeScrollEl,
+  sentinel: newsSentinelEl,
+  enabled: feedSentinelEnabled,
+  onIntersect: () => {
+    void loadMore();
+  },
+  rootMargin: '600px 0px',
+});
+
+watch(newsTab, (tab) => {
+  if (tab === 'ofo') {
+    const cat = ofoCategoryFilter();
+    if (!cat) return;
+    void loadInitial({ category: cat, force: true });
+    return;
+  }
+  void loadInitial({ category: null });
+});
+
+function onHomeScroll() {
+  const el = homeScrollEl.value;
+  if (!el) return;
+  saveScrollTop(el.scrollTop);
+}
+
+async function restoreHomeScroll() {
+  await nextTick();
+  requestAnimationFrame(() => {
+    const el = homeScrollEl.value;
+    if (!el) return;
+    const y = savedScrollTop.value;
+    if (y > 0) el.scrollTop = y;
+  });
+}
+
+onBeforeRouteLeave(() => {
+  const el = homeScrollEl.value;
+  if (el) saveScrollTop(el.scrollTop);
+});
+
+function retryFeed() {
+  if (feedRecords.value.length > 0 && feedHasMore.value) {
+    void loadMore();
+    return;
+  }
+  void refresh({
+    category: newsTab.value === 'ofo' ? ofoCategoryFilter() : null,
+  });
 }
 
 const {
@@ -319,11 +387,30 @@ watch(birthdayFile, async (val) => {
 onMounted(() => {
   attachAbsenceStorageSync();
   void fetchHomeEvents();
+
+  const cat =
+    newsTab.value === 'ofo' ? ofoCategoryFilter() : null;
+  if (!(newsTab.value === 'ofo' && !cat)) {
+    void loadInitial({ category: cat }).then(() => restoreHomeScroll());
+  } else {
+    void restoreHomeScroll();
+  }
+
+  const el = homeScrollEl.value;
+  if (el) el.addEventListener('scroll', onHomeScroll, { passive: true });
+});
+
+onUnmounted(() => {
+  const el = homeScrollEl.value;
+  if (el) {
+    saveScrollTop(el.scrollTop);
+    el.removeEventListener('scroll', onHomeScroll);
+  }
 });
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full h-full min-h-0 max-h-full overflow-hidden">
+  <UMain class="flex flex-1 flex-col w-full max-w-none min-w-0 h-full min-h-0 max-h-full overflow-hidden">
     <UAlert
       v-if="hasActiveAbsence"
       color="primary"
@@ -343,16 +430,24 @@ onMounted(() => {
       ]"
     />
 
-    <div class="flex w-full flex-1 flex-col gap-2 min-h-0 overflow-y-auto scrollbar-hide">
+    <div
+      ref="homeScrollEl"
+      class="flex w-full max-w-none flex-1 flex-col gap-2 min-h-0 overflow-y-auto scrollbar-hide"
+    >
       <UPageHeader
         :title="greetingTitle"
-        class="border-none py-4 px-0"
-        :ui="{ title: 'text-2xl font-bold leading-8 text-highlighted' }"
+        class="border-none py-4 px-0 w-full max-w-none"
+        :ui="{
+          root: 'w-full max-w-none',
+          container: 'w-full max-w-none mx-0',
+          wrapper: 'w-full',
+          title: 'text-2xl font-bold leading-8 text-highlighted',
+        }"
       />
 
-      <div class="flex flex-col xl:flex-row gap-4 min-h-0 items-start">
-        <div class="flex min-w-0 flex-1 flex-col gap-4">
-      <section class="flex flex-col gap-4" aria-labelledby="home-services-title">
+      <div class="grid w-full min-w-0 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-4 items-start">
+        <div class="flex min-w-0 w-full flex-col gap-4">
+      <section class="flex flex-col gap-4 w-full" aria-labelledby="home-services-title">
         <div class="flex items-center justify-between gap-1">
           <div class="flex items-center gap-1 min-w-0">
             <h2 id="home-services-title" class="text-lg font-bold leading-7 text-highlighted">
@@ -381,7 +476,7 @@ onMounted(() => {
           />
         </div>
 
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div class="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <UPageCard
             v-for="svc in homeServices"
             :key="svc.id"
@@ -390,9 +485,9 @@ onMounted(() => {
             :to="svc.to"
             :on-click="svc.action === 'sed' ? onSedClick : undefined"
             variant="soft"
-            class="bg-elevated/50"
+            class="bg-elevated/75"
             :ui="{
-              root: 'h-[92px] cursor-pointer rounded-[10px] ring-0 border-0 bg-elevated/50',
+              root: 'h-[92px] cursor-pointer rounded-[10px] ring-0 border-0 bg-elevated/75',
               container: 'items-center justify-center text-center gap-2 p-4 h-full',
               wrapper: 'items-center',
               leading: 'mb-0',
@@ -412,18 +507,27 @@ onMounted(() => {
             color="primary"
             size="md"
             :content="false"
-            class="w-full border-b border-default"
+            class="w-full max-w-full border-b border-default"
             :ui="{
-              list: 'h-12 gap-1.5 overflow-x-auto',
-              trigger: 'h-12 shrink-0 justify-start focus-visible:outline-none focus-visible:ring-0',
-              label: 'truncate max-w-[min(100%,28rem)]',
+              root: 'w-full max-w-full items-stretch',
+              list: 'w-full h-12 gap-1.5',
+              trigger: 'h-12 min-w-0 justify-start focus-visible:outline-none focus-visible:ring-0',
+              label: 'truncate',
             }"
           />
 
-          <div class="flex flex-col gap-4">
-            <template v-if="newsItems.length">
+          <div class="flex w-full min-w-0 flex-col gap-4">
+            <template v-if="feedInitialLoading && !displayNewsItems.length">
+              <USkeleton
+                v-for="n in 3"
+                :key="`sk-init-${n}`"
+                class="h-[300px] w-full rounded-[10px]"
+              />
+            </template>
+
+            <template v-else-if="displayNewsItems.length">
               <HomeNewsCard
-                v-for="item in newsItems"
+                v-for="item in displayNewsItems"
                 :key="item.id"
                 :id="item.id"
                 :title="item.title"
@@ -440,19 +544,54 @@ onMounted(() => {
                 @toggle-like="toggleNewsLike(item.id)"
               />
 
+              <template v-if="feedLoading && !feedInitialLoading">
+                <USkeleton
+                  v-for="n in 2"
+                  :key="`sk-more-${n}`"
+                  class="h-[300px] w-full rounded-[10px]"
+                />
+              </template>
+
+              <div
+                v-if="feedError && !feedInitialLoading"
+                class="flex flex-col items-center gap-3 py-4"
+              >
+                <p class="text-sm text-error">Не удалось загрузить новости</p>
+                <UButton
+                  type="button"
+                  color="neutral"
+                  variant="outline"
+                  size="md"
+                  icon="i-lucide-refresh-cw"
+                  @click="retryFeed"
+                >
+                  Повторить
+                </UButton>
+              </div>
+
+              <div
+                ref="newsSentinelEl"
+                class="h-1 w-full shrink-0"
+                aria-hidden="true"
+              />
+            </template>
+
+            <div
+              v-else-if="feedError"
+              class="flex flex-col items-center gap-3 py-10"
+            >
+              <p class="text-sm text-error">Не удалось загрузить новости</p>
               <UButton
-                v-if="hasMoreNews"
                 type="button"
                 color="neutral"
                 variant="outline"
-                size="lg"
-                class="w-full justify-center"
-                icon="i-lucide-chevron-down"
-                @click="showMoreNews"
+                size="md"
+                icon="i-lucide-refresh-cw"
+                @click="retryFeed"
               >
-                Показать ещё
+                Повторить
               </UButton>
-            </template>
+            </div>
 
             <UEmpty
               v-else-if="newsTab === 'ofo'"
@@ -460,7 +599,7 @@ onMounted(() => {
               icon="i-lucide-building-2"
               title="Нет новостей ОФО"
               description="У новостей пока нет привязки к ОФО. Вкладка покажет материалы, если категория совпадёт с названием вашего подразделения."
-              class="py-10"
+              class="w-full py-10"
             />
             <UEmpty
               v-else
@@ -468,21 +607,21 @@ onMounted(() => {
               icon="i-lucide-newspaper"
               title="Новостей пока нет"
               description="Как только появятся публикации, они отобразятся здесь."
-              class="py-10"
+              class="w-full py-10"
             />
           </div>
         </section>
         </div>
 
         <!-- Правая колонка -->
-        <aside class="w-full xl:w-[420px] shrink-0 flex flex-col gap-4">
+        <aside class="w-full min-w-0 flex flex-col gap-4">
           <LearningHomeWidget v-if="!isAdmin" />
 
           <UCard
             variant="soft"
             class="w-full rounded-[10px]"
             :ui="{
-              root: 'rounded-[10px] bg-elevated/50 ring-0 border-0 divide-y-0',
+              root: 'rounded-[10px] bg-elevated/75 ring-0 border-0 divide-y-0',
               header: 'px-4 py-4 sm:px-4',
               body: 'flex flex-col gap-2 px-4 pb-4 pt-0 sm:px-4 sm:pb-4 sm:pt-0',
             }"
@@ -524,7 +663,7 @@ onMounted(() => {
             variant="soft"
             class="w-full rounded-[10px]"
             :ui="{
-              root: 'rounded-[10px] bg-elevated/50 ring-0 border-0 divide-y-0',
+              root: 'rounded-[10px] bg-elevated/75 ring-0 border-0 divide-y-0',
               header: 'px-4 py-4 sm:px-4',
               body: 'flex flex-col gap-3 px-4 pb-4 pt-0 sm:px-4 sm:pb-4 sm:pt-0',
             }"
@@ -600,7 +739,7 @@ onMounted(() => {
             variant="soft"
             class="w-full rounded-[10px]"
             :ui="{
-              root: 'rounded-[10px] bg-elevated/50 ring-0 border-0 divide-y-0',
+              root: 'rounded-[10px] bg-elevated/75 ring-0 border-0 divide-y-0',
               header: 'px-4 py-4 sm:px-4',
               body: 'flex flex-col gap-2 px-4 pb-4 pt-0 sm:px-4 sm:pb-4 sm:pt-0',
             }"

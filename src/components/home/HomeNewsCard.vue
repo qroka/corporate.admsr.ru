@@ -117,7 +117,7 @@ function onExtraReaction() {
     variant="soft"
     class="w-full h-[300px] shrink-0 rounded-[10px]"
     :ui="{
-      root: 'divide-y-0 h-[300px] rounded-[10px] bg-elevated/50 ring-0 border-0 overflow-hidden',
+      root: 'divide-y-0 h-[300px] rounded-[10px] bg-elevated/75 ring-0 border-0 overflow-hidden',
       body: 'p-0 sm:p-0 h-full overflow-hidden',
     }"
   >
@@ -129,12 +129,14 @@ function onExtraReaction() {
           aria-hidden="true"
           class="absolute inset-0 size-full scale-110 object-cover blur-2xl"
           loading="lazy"
+          decoding="async"
         />
         <img
           :src="imageSrc"
           :alt="imageAlt"
           class="relative z-10 block size-full object-contain"
           loading="lazy"
+          decoding="async"
         />
       </div>
 

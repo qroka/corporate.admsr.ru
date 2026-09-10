@@ -19,7 +19,7 @@ const sharedRows = ref<NewsRecord[]>([]);
 const sharedLoaded = ref(false);
 let sharedLoadPromise: Promise<void> | null = null;
 
-function mapApiRow(r: Record<string, unknown>): NewsRecord | null {
+export function mapApiRow(r: Record<string, unknown>): NewsRecord | null {
   const id = String(r?.id ?? '').trim();
   if (!id) return null;
   return {
@@ -113,6 +113,16 @@ export function useNewsData() {
     if (idx !== -1) sharedRows.value[idx] = updated;
   }
 
+  /** Добавляет или обновляет записи без пометки «весь список загружен» (для ленты). */
+  function upsertItems(records: NewsRecord[]) {
+    if (!records.length) return;
+    const byId = new Map(sharedRows.value.map((r) => [r.id, r]));
+    for (const rec of records) {
+      byId.set(rec.id, rec);
+    }
+    sharedRows.value = Array.from(byId.values());
+  }
+
   const sortedNews = computed(() => {
     const items = news.value.slice();
     items.sort((a, b) => {
@@ -128,5 +138,5 @@ export function useNewsData() {
     return news.value.find((x) => x.id === key);
   }
 
-  return { loading, error, news, sortedNews, getById, load, reload, ensureLoaded, patchItem };
+  return { loading, error, news, sortedNews, getById, load, reload, ensureLoaded, patchItem, upsertItems };
 }

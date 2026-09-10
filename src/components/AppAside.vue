@@ -36,7 +36,7 @@ function goNextStep() {
     :max-size="400"
     :collapsed-size="0"
     :ui="{
-      root: 'border-0 border-e-0 bg-elevated/50 rounded-2xl my-4 ms-4 min-h-0 h-[calc(100dvh-2rem)]',
+      root: 'border-0 border-e-0 bg-elevated/75 rounded-2xl my-4 ms-4 min-h-0 h-[calc(100dvh-2rem)]',
       header: 'h-[60px] shrink-0 px-4',
       body: 'px-4 py-2 flex flex-col gap-4',
       footer: 'px-4 pb-4 pt-2 gap-2',

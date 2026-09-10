@@ -120,7 +120,7 @@ const userMenuItems = computed(() => {
 <template>
   <UDashboardNavbar
     :ui="{
-      root: 'h-[60px] shrink-0 border-0 mx-4 mt-4 rounded-2xl bg-elevated/50 px-4',
+      root: 'h-[60px] shrink-0 border-0 mx-4 mt-4 rounded-2xl bg-elevated/75 px-4',
       left: 'min-w-0',
       right: 'gap-4',
       title: 'min-w-0',

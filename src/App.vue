@@ -26,7 +26,7 @@
           class="bg-default"
           :ui="{
             root: 'bg-default',
-            body: 'p-4 sm:p-4 pt-4 bg-default',
+            body: 'px-4 pt-4 pb-0 sm:px-4 sm:pt-4 sm:pb-0 bg-default overflow-hidden',
           }"
         >
           <template #header>
