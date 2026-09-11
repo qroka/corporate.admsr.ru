@@ -1286,7 +1286,10 @@ watch(
                     v-model="startDateValue"
                     size="md"
                     color="neutral"
-                    class="w-full lg:w-56"
+                    class="w-full lg:min-w-64 lg:w-64"
+                    :ui="{
+                      segment: 'data-[segment=year]:w-14 whitespace-nowrap',
+                    }"
                     :disabled="loading"
                   >
                     <template #trailing>

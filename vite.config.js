@@ -22,6 +22,34 @@ export default defineConfig({
             root: 'relative border-b border-default py-4',
           },
         },
+        // Год в сегментах date picker: дефолтный w-11 слишком узкий для text-base / кастомного шрифта
+        inputDate: {
+          slots: {
+            segment: [
+              'rounded-sm text-center outline-hidden whitespace-nowrap data-placeholder:text-dimmed data-[segment=literal]:text-muted data-invalid:text-error data-disabled:cursor-not-allowed data-disabled:opacity-75',
+              'transition-colors',
+            ],
+          },
+          variants: {
+            size: {
+              xs: {
+                segment: 'data-[segment=day]:w-8 data-[segment=month]:w-8 data-[segment=year]:w-12',
+              },
+              sm: {
+                segment: 'data-[segment=day]:w-8 data-[segment=month]:w-8 data-[segment=year]:w-12',
+              },
+              md: {
+                segment: 'data-[segment=day]:w-9 data-[segment=month]:w-9 data-[segment=year]:w-14',
+              },
+              lg: {
+                segment: 'data-[segment=day]:w-10 data-[segment=month]:w-10 data-[segment=year]:w-14',
+              },
+              xl: {
+                segment: 'data-[segment=day]:w-10 data-[segment=month]:w-10 data-[segment=year]:w-16',
+              },
+            },
+          },
+        },
       },
     }),
   ],
