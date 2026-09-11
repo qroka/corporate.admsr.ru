@@ -38,6 +38,7 @@ function open(e: EnrollmentSummary) {
 
 <template>
   <UCard
+    v-if="!loading && items.length"
     variant="soft"
     class="w-full rounded-panel"
     :ui="{
@@ -76,12 +77,7 @@ function open(e: EnrollmentSummary) {
       </div>
     </template>
 
-    <div v-if="loading" class="flex flex-col gap-2">
-      <USkeleton class="h-4 w-3/4 rounded" />
-      <USkeleton class="h-2 w-full rounded" />
-    </div>
-
-    <template v-else-if="primary">
+    <template v-if="primary">
       <button
         type="button"
         class="flex w-full flex-col gap-2 text-left rounded-lg p-2 -mx-2 hover:bg-elevated/60 transition-colors"
@@ -120,9 +116,5 @@ function open(e: EnrollmentSummary) {
         </li>
       </ul>
     </template>
-
-    <p v-else class="text-sm text-muted">
-      Активных курсов пока нет
-    </p>
   </UCard>
 </template>

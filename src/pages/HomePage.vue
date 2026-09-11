@@ -1,21 +1,22 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import type { TabsItem } from '@nuxt/ui';
-import { useRouter, onBeforeRouteLeave } from 'vue-router';
+import { onBeforeRouteLeave } from 'vue-router';
 import { resolveNewsImageSrc } from '../composables/useNewsData';
 import { useNewsFeed, useFeedSentinel } from '../composables/useNewsFeed';
 import { useNewsReactions } from '../composables/useNewsReactions';
 import { useBirthdayColleagues } from '../composables/useBirthdayColleagues';
-import { attachAbsenceStorageSync, hasActiveAbsence } from '../stores/absenceJournal';
+import { attachAbsenceStorageSync } from '../stores/absenceJournal';
 import { useSectionAccess } from '../composables/useSectionAccess';
 import { apiSessionUpload } from '../composables/useAuthSession';
 import { useHeaderUser } from '../composables/useHeaderUser';
 import { useAppToast } from '../composables/useAppToast';
 import LearningHomeWidget from './Courses/components/LearningHomeWidget.vue';
 import HomeNewsCard from '../components/home/HomeNewsCard.vue';
+import HomeCalendarWidget from '../components/home/HomeCalendarWidget.vue';
+import HomeAbsenceWidget from '../components/home/HomeAbsenceWidget.vue';
 
-const router = useRouter();
-const { toast, success } = useAppToast();
+const { toast, error } = useAppToast();
 
 const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
 ensureSectionAccess();
@@ -84,65 +85,6 @@ function onSedClick() {
     color: 'neutral',
     icon: 'i-lucide-file-stack',
   });
-}
-
-type HomeEventRecord = {
-  id: number;
-  title: string;
-  description: string;
-  date: string;
-  badge?: string;
-  image?: string;
-  image_full?: string;
-};
-
-const homeEvents = ref<HomeEventRecord[]>([]);
-const eventsLoading = ref(false);
-const eventsError = ref<string | null>(null);
-
-function isArchivedBadge(value: unknown) {
-  return String(value ?? '').trim().toLowerCase().includes('архив');
-}
-
-function mapHomeEvent(raw: any): HomeEventRecord {
-  return {
-    id: Number(raw?.id),
-    title: String(raw?.title ?? '').trim(),
-    description: String(raw?.description ?? '').trim(),
-    date: String(raw?.date ?? '').trim(),
-    badge: raw?.badge ? String(raw.badge) : undefined,
-    image: raw?.image ? String(raw.image) : undefined,
-    image_full: raw?.image_full ? String(raw.image_full) : undefined,
-  };
-}
-
-async function fetchHomeEvents() {
-  eventsLoading.value = true;
-  eventsError.value = null;
-  try {
-    const res = await fetch('/api/events.php');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
-    if (!json.success) throw new Error(json.message || 'Ошибка загрузки мероприятий');
-    const arr = Array.isArray(json.data) ? json.data : [];
-    homeEvents.value = arr.map(mapHomeEvent).filter((e) => e.id && e.title && e.date);
-  } catch (e: any) {
-    eventsError.value = e?.message ?? 'Не удалось загрузить мероприятия';
-    homeEvents.value = [];
-  } finally {
-    eventsLoading.value = false;
-  }
-}
-
-const upcomingEvents = computed(() =>
-  homeEvents.value
-    .filter((e) => !isArchivedBadge(e.badge))
-    .sort((a, b) => String(a.date ?? '').localeCompare(String(b.date ?? ''), 'ru-RU') || (a.id ?? 0) - (b.id ?? 0))
-    .slice(0, 5),
-);
-
-function openEventDetails(eventId: number) {
-  void router.push(`/events/${eventId}`);
 }
 
 type NewsFeedItem = {
@@ -318,9 +260,8 @@ const visibleBirthdayGroups = computed(() =>
   birthdayGroups.value.filter((g) => g.people.length > 0),
 );
 
-function congratulate(name: string) {
-  success('Поздравление', `Открыть карточку «${name}» можно на странице дней рождения.`);
-  void router.push('/birthdays');
+function congratulate(_name: string) {
+  error('Пока нельзя поздравить', 'Функция поздравления временно недоступна.');
 }
 
 // ── Админ: загрузка дат рождений из xlsx ──────────────────────────────────────
@@ -391,7 +332,6 @@ watch(birthdayFile, async (val) => {
 
 onMounted(() => {
   attachAbsenceStorageSync();
-  void fetchHomeEvents();
 
   const cat = isDepartmentTab(newsTab.value)
     ? departmentCategoryFilter(newsTab.value)
@@ -413,25 +353,6 @@ onUnmounted(() => {
 
 <template>
   <UMain class="flex flex-1 flex-col w-full min-w-0 h-full min-h-0 max-h-full overflow-hidden">
-    <UAlert
-      v-if="hasActiveAbsence"
-      color="primary"
-      variant="solid"
-      icon="i-lucide-timer"
-      title="Есть незавершённое отсутствие"
-      orientation="horizontal"
-      description="Завершите запись в журнале отсутствия, чтобы убрать индикатор."
-      :actions="[
-        {
-          label: 'Открыть журнал',
-          color: 'neutral',
-          variant: 'solid',
-          size: 'md',
-          onClick: () => void router.push({ name: 'absence-journal' }),
-        },
-      ]"
-    />
-
     <div
       ref="homeScrollEl"
       class="flex w-full flex-1 flex-col gap-2 min-h-0 overflow-y-auto scrollbar-hide"
@@ -450,32 +371,21 @@ onUnmounted(() => {
       <div class="grid w-full min-w-0 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-4 items-start">
         <div class="flex min-w-0 w-full flex-col gap-4">
       <section class="flex flex-col gap-4 w-full" aria-labelledby="home-services-title">
-        <div class="flex items-center justify-between gap-1">
-          <div class="flex items-center gap-1 min-w-0">
-            <h2 id="home-services-title" class="text-lg font-bold leading-7 text-highlighted">
-              Сервисы
-            </h2>
-            <UTooltip text="Быстрый доступ к корпоративным сервисам">
-              <UButton
-                type="button"
-                color="neutral"
-                variant="ghost"
-                size="xs"
-                icon="i-lucide-info"
-                square
-                aria-label="О сервисах"
-              />
-            </UTooltip>
-          </div>
-          <UButton
-            to="/services"
-            color="neutral"
-            variant="ghost"
-            size="xs"
-            icon="i-lucide-pencil"
-            square
-            aria-label="Все сервисы"
-          />
+        <div class="flex items-center gap-1 min-w-0">
+          <h2 id="home-services-title" class="text-lg font-bold leading-7 text-highlighted">
+            Сервисы
+          </h2>
+          <UTooltip text="Быстрый доступ к корпоративным сервисам">
+            <UButton
+              type="button"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              icon="i-lucide-info"
+              square
+              aria-label="О сервисах"
+            />
+          </UTooltip>
         </div>
 
         <div class="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -609,62 +519,10 @@ onUnmounted(() => {
 
         <!-- Правая колонка -->
         <aside class="w-full min-w-0 flex flex-col gap-4">
-          <LearningHomeWidget />
+          <HomeAbsenceWidget />
 
-          <UCard
-            variant="soft"
-            class="w-full rounded-panel"
-            :ui="{
-              root: 'rounded-panel bg-elevated ring-0 border-0 divide-y-0',
-              header: 'px-4 py-4 sm:px-4',
-              body: 'flex flex-col gap-2 px-4 pb-4 pt-0 sm:px-4 sm:pb-4 sm:pt-0',
-            }"
-          >
-            <template #header>
-              <div class="flex items-center justify-between gap-1">
-                <div class="flex items-center gap-1 min-w-0">
-                  <h2 class="text-lg font-bold leading-7 text-highlighted truncate">Мероприятия</h2>
-                  <UTooltip text="Ближайшие корпоративные мероприятия">
-                    <UButton
-                      type="button"
-                      color="neutral"
-                      variant="ghost"
-                      size="xs"
-                      icon="i-lucide-info"
-                      square
-                      aria-label="О мероприятиях"
-                    />
-                  </UTooltip>
-                </div>
-                <UButton
-                  to="/events"
-                  color="neutral"
-                  variant="ghost"
-                  size="xs"
-                  icon="i-lucide-arrow-up-right"
-                  square
-                  aria-label="Все мероприятия"
-                />
-              </div>
-            </template>
-            <div v-if="eventsLoading" class="flex flex-col gap-2">
-              <USkeleton v-for="n in 2" :key="n" class="h-12 w-full rounded-lg" />
-            </div>
-            <p v-else-if="eventsError" class="text-sm text-error">{{ eventsError }}</p>
-            <p v-else-if="!upcomingEvents.length" class="text-sm text-muted">
-              Ближайших мероприятий нет
-            </p>
-            <button
-              v-for="evt in upcomingEvents"
-              :key="evt.id"
-              type="button"
-              class="flex flex-col gap-0.5 rounded-lg p-2 text-left hover:bg-elevated transition-colors"
-              @click="openEventDetails(evt.id)"
-            >
-              <span class="text-sm font-medium text-highlighted line-clamp-2">{{ evt.title }}</span>
-              <span class="text-xs text-dimmed">{{ evt.date }}</span>
-            </button>
-          </UCard>
+          <LearningHomeWidget />
+          <HomeCalendarWidget />
 
           <UCard
             variant="soft"
@@ -692,13 +550,13 @@ onUnmounted(() => {
                   </UTooltip>
                 </div>
                 <UButton
-                  to="/birthdays"
+                  to="/calendar"
                   color="neutral"
                   variant="ghost"
                   size="xs"
                   icon="i-lucide-arrow-up-right"
                   square
-                  aria-label="Календарь дней рождения"
+                  aria-label="Открыть календарь"
                 />
               </div>
             </template>
@@ -755,35 +613,6 @@ onUnmounted(() => {
             </div>
           </UCard>
 
-          <UCard
-            variant="soft"
-            class="w-full rounded-panel"
-            :ui="{
-              root: 'rounded-panel bg-elevated ring-0 border-0 divide-y-0',
-              header: 'px-4 py-4 sm:px-4',
-              body: 'flex flex-col gap-2 px-4 pb-4 pt-0 sm:px-4 sm:pb-4 sm:pt-0',
-            }"
-          >
-            <template #header>
-              <div class="flex items-center gap-1 min-w-0">
-                <h2 class="text-lg font-bold leading-7 text-highlighted truncate">Новые сотрудники</h2>
-                <UTooltip text="Недавно появившиеся в коллективе сотрудники">
-                  <UButton
-                    type="button"
-                    color="neutral"
-                    variant="ghost"
-                    size="xs"
-                    icon="i-lucide-info"
-                    square
-                    aria-label="О новых сотрудниках"
-                  />
-                </UTooltip>
-              </div>
-            </template>
-            <p class="text-sm text-muted">
-              Здесь будут отображаться новые сотрудники.
-            </p>
-          </UCard>
         </aside>
       </div>
     </div>

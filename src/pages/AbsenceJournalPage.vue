@@ -1286,7 +1286,7 @@ watch(
                     v-model="startDateValue"
                     size="md"
                     color="neutral"
-                    class="w-full lg:w-48"
+                    class="w-full lg:w-56"
                     :disabled="loading"
                   >
                     <template #trailing>

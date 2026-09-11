@@ -126,7 +126,7 @@ const portalFeatures = [
   {
     icon: 'i-lucide-cake',
     title: 'Дни рождения',
-    description: 'Поздравляйте коллег и не пропускайте важные даты.',
+    description: 'Именинники на главной и в календаре — не пропускайте важные даты.',
   },
   {
     icon: 'i-lucide-user-circle',
