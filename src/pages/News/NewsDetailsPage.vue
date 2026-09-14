@@ -541,16 +541,23 @@ function onExtraReaction() {
 
               <div
                 v-if="imageSrc"
-                class="group relative h-80 overflow-hidden rounded-panel bg-elevated"
+                class="group relative h-80 overflow-hidden rounded-panel bg-muted"
               >
                 <img
                   :src="imageSrc"
+                  alt=""
+                  aria-hidden="true"
+                  class="absolute inset-0 size-full scale-110 object-cover blur-2xl"
+                  loading="lazy"
+                />
+                <img
+                  :src="imageSrc"
                   :alt="title"
-                  class="size-full object-cover"
+                  class="relative z-10 block size-full object-contain"
                   loading="lazy"
                 />
                 <div
-                  class="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition"
+                  class="pointer-events-none absolute inset-0 z-20 opacity-0 group-hover:opacity-100 transition"
                 >
                   <div class="absolute top-2 right-2 flex gap-1 pointer-events-auto">
                     <UButton
@@ -660,15 +667,24 @@ function onExtraReaction() {
                   :to="post.to"
                   class="group flex gap-3 rounded-panel p-px transition ring-1 ring-transparent hover:ring-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 >
-                  <div class="relative size-20 shrink-0 overflow-hidden rounded-panel bg-elevated">
-                    <img
-                      v-if="post.coverSrc"
-                      :src="post.coverSrc"
-                      :alt="post.title"
-                      loading="lazy"
-                      decoding="async"
-                      class="size-full object-cover transition duration-300 group-hover:scale-[1.02]"
-                    />
+                  <div class="relative size-20 shrink-0 overflow-hidden rounded-panel bg-muted">
+                    <template v-if="post.coverSrc">
+                      <img
+                        :src="post.coverSrc"
+                        alt=""
+                        aria-hidden="true"
+                        loading="lazy"
+                        decoding="async"
+                        class="absolute inset-0 size-full scale-110 object-cover blur-xl"
+                      />
+                      <img
+                        :src="post.coverSrc"
+                        :alt="post.title"
+                        loading="lazy"
+                        decoding="async"
+                        class="relative z-10 block size-full object-contain transition duration-300 group-hover:scale-[1.02]"
+                      />
+                    </template>
                     <div
                       v-else
                       class="size-full flex items-center justify-center text-muted"

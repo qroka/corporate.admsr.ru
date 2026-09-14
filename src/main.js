@@ -5,6 +5,7 @@ import App from './App.vue';
 import './assets/tailwind.css';
 import { router } from './router';
 import { applyUiTheme, getSavedUiTheme } from './composables/useUiTheme';
+import { applyUiZoom, getSavedUiZoom } from './composables/useUiZoom';
 import { applyKioskColorModeFromStorage } from './composables/useColorModeSchedule';
 import { applyMainColorModeFromStorage } from './composables/useColorMode';
 import { ensureSessionToken } from './composables/useAuthSession';
@@ -22,6 +23,7 @@ app.use(router);
 app.use(ui);
 
 applyUiTheme(getSavedUiTheme());
+applyUiZoom(getSavedUiZoom());
 
 // Выдать sessionToken для модуля курсов, если вход был до деплоя V4
 void ensureSessionToken();

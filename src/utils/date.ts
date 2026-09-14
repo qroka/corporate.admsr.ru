@@ -16,8 +16,42 @@ function parseDateLike(value: unknown): Date | null {
   const s = String(value).trim();
   if (!s) return null;
 
+  // ISO with Z / offset → настенные часы Asia/Yekaterinburg
+  if (/[zZ]|[+-]\d{2}(?::?\d{2})?\s*$/.test(s)) {
+    const abs = new Date(s);
+    if (!isValidDate(abs)) return null;
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Yekaterinburg',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(abs);
+    const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? NaN);
+    const d = new Date(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'), 0);
+    return isValidDate(d) ? d : null;
+  }
+
+  // Local wall-clock datetime from DB/API: "YYYY-MM-DD HH:MM[:SS]" or with T
+  const dt = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/.exec(s);
+  if (dt) {
+    const d = new Date(
+      Number(dt[1]),
+      Number(dt[2]) - 1,
+      Number(dt[3]),
+      Number(dt[4]),
+      Number(dt[5]),
+      Number(dt[6] ?? 0),
+      0,
+    );
+    return isValidDate(d) ? d : null;
+  }
+
   // Fast path for ISO date "YYYY-MM-DD" (avoid timezone shifts)
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
   if (m) {
     const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
     return isValidDate(d) ? d : null;
@@ -25,6 +59,28 @@ function parseDateLike(value: unknown): Date | null {
 
   const d = new Date(s);
   return isValidDate(d) ? d : null;
+}
+
+/**
+ * Разбор даты/времени с сервера как локального «настенного» времени (Екб),
+ * без сдвига UTC / Europe/Moscow.
+ */
+export function parseLocalDateTime(value: unknown): Date | null {
+  return parseDateLike(value);
+}
+
+/** Округление минут до шага (по умолчанию 5), секунды обнуляются. */
+export function roundDateToMinuteStep(date: Date, step = 5): Date {
+  const d = new Date(date.getTime());
+  d.setSeconds(0, 0);
+  const minutes = d.getMinutes();
+  let rounded = Math.round(minutes / step) * step;
+  if (rounded >= 60) {
+    d.setHours(d.getHours() + 1);
+    rounded = 0;
+  }
+  d.setMinutes(rounded);
+  return d;
 }
 
 export function toCalendarDate(value: unknown): CalendarDate | null {

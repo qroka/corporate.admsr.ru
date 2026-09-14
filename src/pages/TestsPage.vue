@@ -40,7 +40,7 @@ const tabs = [
   <div class="space-y-5 w-full max-w-[1600px] mx-auto">
     <div class="flex items-start justify-between gap-4">
       <div class="min-w-0">
-        <div class="text-2xl font-semibold text-highlighted">Тесты</div>
+        <div class="text-2xl font-semibold text-highlighted">Формы</div>
         <div class="text-sm text-muted mt-1">
           Конструктор форм (опросы/тесты), прохождение и аналитика.
         </div>

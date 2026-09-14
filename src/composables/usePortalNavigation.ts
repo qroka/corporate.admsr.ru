@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue';
 import { useRoute, useRouter, type RouteLocationRaw, type RouteParamsGeneric } from 'vue-router';
-import type { BreadcrumbItem, NavigationMenuItem, CommandPaletteGroup } from '@nuxt/ui';
+import type { BreadcrumbItem, NavigationMenuItem } from '@nuxt/ui';
 
 /** Динамическая подпись текущего сегмента крошек (например, название альбома). */
 const breadcrumbCurrentLabel = ref<string | null>(null);
@@ -41,7 +41,10 @@ const BREADCRUMB_PARENTS: Record<string, ParentCrumb[]> = {
   'event-details': [{ name: 'events' }],
   'gallery-album': [{ name: 'gallery' }],
   'absence-journal': [{ name: 'services' }],
-  'tests-old': [{ name: 'tests' }],
+  tests: [{ name: 'services' }],
+  'tests-old': [{ name: 'services' }, { name: 'tests' }],
+  'test-link': [{ name: 'services' }, { name: 'tests' }],
+  applications: [{ name: 'services' }],
   'course-enrollment': [{ name: 'courses' }],
   'course-result': [{ name: 'courses' }],
   'course-topic': [
@@ -305,7 +308,14 @@ export function useSidebarNavItems() {
       icon: 'i-lucide-layout-grid',
       to: '/services',
       defaultOpen: true,
-      active: isRouteMatch(route.name, ['services', 'absence-journal']),
+      active: isRouteMatch(route.name, [
+        'services',
+        'absence-journal',
+        'tests',
+        'tests-old',
+        'test-link',
+        'applications',
+      ]),
       onSelect: () => {
         void router.push({ name: 'services' });
       },
@@ -315,6 +325,18 @@ export function useSidebarNavItems() {
           icon: 'i-lucide-calendar-off',
           to: '/absence-journal',
           active: route.name === 'absence-journal',
+        },
+        {
+          label: 'Формы',
+          icon: 'i-lucide-clipboard-list',
+          to: '/tests',
+          active: isRouteMatch(route.name, ['tests', 'tests-old', 'test-link']),
+        },
+        {
+          label: 'Заявки',
+          icon: 'i-lucide-file-text',
+          to: '/applications',
+          active: route.name === 'applications',
         },
       ],
     },
@@ -329,18 +351,6 @@ export function useSidebarNavItems() {
       icon: 'i-lucide-images',
       to: '/gallery',
       active: isRouteMatch(route.name, ['gallery', 'gallery-album']),
-    },
-    {
-      label: 'Формы',
-      icon: 'i-lucide-clipboard-list',
-      to: '/tests',
-      active: isRouteMatch(route.name, ['tests', 'tests-old', 'test-link']),
-    },
-    {
-      label: 'Заявки',
-      icon: 'i-lucide-file-text',
-      to: '/applications',
-      active: route.name === 'applications',
     },
     {
       label: 'Обучение',
@@ -368,29 +378,4 @@ export function useSidebarNavItems() {
   ]);
 
   return { mainItems, footerItems };
-}
-
-/** Группы для UDashboardSearch (⌘K) — все основные разделы портала. */
-export function usePortalSearchGroups() {
-  return computed<CommandPaletteGroup[]>(() => [
-    {
-      id: 'pages',
-      label: 'Разделы',
-      items: [
-        { label: 'Рабочий стол', icon: 'i-lucide-grip', to: '/' },
-        { label: 'Мероприятия', icon: 'i-lucide-calendar', to: '/events' },
-        { label: 'Сервисы', icon: 'i-lucide-layout-grid', to: '/services' },
-        { label: 'Журнал отсутствия', icon: 'i-lucide-calendar-off', to: '/absence-journal' },
-        { label: 'Новости', icon: 'i-lucide-newspaper', to: '/news' },
-        { label: 'Фотогалерея', icon: 'i-lucide-images', to: '/gallery' },
-        { label: 'Календарь', icon: 'i-lucide-calendar-days', to: '/calendar' },
-        { label: 'Заявки', icon: 'i-lucide-file-text', to: '/applications' },
-        { label: 'Документация', icon: 'i-lucide-book-open', to: '/documentation' },
-        { label: 'Обратная связь', icon: 'i-lucide-message-square-more', to: '/feedback' },
-        { label: 'Формы', icon: 'i-lucide-clipboard-list', to: '/tests' },
-        { label: 'Обучение', icon: 'i-lucide-graduation-cap', to: '/courses' },
-        { label: 'Профиль', icon: 'i-lucide-user', to: '/profile' },
-      ],
-    },
-  ]);
 }

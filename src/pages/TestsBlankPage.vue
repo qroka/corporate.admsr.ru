@@ -23,7 +23,7 @@ onMounted(() => { store.ensureLoaded(); });
 
 const tabItems = computed<TabsItem[]>(() => [
   { label: 'Список', value: 'list', icon: 'i-lucide-list' },
-  { label: 'Тесты для меня', value: 'forme', icon: 'i-lucide-clipboard-check' },
+  { label: 'Формы для меня', value: 'forme', icon: 'i-lucide-clipboard-check' },
   ...(isAdmin.value
     ? ([
         { label: 'Конструктор', value: 'builder', icon: 'i-lucide-square-pen' },
@@ -178,27 +178,55 @@ function openStats(f: TestForm) {
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full h-full min-h-0 gap-4">
-    <UTabs v-model="tab" :items="tabItems" size="xl" class="w-full" />
+  <UMain class="relative w-full h-full min-h-0">
+    <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-[1600px] mx-auto overflow-y-auto scrollbar-hide p-px pb-8">
+      <UPageHeader
+        headline="Сервисы"
+        title="Формы"
+        description="Опросы, анкеты и тесты — проходите и создавайте формы"
+      />
 
-    <section class="flex-1 min-h-0 flex flex-col">
-      <!-- Список опубликованных -->
-      <div v-if="tab === 'list'" class="flex-1 min-h-0 flex flex-col gap-3">
-        <UTabs v-if="isAdmin" v-model="listSub" :items="listSubItems" size="sm" class="w-fit" />
+      <UTabs
+        v-model="tab"
+        :items="tabItems"
+        variant="link"
+        color="primary"
+        size="md"
+        :content="false"
+        class="w-full border-b border-default"
+        :ui="{
+          list: 'w-full gap-1',
+          trigger: 'grow-0',
+        }"
+      />
 
-        <div class="flex-1 min-h-0 overflow-y-auto p-1">
+      <section class="flex flex-col gap-4 w-full min-h-0">
+        <!-- Список опубликованных -->
+        <div v-if="tab === 'list'" class="flex flex-col gap-4 w-full">
+          <UTabs
+            v-if="isAdmin"
+            v-model="listSub"
+            :items="listSubItems"
+            size="sm"
+            color="neutral"
+            variant="pill"
+            :content="false"
+            class="w-fit"
+          />
+
           <UEmpty
             v-if="!currentList.length"
+            variant="naked"
             :icon="listSub === 'mine' ? 'i-lucide-user' : 'i-lucide-list'"
             :title="listSub === 'mine' ? 'Вы пока ничего не публиковали' : 'Здесь пока пусто'"
             :description="listSub === 'mine' ? 'Опубликованные вами формы появятся здесь.' : 'Опубликованные формы появятся здесь и станут доступны для прохождения.'"
-            class="py-12"
+            class="w-full py-12"
           />
           <div v-else class="flex flex-col gap-3">
             <div
               v-for="f in currentList"
               :key="f.id ?? 0"
-              class="rounded-xl ring-1 ring-default p-4 flex flex-col md:flex-row md:items-center gap-3 bg-elevated/30"
+              class="rounded-panel bg-elevated p-4 flex flex-col md:flex-row md:items-center gap-3"
             >
               <div class="flex-1 min-w-0 flex flex-col gap-1">
                 <div class="flex items-center gap-2 flex-wrap">
@@ -218,7 +246,7 @@ function openStats(f: TestForm) {
               </div>
 
               <div class="shrink-0 flex items-center gap-2 flex-wrap">
-                <!-- свою форму из «Мои формы» проходить нельзя — только через «Тесты для меня» -->
+                <!-- свою форму из «Мои формы» проходить нельзя — только через «Формы для меня» -->
                 <UButton
                   v-if="listSub === 'all'"
                   color="primary"
@@ -238,80 +266,82 @@ function openStats(f: TestForm) {
             </div>
           </div>
         </div>
-      </div>
 
-      <div v-else-if="tab === 'forme'" class="flex-1 min-h-0 overflow-y-auto p-1">
-        <UEmpty
-          v-if="!store.forMe.value.length"
-          icon="i-lucide-clipboard-check"
-          title="Вам пока ничего не направлено"
-          description="Здесь появятся формы, которые направили лично вам или в ваш ОФО."
-          class="py-12"
-        />
-        <div v-else class="flex flex-col gap-3">
-          <div
-            v-for="f in store.forMe.value"
-            :key="f.id ?? 0"
-            class="rounded-xl ring-1 ring-default p-4 flex flex-col md:flex-row md:items-center gap-3 bg-elevated/30"
-          >
-            <div class="flex-1 min-w-0 flex flex-col gap-1">
-              <div class="flex items-center gap-2 flex-wrap">
-                <UBadge color="neutral" variant="subtle" class="tabular-nums">#{{ f.listId }}</UBadge>
-                <UBadge color="primary" variant="subtle">{{ kindLabel(f.kind) }}</UBadge>
-                <UBadge v-if="f.kind === 'survey'" :color="f.anonymous ? 'neutral' : 'warning'" variant="subtle">{{ f.anonymous ? 'Анонимный' : 'Не анонимный' }}</UBadge>
-                <span class="font-medium text-highlighted truncate">{{ f.title || 'Без названия' }}</span>
+        <div v-else-if="tab === 'forme'" class="flex flex-col gap-3 w-full">
+          <UEmpty
+            v-if="!store.forMe.value.length"
+            variant="naked"
+            icon="i-lucide-clipboard-check"
+            title="Вам пока ничего не направлено"
+            description="Здесь появятся формы, которые направили лично вам или в ваш ОФО."
+            class="w-full py-12"
+          />
+          <div v-else class="flex flex-col gap-3">
+            <div
+              v-for="f in store.forMe.value"
+              :key="f.id ?? 0"
+              class="rounded-panel bg-elevated p-4 flex flex-col md:flex-row md:items-center gap-3"
+            >
+              <div class="flex-1 min-w-0 flex flex-col gap-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <UBadge color="neutral" variant="subtle" class="tabular-nums">#{{ f.listId }}</UBadge>
+                  <UBadge color="primary" variant="subtle">{{ kindLabel(f.kind) }}</UBadge>
+                  <UBadge v-if="f.kind === 'survey'" :color="f.anonymous ? 'neutral' : 'warning'" variant="subtle">{{ f.anonymous ? 'Анонимный' : 'Не анонимный' }}</UBadge>
+                  <span class="font-medium text-highlighted truncate">{{ f.title || 'Без названия' }}</span>
+                </div>
+                <p v-if="f.description" class="text-sm text-muted line-clamp-1">{{ f.description }}</p>
+                <p class="text-xs text-dimmed">Вопросов: {{ f.questions.length }}</p>
               </div>
-              <p v-if="f.description" class="text-sm text-muted line-clamp-1">{{ f.description }}</p>
-              <p class="text-xs text-dimmed">Вопросов: {{ f.questions.length }}</p>
-            </div>
-            <div class="shrink-0">
-              <UButton
-                color="primary"
-                :disabled="!canTake(f)"
-                :icon="store.hasActiveSession(f) ? 'i-lucide-rotate-ccw' : (canTake(f) ? 'i-lucide-play' : 'i-lucide-check')"
-                @click="openRun(f)"
-              >
-                {{ store.hasActiveSession(f) ? 'Продолжить' : (canTake(f) ? 'Пройти' : 'Пройдено') }}
-              </UButton>
+              <div class="shrink-0">
+                <UButton
+                  color="primary"
+                  :disabled="!canTake(f)"
+                  :icon="store.hasActiveSession(f) ? 'i-lucide-rotate-ccw' : (canTake(f) ? 'i-lucide-play' : 'i-lucide-check')"
+                  @click="openRun(f)"
+                >
+                  {{ store.hasActiveSession(f) ? 'Продолжить' : (canTake(f) ? 'Пройти' : 'Пройдено') }}
+                </UButton>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div v-else-if="tab === 'builder' && isAdmin" class="flex-1 min-h-0 flex">
-        <TestBuilder @published="tab = 'list'" />
-      </div>
+        <div v-else-if="tab === 'builder' && isAdmin" class="w-full min-h-[32rem]">
+          <TestBuilder @published="tab = 'list'" />
+        </div>
 
-      <div v-else-if="tab === 'stats' && isAdmin" class="flex-1 min-h-0 overflow-y-auto p-1">
-        <UEmpty
-          v-if="!mineForms.length"
-          icon="i-lucide-bar-chart-3"
-          title="Пока нет опубликованных форм"
-          description="Статистика появляется по опубликованным вами формам."
-          class="py-12"
-        />
-        <div v-else class="flex flex-col gap-3">
-          <div
-            v-for="f in mineForms"
-            :key="f.id ?? 0"
-            class="rounded-xl ring-1 ring-default p-4 flex flex-col md:flex-row md:items-center gap-3 bg-elevated/30"
-          >
-            <div class="flex-1 min-w-0 flex flex-col gap-1">
-              <div class="flex items-center gap-2 flex-wrap">
-                <UBadge color="neutral" variant="subtle" class="tabular-nums">#{{ f.listId }}</UBadge>
-                <UBadge color="primary" variant="subtle">{{ kindLabel(f.kind) }}</UBadge>
-                <UBadge v-if="f.anonymous" color="neutral" variant="subtle">Анонимно</UBadge>
-                <span class="font-medium text-highlighted truncate">{{ f.title || 'Без названия' }}</span>
+        <div v-else-if="tab === 'stats' && isAdmin" class="flex flex-col gap-3 w-full">
+          <UEmpty
+            v-if="!mineForms.length"
+            variant="naked"
+            icon="i-lucide-bar-chart-3"
+            title="Пока нет опубликованных форм"
+            description="Статистика появляется по опубликованным вами формам."
+            class="w-full py-12"
+          />
+          <div v-else class="flex flex-col gap-3">
+            <div
+              v-for="f in mineForms"
+              :key="f.id ?? 0"
+              class="rounded-panel bg-elevated p-4 flex flex-col md:flex-row md:items-center gap-3"
+            >
+              <div class="flex-1 min-w-0 flex flex-col gap-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <UBadge color="neutral" variant="subtle" class="tabular-nums">#{{ f.listId }}</UBadge>
+                  <UBadge color="primary" variant="subtle">{{ kindLabel(f.kind) }}</UBadge>
+                  <UBadge v-if="f.anonymous" color="neutral" variant="subtle">Анонимно</UBadge>
+                  <span class="font-medium text-highlighted truncate">{{ f.title || 'Без названия' }}</span>
+                </div>
+                <p class="text-xs text-dimmed">Вопросов: {{ f.questions.length }}</p>
               </div>
-              <p class="text-xs text-dimmed">Вопросов: {{ f.questions.length }}</p>
-            </div>
-            <div class="shrink-0">
-              <UButton color="neutral" variant="soft" icon="i-lucide-bar-chart-3" @click="openStats(f)">Показать подробно</UButton>
+              <div class="shrink-0">
+                <UButton color="neutral" variant="soft" icon="i-lucide-bar-chart-3" @click="openStats(f)">Показать подробно</UButton>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </div>
 
     <!-- Окно прохождения -->
     <UModal

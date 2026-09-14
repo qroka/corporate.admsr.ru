@@ -299,7 +299,7 @@ onUnmounted(() => {
         <UPageHeader
           headline="Корпоративная жизнь"
           title="Новости"
-          description="Свежие события и объявления компании"
+          description="Свежие события и объявления корпоративного портала"
           :links="headerLinks"
         />
 
@@ -357,16 +357,24 @@ onUnmounted(() => {
             :to="post.to"
             class="group flex flex-col gap-3 rounded-panel p-px transition ring-1 ring-transparent hover:ring-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
-            <div class="relative aspect-[16/10] overflow-hidden rounded-panel bg-elevated">
+            <div class="relative aspect-[16/10] overflow-hidden rounded-panel bg-muted">
+              <img
+                :src="post.coverSrc"
+                alt=""
+                aria-hidden="true"
+                loading="lazy"
+                decoding="async"
+                class="absolute inset-0 size-full scale-110 object-cover blur-2xl"
+              />
               <img
                 :src="post.coverSrc"
                 :alt="post.title"
                 loading="lazy"
                 decoding="async"
-                class="size-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                class="relative z-10 block size-full object-contain transition duration-300 group-hover:scale-[1.02]"
               />
               <span
-                class="absolute bottom-2 right-2 inline-flex items-center gap-1.5 rounded-md bg-black/65 px-2 py-1 text-xs text-white tabular-nums backdrop-blur-sm"
+                class="absolute bottom-2 right-2 z-20 inline-flex items-center gap-1.5 rounded-md bg-black/65 px-2 py-1 text-xs text-white tabular-nums backdrop-blur-sm"
               >
                 <UIcon name="i-lucide-eye" class="size-3.5 shrink-0" />
                 {{ viewsLabel(post.views) }}

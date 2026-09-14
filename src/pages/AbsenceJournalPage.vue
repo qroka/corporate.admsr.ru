@@ -6,7 +6,7 @@ import { setHasActiveAbsence } from '../stores/absenceJournal';
 import { useSectionAccess } from '../composables/useSectionAccess';
 import { useAppToast } from '../composables/useAppToast';
 import { apiSessionFetch } from '../composables/useAuthSession';
-import { toCalendarDate } from '../utils/date';
+import { toCalendarDate, parseLocalDateTime, roundDateToMinuteStep } from '../utils/date';
 import { slideoverPopoverContent, slideoverSelectContent } from '../composables/slideoverFieldUi';
 
 type JsonRow = Record<string, unknown>;
@@ -37,6 +37,10 @@ function asText(v: unknown): string {
   return String(v ?? '').replace(/\t/g, '').trim();
 }
 
+function asLocalDate(v: unknown, fallback = new Date(0)): Date {
+  return parseLocalDateTime(v) ?? fallback;
+}
+
 /** Разбирает запись из API в AbsenceRecord */
 function mapApiRecord(row: JsonRow, ofoMap: Record<string, string>): AbsenceRecord {
   const ofoId = String(row.ofo ?? '');
@@ -47,9 +51,9 @@ function mapApiRecord(row: JsonRow, ofoMap: Record<string, string>): AbsenceReco
     fio:       asText(row.fio),
     ofoId,
     ofoTitle:  ofoMap[ofoId] || (ofoId ? `ОФО #${ofoId}` : '—'),
-    createdAt: new Date(asText(row.created_at)),
-    startAt:   new Date(asText(row.start_datetime)),
-    endAt:     row.end_datetime ? new Date(asText(row.end_datetime)) : null,
+    createdAt: asLocalDate(row.created_at),
+    startAt:   asLocalDate(row.start_datetime),
+    endAt:     row.end_datetime ? asLocalDate(row.end_datetime) : null,
     reason:    asText(row.reason),
     role,
     status:    row.end_datetime ? 'completed' : 'active',
@@ -77,10 +81,18 @@ function toLocalDateTimeInputValue(d: Date): string {
 }
 
 function parseDateTimeInputValue(s: string): Date | null {
-  const trimmed = String(s ?? '').trim();
-  if (!trimmed) return null;
-  const d = new Date(trimmed);
-  return Number.isNaN(d.getTime()) ? null : d;
+  return parseLocalDateTime(String(s ?? '').trim());
+}
+
+/** Дата/время для API: локальные «настенные» часы Екб, без Z/offset. */
+function toApiDateTime(d: Date): string {
+  return `${toLocalDateTimeInputValue(d).replace('T', ' ')}:00`;
+}
+
+const TIME_STEP_MINUTES = 5;
+
+function nowRounded(): Date {
+  return roundDateToMinuteStep(new Date(), TIME_STEP_MINUTES);
 }
 
 function diffMs(a: Date, b: Date) {
@@ -125,7 +137,7 @@ const error = ref<string | null>(null);
 const currentUser = ref<CurrentUser | null>(null);
 const ofoTitleById = ref<Record<string, string>>({});
 
-const startAbsenceAt = ref(toLocalDateTimeInputValue(new Date()));
+const startAbsenceAt = ref(toLocalDateTimeInputValue(nowRounded()));
 const startDateValue = shallowRef<ReturnType<typeof toCalendarDate>>(null);
 const startTimeValue = shallowRef<Time | null>(null);
 const startHour = ref(0);
@@ -138,7 +150,6 @@ const historyFilterOpen = ref(false);
 const myRecordsStore = ref<AbsenceRecord[]>([]);
 const adminRecordsStore = ref<AbsenceRecord[]>([]);
 
-const TIME_STEP_MINUTES = 5;
 let syncingStartTime = false;
 
 const hourOptions = Array.from({ length: 24 }, (_, h) => ({
@@ -183,6 +194,7 @@ function syncCombinedFromParts() {
 }
 
 syncStartPartsFromCombined();
+syncCombinedFromParts();
 
 watch([startDateValue, startTimeValue], () => {
   syncCombinedFromParts();
@@ -520,6 +532,58 @@ const finishForm = ref({
   reason: '',
 });
 const finishError = ref<string | null>(null);
+const finishDateValue = shallowRef<ReturnType<typeof toCalendarDate>>(null);
+const finishTimeValue = shallowRef<Time | null>(null);
+const finishHour = ref(0);
+const finishMinute = ref(0);
+let syncingFinishTime = false;
+
+function applyFinishTimeParts(hour: number, minute: number) {
+  const h = Math.min(23, Math.max(0, hour));
+  const m = roundMinutesToStep(minute);
+  finishHour.value = h;
+  finishMinute.value = m;
+  finishTimeValue.value = new Time(h, m, 0);
+}
+
+function syncFinishPartsFromCombined() {
+  const d = parseDateTimeInputValue(finishForm.value.endAt) ?? nowRounded();
+  finishDateValue.value = toCalendarDate(d);
+  syncingFinishTime = true;
+  applyFinishTimeParts(d.getHours(), d.getMinutes());
+  syncingFinishTime = false;
+}
+
+function syncFinishCombinedFromParts() {
+  const datePart = finishDateValue.value as { year?: number; month?: number; day?: number } | null;
+  const timePart = finishTimeValue.value;
+  if (!datePart?.year || !datePart?.month || !datePart?.day || !timePart) return;
+  finishForm.value.endAt =
+    `${datePart.year}-${two(datePart.month)}-${two(datePart.day)}` +
+    `T${two(timePart.hour)}:${two(timePart.minute)}`;
+}
+
+watch([finishDateValue, finishTimeValue], () => {
+  syncFinishCombinedFromParts();
+});
+
+watch(finishTimeValue, (time) => {
+  if (syncingFinishTime || !time) return;
+  syncingFinishTime = true;
+  finishHour.value = time.hour;
+  finishMinute.value = roundMinutesToStep(time.minute);
+  if (time.minute !== finishMinute.value) {
+    finishTimeValue.value = new Time(time.hour, finishMinute.value, 0);
+  }
+  syncingFinishTime = false;
+});
+
+watch([finishHour, finishMinute], ([hour, minute]) => {
+  if (syncingFinishTime) return;
+  syncingFinishTime = true;
+  finishTimeValue.value = new Time(hour, roundMinutesToStep(minute), 0);
+  syncingFinishTime = false;
+});
 
 const editOpen = ref(false);
 const editingId = ref<string | null>(null);
@@ -575,23 +639,29 @@ const canFinish = computed(() => {
 function openFinish(record: AbsenceRecord) {
   finishingId.value = record.id;
   finishError.value = null;
-  const endDraft = record.endAt ?? new Date();
+  const endDraft = record.endAt ?? nowRounded();
   const safeEnd = endDraft.getTime() < record.startAt.getTime()
     ? new Date(record.startAt.getTime() + 15 * 60 * 1000)
     : endDraft;
-  finishForm.value.endAt = toLocalDateTimeInputValue(safeEnd);
+  finishForm.value.endAt = toLocalDateTimeInputValue(roundDateToMinuteStep(safeEnd, TIME_STEP_MINUTES));
   finishForm.value.reason = record.reason?.trim?.() ? record.reason : '';
+  syncFinishPartsFromCombined();
+  syncFinishCombinedFromParts();
   finishOpen.value = true;
 }
 
 async function startAbsence() {
   if (!canStartAbsence.value) return;
 
-  const start = parseDateTimeInputValue(startAbsenceAt.value);
+  // Сначала подтянуть округлённое время из UI (шаг 5 мин), затем зафиксировать.
+  syncCombinedFromParts();
+  const parsed = parseDateTimeInputValue(startAbsenceAt.value);
+  const start = parsed ? roundDateToMinuteStep(parsed, TIME_STEP_MINUTES) : null;
   if (!start) {
     toast.add({ title: 'Не указано начало', description: 'Выберите дату и время начала отсутствия.', color: 'error', icon: 'i-lucide-alert-circle' });
     return;
   }
+  startAbsenceAt.value = toLocalDateTimeInputValue(start);
 
   const u = currentUser.value;
   if (!u) {
@@ -619,7 +689,7 @@ async function startAbsence() {
         fio:            u.fio,
         ofo:            Number(u.ofoId),
         role:           u.role,
-        start_datetime: toLocalDateTimeInputValue(start).replace('T', ' ') + ':00',
+        start_datetime: toApiDateTime(start),
         reason,
       },
     });
@@ -629,6 +699,9 @@ async function startAbsence() {
     myRecordsStore.value = [newRecord, ...myRecordsStore.value];
     if (isAdmin.value) adminRecordsStore.value = [newRecord, ...adminRecordsStore.value];
     startReason.value = '';
+    startAbsenceAt.value = toLocalDateTimeInputValue(nowRounded());
+    syncStartPartsFromCombined();
+    syncCombinedFromParts();
     toast.add({ title: 'Отсутствие начато', description: `Начало: ${formatDateTime(start)}.`, color: 'success', icon: 'i-lucide-circle-check' });
   } catch (e) {
     toast.add({ title: 'Ошибка', description: e instanceof Error ? e.message : 'Не удалось создать запись', color: 'error', icon: 'i-lucide-alert-circle' });
@@ -656,9 +729,11 @@ async function saveEdit() {
     toast.add({ title: 'Не указано начало', description: 'Укажите дату и время начала.', color: 'error', icon: 'i-lucide-alert-circle' });
     return;
   }
+  const startRounded = roundDateToMinuteStep(start, TIME_STEP_MINUTES);
 
-  const end = parseDateTimeInputValue(editForm.value.endAt);
-  if (end && end.getTime() < start.getTime()) {
+  const endRaw = parseDateTimeInputValue(editForm.value.endAt);
+  const end = endRaw ? roundDateToMinuteStep(endRaw, TIME_STEP_MINUTES) : null;
+  if (end && end.getTime() < startRounded.getTime()) {
     editError.value = 'Окончание не может быть раньше начала.';
     toast.add({ title: 'Некорректное время', description: 'Окончание не может быть раньше начала.', color: 'error', icon: 'i-lucide-alert-circle' });
     return;
@@ -675,8 +750,8 @@ async function saveEdit() {
   loading.value = true;
   try {
     const body: Record<string, unknown> = {
-      start_datetime: toLocalDateTimeInputValue(start).replace('T', ' ') + ':00',
-      end_datetime:   end ? toLocalDateTimeInputValue(end).replace('T', ' ') + ':00' : '',
+      start_datetime: toApiDateTime(startRounded),
+      end_datetime:   end ? toApiDateTime(end) : '',
       reason,
     };
     const data = await apiSessionFetch(`/api/absence_journal.php?id=${rec.id}`, {
@@ -693,7 +768,7 @@ async function saveEdit() {
     editingId.value = null;
     toast.add({
       title: 'Изменения сохранены',
-      description: end ? `${formatDateTime(start)} → ${formatDateTime(end)}` : `Начало: ${formatDateTime(start)} (незавершено)`,
+      description: end ? `${formatDateTime(startRounded)} → ${formatDateTime(end)}` : `Начало: ${formatDateTime(startRounded)} (незавершено)`,
       color: 'success',
       icon: 'i-lucide-circle-check',
     });
@@ -708,7 +783,9 @@ async function saveEdit() {
 async function finishAbsence() {
   const rec = finishingRecord.value;
   if (!rec) return;
-  const end    = parseDateTimeInputValue(finishForm.value.endAt);
+  syncFinishCombinedFromParts();
+  const endRaw = parseDateTimeInputValue(finishForm.value.endAt);
+  const end = endRaw ? roundDateToMinuteStep(endRaw, TIME_STEP_MINUTES) : null;
   const reason = finishForm.value.reason.trim();
 
   if (!end) {
@@ -733,7 +810,7 @@ async function finishAbsence() {
     const data = await apiSessionFetch(`/api/absence_journal.php?id=${rec.id}`, {
       method: 'PUT',
       json: {
-        end_datetime: toLocalDateTimeInputValue(end).replace('T', ' ') + ':00',
+        end_datetime: toApiDateTime(end),
         reason,
       },
     });
@@ -1686,7 +1763,93 @@ watch(
               </UFormField>
 
               <UFormField size="xl" label="Время окончания">
-                <UInput class="w-full" v-model="finishForm.endAt" type="datetime-local" />
+                <div class="flex flex-col sm:flex-row gap-2 w-full">
+                  <UInputDate
+                    v-model="finishDateValue"
+                    size="md"
+                    color="neutral"
+                    class="w-full sm:min-w-64 sm:flex-1"
+                    :ui="{
+                      segment: 'data-[segment=year]:w-14 whitespace-nowrap',
+                    }"
+                    :disabled="loading"
+                  >
+                    <template #trailing>
+                      <UPopover :content="slideoverPopoverContent">
+                        <UButton
+                          color="neutral"
+                          variant="link"
+                          size="md"
+                          icon="i-lucide-calendar"
+                          aria-label="Выбрать дату окончания"
+                          class="px-0"
+                          :disabled="loading"
+                        />
+                        <template #content>
+                          <UCalendar v-model="finishDateValue" class="p-2" />
+                        </template>
+                      </UPopover>
+                    </template>
+                  </UInputDate>
+                  <UInputTime
+                    v-model="finishTimeValue"
+                    size="md"
+                    color="neutral"
+                    :hour-cycle="24"
+                    :step="{ minute: 5 }"
+                    step-snapping
+                    granularity="minute"
+                    class="w-full sm:w-44"
+                    :disabled="loading"
+                  >
+                    <template #trailing>
+                      <UPopover :content="slideoverPopoverContent">
+                        <UButton
+                          color="neutral"
+                          variant="link"
+                          size="md"
+                          icon="i-lucide-clock"
+                          aria-label="Выбрать время окончания"
+                          class="px-0"
+                          :disabled="loading"
+                        />
+                        <template #content>
+                          <div class="p-3 w-64 flex flex-col gap-2">
+                            <div class="flex items-end gap-2">
+                              <UFormField label="Часы" class="min-w-0 flex-1">
+                                <USelectMenu
+                                  v-model="finishHour"
+                                  :items="hourOptions"
+                                  :content="slideoverSelectContent"
+                                  :search-input="false"
+                                  value-key="value"
+                                  label-key="label"
+                                  size="md"
+                                  color="neutral"
+                                  class="w-full"
+                                />
+                              </UFormField>
+                              <span class="pb-2.5 text-lg text-muted shrink-0" aria-hidden="true">:</span>
+                              <UFormField label="Минуты" class="min-w-0 flex-1">
+                                <USelectMenu
+                                  v-model="finishMinute"
+                                  :items="minuteOptions"
+                                  :content="slideoverSelectContent"
+                                  :search-input="false"
+                                  value-key="value"
+                                  label-key="label"
+                                  size="md"
+                                  color="neutral"
+                                  class="w-full"
+                                />
+                              </UFormField>
+                            </div>
+                          </div>
+                        </template>
+                      </UPopover>
+                    </template>
+                  </UInputTime>
+                </div>
               </UFormField>
 
               <UFormField size="xl" label="Причина">

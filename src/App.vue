@@ -17,10 +17,14 @@
 
         <UDashboardSearch
           v-model:open="portalSearchOpen"
+          v-model:search-term="portalSearchTerm"
           shortcut="ctrl_shift_alt_f12"
-          placeholder="Искать сотрудника, памятку, документ..."
+          placeholder="Поиск по порталу: сотрудники, новости, формы…"
           :groups="searchGroups"
+          :loading="searchLoading"
           :color-mode="false"
+          :preserve-group-order="true"
+          :fuse="{ resultLimit: 48 }"
         />
 
         <UDashboardPanel
@@ -57,12 +61,16 @@ import AppHeader from './components/AppHeader.vue';
 import AppAside from './components/AppAside.vue';
 import { startSessionActivity } from './composables/useSessionActivity';
 import { resolveMainColorMode, useColorMode } from './composables/useColorMode';
-import { usePortalSearchGroups } from './composables/usePortalNavigation';
+import { usePortalGlobalSearch } from './composables/usePortalGlobalSearch';
 
 const route = useRoute();
 const router = useRouter();
-const searchGroups = usePortalSearchGroups();
 const portalSearchOpen = ref(false);
+const portalSearchTerm = ref('');
+const { groups: searchGroups, loading: searchLoading } = usePortalGlobalSearch(
+  portalSearchTerm,
+  portalSearchOpen,
+);
 
 /** Ctrl/⌘+K по физической клавише (работает и на русской раскладке), блокирует поиск браузера. */
 function onPortalSearchHotkey(e) {

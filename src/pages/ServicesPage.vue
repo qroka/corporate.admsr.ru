@@ -8,6 +8,18 @@ const services = computed(() => [
     icon: 'i-lucide-calendar-off',
     to: '/absence-journal',
   },
+  {
+    label: 'Формы',
+    description: 'Опросы, анкеты и тесты',
+    icon: 'i-lucide-clipboard-list',
+    to: '/tests',
+  },
+  {
+    label: 'Заявки',
+    description: 'Подача и отслеживание сервисных заявок',
+    icon: 'i-lucide-file-text',
+    to: '/applications',
+  },
 ]);
 </script>
 

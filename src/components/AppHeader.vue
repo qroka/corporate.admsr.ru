@@ -267,9 +267,9 @@ const userMenuItems = computed(() => {
 <template>
   <UDashboardNavbar
     :ui="{
-      root: 'h-[60px] shrink-0 border-0 mx-4 mt-4 rounded-panel bg-elevated px-4',
-      left: 'min-w-0',
-      right: 'gap-4',
+      root: 'h-[60px] shrink-0 border-0 mx-2 sm:mx-4 mt-4 rounded-panel bg-elevated px-2 sm:px-4',
+      left: 'min-w-0 flex-1',
+      right: 'gap-2 sm:gap-4 shrink-0 min-w-0',
       title: 'min-w-0',
     }"
   >
@@ -289,14 +289,27 @@ const userMenuItems = computed(() => {
     </template>
 
     <template #right>
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 min-w-0">
+        <UDashboardSearchButton
+          collapsed
+          :tooltip="{ text: 'Поиск' }"
+          color="neutral"
+          variant="outline"
+          size="md"
+          square
+          class="inline-flex h-8 shrink-0 lg:hidden"
+          :kbds="['meta', 'K']"
+        />
         <UDashboardSearchButton
           label="Искать сотрудника, памятку, документ..."
           color="neutral"
           variant="outline"
           size="md"
-          class="hidden md:inline-flex h-8 w-[340px] max-w-[340px] justify-start"
+          class="hidden lg:inline-flex h-8 min-w-0 w-[min(100%,340px)] max-w-[340px] xl:w-[340px] justify-start"
           :kbds="['meta', 'K']"
+          :ui="{
+            label: 'truncate',
+          }"
         />
 
         <UButton
@@ -304,7 +317,7 @@ const userMenuItems = computed(() => {
           variant="outline"
           size="md"
           square
-          class="h-8"
+          class="h-8 shrink-0"
           icon="i-lucide-bell"
           aria-label="Уведомления"
         />
@@ -322,7 +335,7 @@ const userMenuItems = computed(() => {
               color="neutral"
               variant="outline"
               size="md"
-              class="h-8 min-w-0 data-[state=open]:bg-elevated"
+              class="h-8 min-w-0 shrink-0 data-[state=open]:bg-elevated"
               :aria-label="profileTriggerLabel"
               :aria-expanded="open"
               aria-haspopup="menu"

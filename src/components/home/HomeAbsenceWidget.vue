@@ -3,6 +3,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { hasActiveAbsence, setHasActiveAbsence } from '../../stores/absenceJournal';
 
+import { parseLocalDateTime } from '../../utils/date';
+
 const router = useRouter();
 
 const loading = ref(false);
@@ -25,11 +27,7 @@ function authUserId(): string | null {
 }
 
 function parseApiDate(raw: unknown): Date | null {
-  const s = String(raw ?? '').trim();
-  if (!s) return null;
-  const normalized = s.includes('T') ? s : s.replace(' ', 'T');
-  const d = new Date(normalized);
-  return Number.isNaN(d.getTime()) ? null : d;
+  return parseLocalDateTime(raw);
 }
 
 function pad2(n: number) {

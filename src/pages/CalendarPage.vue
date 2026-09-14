@@ -585,6 +585,7 @@ const showInlinePanel = computed(
         class="shrink-0"
         headline="Корпоративная жизнь"
         title="Календарь"
+        description="Встречи, мероприятия, обучение и дни рождения коллег"
       >
           <template #links>
             <div class="flex items-center gap-2">

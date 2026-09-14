@@ -154,204 +154,253 @@ function ctaLabel(e: EnrollmentSummary) {
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
-    <div class="flex items-center justify-between gap-3 flex-wrap shrink-0 min-w-0">
-      <h1 class="text-2xl font-medium text-highlighted">Мои курсы</h1>
-      <div class="flex items-center gap-2 flex-wrap">
-        <UButton
-          v-if="isCourseAdmin"
-          color="primary"
-          icon="i-lucide-plus"
-          @click="goCreateCourse"
-        >
-          Создать курс
-        </UButton>
-      </div>
-    </div>
-
-    <UTabs
-      v-if="isCourseAdmin"
-      v-model="tab"
-      :items="tabItems"
-      size="xl"
-      class="w-full min-w-0 shrink-0"
-    />
-
-    <section class="flex-1 min-h-0 min-w-0 w-full max-w-full flex flex-col">
-      <div class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden p-1">
-        <!-- -- Назначенные мне ------------------------------------------- -->
-        <template v-if="tab === 'mine'">
-          <div v-if="loadingMine" class="flex flex-col gap-3">
-            <USkeleton v-for="n in 4" :key="n" class="h-20 w-full rounded-xl" />
-          </div>
-
-          <UAlert
-            v-else-if="loadErrorMine"
-            color="warning"
-            variant="subtle"
-            icon="i-lucide-server"
-            title="Не удалось загрузить назначения"
-            :description="loadErrorMine"
-            class="w-full max-w-full"
+  <UMain class="relative w-full h-full min-h-0">
+    <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-[1600px] mx-auto overflow-y-auto scrollbar-hide p-px pb-8">
+      <UPageHeader
+        headline="Обучение"
+        title="Мои курсы"
+        description="Назначенные курсы, прогресс прохождения и управление материалами"
+      >
+        <template #links>
+          <UButton
+            v-if="isCourseAdmin"
+            color="primary"
+            icon="i-lucide-plus"
+            label="Создать курс"
+            @click="goCreateCourse"
           />
-
-          <UEmpty
-            v-else-if="emptyMine"
-            icon="i-lucide-graduation-cap"
-            title="Вам пока ничего не назначено"
-            description="Когда HR направит курс, он появится здесь."
-            class="py-12 w-full max-w-full"
-          >
-            <template v-if="isCourseAdmin" #actions>
-              <UButton color="primary" variant="soft" @click="tab = 'manage'">
-                Перейти к управлению курсами
-              </UButton>
-            </template>
-          </UEmpty>
-
-          <div v-else class="flex flex-col gap-3 w-full min-w-0">
-            <section v-if="overdue.length" class="flex flex-col gap-2 min-w-0">
-              <h2 class="text-lg font-medium text-error">Просроченные</h2>
-              <div
-                v-for="e in overdue"
-                :key="e.id"
-                class="rounded-xl ring-1 ring-error/30 bg-error/5 p-4 flex flex-col md:flex-row md:items-center gap-3 min-w-0"
-              >
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-2 flex-wrap">
-                    <CourseStatusBadge :status="e.status" />
-                    <span class="font-medium break-words">{{ e.courseTitle }}</span>
-                  </div>
-                  <p class="text-xs text-dimmed mt-1">
-                    Завершено {{ e.topicsCompleted ?? 0 }} из {{ e.topicsTotal ?? 0 }} тем, {{ e.progressPercent ?? 0 }}%
-                  </p>
-                </div>
-                <UButton color="primary" class="shrink-0" @click="open(e)">{{ ctaLabel(e) }}</UButton>
-              </div>
-            </section>
-
-            <section v-if="inProgress.length" class="flex flex-col gap-2 min-w-0">
-              <h2 class="text-lg font-medium">В процессе</h2>
-              <div
-                v-for="e in inProgress"
-                :key="e.id"
-                class="rounded-xl ring-1 ring-default bg-elevated/30 p-4 flex flex-col md:flex-row md:items-center gap-3 min-w-0"
-              >
-                <div class="flex-1 min-w-0 flex flex-col gap-2">
-                  <div class="flex items-center gap-2 flex-wrap">
-                    <CourseStatusBadge :status="e.status" />
-                    <span class="font-medium break-words">{{ e.courseTitle }}</span>
-                  </div>
-                  <UProgress
-                    :model-value="e.progressPercent ?? 0"
-                    size="sm"
-                    color="primary"
-                    :aria-label="`Завершено ${e.topicsCompleted ?? 0} из ${e.topicsTotal ?? 0} тем, ${e.progressPercent ?? 0} процентов`"
-                  />
-                  <p class="text-xs text-dimmed">
-                    Завершено {{ e.topicsCompleted ?? 0 }} из {{ e.topicsTotal ?? 0 }} тем, {{ e.progressPercent ?? 0 }}%
-                  </p>
-                </div>
-                <UButton color="primary" icon="i-lucide-play" class="shrink-0" @click="open(e)">Продолжить</UButton>
-              </div>
-            </section>
-
-            <section v-if="fresh.length" class="flex flex-col gap-2 min-w-0">
-              <h2 class="text-lg font-medium">Новые</h2>
-              <div
-                v-for="e in fresh"
-                :key="e.id"
-                class="rounded-xl ring-1 ring-default bg-elevated/30 p-4 flex flex-col md:flex-row md:items-center gap-3 min-w-0"
-              >
-                <div class="flex-1 min-w-0">
-                  <span class="font-medium break-words block">{{ e.courseTitle }}</span>
-                </div>
-                <UButton color="primary" icon="i-lucide-play" class="shrink-0" @click="open(e)">Начать</UButton>
-              </div>
-            </section>
-
-            <section v-if="completed.length" class="flex flex-col gap-2 min-w-0">
-              <h2 class="text-lg font-medium">Завершённые</h2>
-              <div
-                v-for="e in completed"
-                :key="e.id"
-                class="rounded-xl ring-1 ring-default p-4 flex flex-col md:flex-row md:items-center gap-3 opacity-90 min-w-0"
-              >
-                <div class="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
-                  <CourseStatusBadge status="completed" />
-                  <span class="font-medium break-words">{{ e.courseTitle }}</span>
-                </div>
-                <UButton color="neutral" variant="soft" class="shrink-0" @click="open(e)">Смотреть</UButton>
-              </div>
-            </section>
-          </div>
         </template>
+      </UPageHeader>
 
-        <!-- -- Управление курсами (админ) -------------------------------- -->
-        <template v-else-if="tab === 'manage' && isCourseAdmin">
-          <div class="flex flex-col gap-3 w-full min-w-0">
-            <div v-if="loadingManage" class="flex flex-col gap-3">
-              <USkeleton v-for="n in 4" :key="n" class="h-20 w-full rounded-xl" />
-            </div>
+      <UTabs
+        v-if="isCourseAdmin"
+        v-model="tab"
+        :items="tabItems"
+        variant="link"
+        color="primary"
+        size="md"
+        :content="false"
+        class="w-full border-b border-default"
+        :ui="{
+          list: 'w-full gap-1',
+          trigger: 'grow-0',
+        }"
+      />
 
-            <UAlert
-              v-else-if="loadErrorManage"
-              color="warning"
-              variant="subtle"
-              icon="i-lucide-server"
-              title="API курсов недоступен"
-              :description="`${loadErrorManage}. Нужны файлы api/courses_*.php и миграция V4 на сервере.`"
-              class="w-full max-w-full"
-            />
+      <!-- Назначенные мне -->
+      <template v-if="tab === 'mine'">
+        <div v-if="loadingMine" class="flex flex-col gap-3">
+          <USkeleton v-for="n in 4" :key="n" class="h-20 w-full rounded-panel" />
+        </div>
 
-            <UEmpty
-              v-else-if="!store.courses.value.length"
-              icon="i-lucide-library-big"
-              title="Курсов пока нет"
-              description="Создайте первый курс и наполните его темами и материалами."
-              class="py-12 w-full max-w-full"
+        <UAlert
+          v-else-if="loadErrorMine"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-server"
+          title="Не удалось загрузить назначения"
+          :description="loadErrorMine"
+        />
+
+        <UEmpty
+          v-else-if="emptyMine"
+          variant="naked"
+          icon="i-lucide-graduation-cap"
+          title="Вам пока ничего не назначено"
+          description="Когда HR направит курс, он появится здесь."
+          class="w-full py-12"
+        >
+          <template v-if="isCourseAdmin" #actions>
+            <UButton color="primary" variant="soft" @click="tab = 'manage'">
+              Перейти к управлению курсами
+            </UButton>
+          </template>
+        </UEmpty>
+
+        <div v-else class="flex flex-col gap-6">
+          <section v-if="overdue.length" class="flex flex-col gap-3">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-error">
+              Просроченные
+            </h2>
+            <UCard
+              v-for="e in overdue"
+              :key="e.id"
+              variant="soft"
+              class="w-full rounded-panel"
+              :ui="{
+                root: 'rounded-panel bg-error/5 ring-1 ring-inset ring-error/25 border-0 divide-y-0',
+                body: 'flex flex-col md:flex-row md:items-center gap-3 p-4 sm:p-4',
+              }"
             >
-              <template #actions>
-                <UButton color="primary" icon="i-lucide-plus" @click="goCreateCourse">
-                  Создать курс
-                </UButton>
-              </template>
-            </UEmpty>
-
-            <div v-else class="flex flex-col gap-3 min-w-0">
-              <button
-                v-for="c in store.courses.value"
-                :key="c.id"
-                type="button"
-                class="rounded-xl ring-1 ring-default p-4 flex flex-col md:flex-row md:items-center gap-3 bg-elevated/30 text-left hover:bg-elevated/60 transition-colors cursor-pointer min-w-0 w-full"
-                @click="openWorkspace(c.id)"
-              >
-                <div class="flex-1 min-w-0 flex flex-col gap-1">
-                  <div class="flex items-center gap-2 flex-wrap">
-                    <CourseStatusBadge :status="c.status" />
-                    <span v-if="c.category" class="text-xs text-dimmed">{{ c.category }}</span>
-                    <span class="font-medium text-highlighted break-words">{{ c.title }}</span>
-                  </div>
-                  <p class="text-xs text-dimmed">
-                    Тем: {{ c.topicsCount ?? 0 }}
-                    <template v-if="c.updatedAt"> · обновлён {{ new Date(c.updatedAt).toLocaleDateString('ru-RU') }}</template>
-                  </p>
+              <div class="flex-1 min-w-0 flex flex-col gap-1.5">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <CourseStatusBadge :status="e.status" />
+                  <span class="font-medium text-highlighted break-words">{{ e.courseTitle }}</span>
                 </div>
-                <UButton
-                  color="neutral"
-                  variant="soft"
-                  icon="i-lucide-arrow-right"
-                  class="shrink-0"
-                  aria-label="Открыть курс"
-                  @click.stop="openWorkspace(c.id)"
-                >
-                  Открыть
-                </UButton>
-              </button>
+                <p class="text-xs text-muted">
+                  Завершено {{ e.topicsCompleted ?? 0 }} из {{ e.topicsTotal ?? 0 }} тем · {{ e.progressPercent ?? 0 }}%
+                </p>
+              </div>
+              <UButton color="primary" class="shrink-0" @click="open(e)">
+                {{ ctaLabel(e) }}
+              </UButton>
+            </UCard>
+          </section>
+
+          <section v-if="inProgress.length" class="flex flex-col gap-3">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-muted">
+              В процессе
+            </h2>
+            <UCard
+              v-for="e in inProgress"
+              :key="e.id"
+              variant="soft"
+              class="w-full rounded-panel"
+              :ui="{
+                root: 'rounded-panel bg-elevated ring-0 border-0 divide-y-0',
+                body: 'flex flex-col md:flex-row md:items-center gap-3 p-4 sm:p-4',
+              }"
+            >
+              <div class="flex-1 min-w-0 flex flex-col gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <CourseStatusBadge :status="e.status" />
+                  <span class="font-medium text-highlighted break-words">{{ e.courseTitle }}</span>
+                </div>
+                <UProgress
+                  :model-value="e.progressPercent ?? 0"
+                  size="sm"
+                  color="primary"
+                  :aria-label="`Завершено ${e.topicsCompleted ?? 0} из ${e.topicsTotal ?? 0} тем, ${e.progressPercent ?? 0} процентов`"
+                />
+                <p class="text-xs text-muted">
+                  Завершено {{ e.topicsCompleted ?? 0 }} из {{ e.topicsTotal ?? 0 }} тем · {{ e.progressPercent ?? 0 }}%
+                </p>
+              </div>
+              <UButton color="primary" icon="i-lucide-play" class="shrink-0" @click="open(e)">
+                Продолжить
+              </UButton>
+            </UCard>
+          </section>
+
+          <section v-if="fresh.length" class="flex flex-col gap-3">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-muted">
+              Новые
+            </h2>
+            <UCard
+              v-for="e in fresh"
+              :key="e.id"
+              variant="soft"
+              class="w-full rounded-panel"
+              :ui="{
+                root: 'rounded-panel bg-elevated ring-0 border-0 divide-y-0',
+                body: 'flex flex-col md:flex-row md:items-center gap-3 p-4 sm:p-4',
+              }"
+            >
+              <div class="flex-1 min-w-0">
+                <span class="font-medium text-highlighted break-words block">{{ e.courseTitle }}</span>
+              </div>
+              <UButton color="primary" icon="i-lucide-play" class="shrink-0" @click="open(e)">
+                Начать
+              </UButton>
+            </UCard>
+          </section>
+
+          <section v-if="completed.length" class="flex flex-col gap-3">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-muted">
+              Завершённые
+            </h2>
+            <UCard
+              v-for="e in completed"
+              :key="e.id"
+              variant="soft"
+              class="w-full rounded-panel"
+              :ui="{
+                root: 'rounded-panel bg-elevated/60 ring-0 border-0 divide-y-0',
+                body: 'flex flex-col md:flex-row md:items-center gap-3 p-4 sm:p-4',
+              }"
+            >
+              <div class="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+                <CourseStatusBadge status="completed" />
+                <span class="font-medium text-highlighted break-words">{{ e.courseTitle }}</span>
+              </div>
+              <UButton color="neutral" variant="soft" class="shrink-0" @click="open(e)">
+                Смотреть
+              </UButton>
+            </UCard>
+          </section>
+        </div>
+      </template>
+
+      <!-- Управление курсами -->
+      <template v-else-if="tab === 'manage' && isCourseAdmin">
+        <div v-if="loadingManage" class="flex flex-col gap-3">
+          <USkeleton v-for="n in 4" :key="n" class="h-20 w-full rounded-panel" />
+        </div>
+
+        <UAlert
+          v-else-if="loadErrorManage"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-server"
+          title="API курсов недоступен"
+          :description="`${loadErrorManage}. Нужны файлы api/courses_*.php и миграция V4 на сервере.`"
+        />
+
+        <UEmpty
+          v-else-if="!store.courses.value.length"
+          variant="naked"
+          icon="i-lucide-library-big"
+          title="Курсов пока нет"
+          description="Создайте первый курс и наполните его темами и материалами."
+          class="w-full py-12"
+        >
+          <template #actions>
+            <UButton color="primary" icon="i-lucide-plus" @click="goCreateCourse">
+              Создать курс
+            </UButton>
+          </template>
+        </UEmpty>
+
+        <div v-else class="flex flex-col gap-3">
+          <UCard
+            v-for="c in store.courses.value"
+            :key="c.id"
+            variant="soft"
+            class="w-full rounded-panel cursor-pointer transition-colors hover:bg-elevated/80"
+            :ui="{
+              root: 'rounded-panel bg-elevated ring-0 border-0 divide-y-0',
+              body: 'flex flex-col md:flex-row md:items-center gap-3 p-4 sm:p-4',
+            }"
+            @click="openWorkspace(c.id)"
+          >
+            <div class="flex-1 min-w-0 flex flex-col gap-1">
+              <div class="flex items-center gap-2 flex-wrap">
+                <CourseStatusBadge :status="c.status" />
+                <UBadge v-if="c.category" color="neutral" variant="subtle" size="sm">
+                  {{ c.category }}
+                </UBadge>
+                <span class="font-medium text-highlighted break-words">{{ c.title }}</span>
+              </div>
+              <p class="text-xs text-muted">
+                Тем: {{ c.topicsCount ?? 0 }}
+                <template v-if="c.updatedAt">
+                  · обновлён {{ new Date(c.updatedAt).toLocaleDateString('ru-RU') }}
+                </template>
+              </p>
             </div>
-          </div>
-        </template>
-      </div>
-    </section>
+            <UButton
+              color="neutral"
+              variant="soft"
+              icon="i-lucide-arrow-right"
+              class="shrink-0"
+              aria-label="Открыть курс"
+              @click.stop="openWorkspace(c.id)"
+            >
+              Открыть
+            </UButton>
+          </UCard>
+        </div>
+      </template>
+    </div>
   </UMain>
 </template>

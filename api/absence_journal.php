@@ -30,6 +30,10 @@
 error_reporting(0);
 ini_set('display_errors', '0');
 
+// Портал — Екатеринбург (UTC+5), не Москва
+date_default_timezone_set('Asia/Yekaterinburg');
+define('PORTAL_TZ', 'Asia/Yekaterinburg');
+
 // ─── Подключение к БД ─────────────────────────────────────────────────────────
 define('DB_HOST', 'localhost');
 define('DB_PORT', '5432');
@@ -61,6 +65,54 @@ function jsonError(int $code, string $message): void {
     exit;
 }
 
+/** Приводит datetime из БД к настенным часам Екб без offset (для фронта). */
+function fmtDateTime(?string $v): ?string {
+    if ($v === null || $v === '') return null;
+    $v = trim($v);
+    try {
+        // Есть явный offset / Z — конвертируем в Asia/Yekaterinburg
+        if (preg_match('/(?:[zZ]|[+-]\d{2}(?::?\d{2})?)\s*$/', $v)) {
+            $dt = new DateTimeImmutable($v);
+            return $dt->setTimezone(new DateTimeZone(PORTAL_TZ))->format('Y-m-d H:i:s');
+        }
+        // «Голое» значение — уже настенные часы, только нормализуем формат
+        if (preg_match('/^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/', $v, $m)) {
+            $sec = isset($m[4]) && $m[4] !== '' ? (int)$m[4] : 0;
+            return sprintf('%s %s:%s:%02d', $m[1], $m[2], $m[3], $sec);
+        }
+        $dt = new DateTimeImmutable($v, new DateTimeZone(PORTAL_TZ));
+        return $dt->format('Y-m-d H:i:s');
+    } catch (Exception $e) {
+        return $v;
+    }
+}
+
+/** Текущие настенные часы Екб */
+function nowPortal(): string {
+    return (new DateTimeImmutable('now', new DateTimeZone(PORTAL_TZ)))->format('Y-m-d H:i:s');
+}
+
+/** Округляет минуты до шага 5 (как в UI) */
+function roundDtToStep(string $v, int $step = 5): string {
+    $v = normDt($v);
+    $dt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $v, new DateTimeZone(PORTAL_TZ));
+    if ($dt === false) {
+        try {
+            $dt = new DateTimeImmutable($v, new DateTimeZone(PORTAL_TZ));
+        } catch (Exception $e) {
+            return $v;
+        }
+    }
+    $dt = $dt->setTime((int)$dt->format('H'), (int)$dt->format('i'), 0);
+    $minutes = (int)$dt->format('i');
+    $rounded = (int)(round($minutes / $step) * $step);
+    if ($rounded >= 60) {
+        $dt = $dt->modify('+1 hour');
+        $rounded = 0;
+    }
+    return $dt->setTime((int)$dt->format('H'), $rounded, 0)->format('Y-m-d H:i:s');
+}
+
 /** Форматирует строку из БД в нужный клиенту вид */
 function fmt(array $row): array {
     return [
@@ -69,11 +121,11 @@ function fmt(array $row): array {
         'fio'            => $row['fio'],
         'ofo'            => (int) $row['ofo'],
         'role'           => $row['role'],
-        'start_datetime' => $row['start_datetime'],
-        'end_datetime'   => $row['end_datetime'],   // null или строка ISO
+        'start_datetime' => fmtDateTime($row['start_datetime'] ?? null),
+        'end_datetime'   => fmtDateTime($row['end_datetime'] ?? null),
         'reason'         => $row['reason'],
-        'created_at'     => $row['created_at'],
-        'status'         => $row['end_datetime'] === null ? 'active' : 'completed',
+        'created_at'     => fmtDateTime($row['created_at'] ?? null),
+        'status'         => ($row['end_datetime'] ?? null) === null ? 'active' : 'completed',
     ];
 }
 
@@ -109,7 +161,8 @@ try {
         ]
     );
     $pdo->exec("SET client_encoding = 'UTF8'");
-    $pdo->exec("SET TIME ZONE 'Europe/Moscow'");
+    // Портал работает по Екатеринбургу (UTC+5), не по Москве
+    $pdo->exec("SET TIME ZONE 'Asia/Yekaterinburg'");
 } catch (PDOException $e) {
     jsonError(500, 'Ошибка подключения к БД');
 }
@@ -231,11 +284,15 @@ if ($method === 'POST') {
 
     if ($end !== null && !validDatetime($end)) jsonError(400, 'Некорректный формат end_datetime');
 
+    $startNorm = roundDtToStep(normDt($start));
+    $endNorm   = $end !== null ? roundDtToStep(normDt($end)) : null;
+    $created   = nowPortal();
+
     $stmt = $pdo->prepare(
         'INSERT INTO public.absence_journal
-            (user_id, fio, ofo, role, start_datetime, end_datetime, reason)
+            (user_id, fio, ofo, role, start_datetime, end_datetime, reason, created_at)
          VALUES
-            (:user_id, :fio, :ofo, :role, :start, :end, :reason)
+            (:user_id, :fio, :ofo, :role, :start, :end, :reason, :created)
          RETURNING *'
     );
     $stmt->execute([
@@ -243,9 +300,10 @@ if ($method === 'POST') {
         ':fio'     => $fio,
         ':ofo'     => $ofo,
         ':role'    => $role,
-        ':start'   => normDt($start),
-        ':end'     => $end,
+        ':start'   => $startNorm,
+        ':end'     => $endNorm,
         ':reason'  => $reason !== '' ? $reason : null,
+        ':created' => $created,
     ]);
 
     $row = $stmt->fetch();
@@ -279,7 +337,7 @@ if ($method === 'PUT') {
     $params = [':id' => $id];
 
     if (isset($body['start_datetime']) && trim($body['start_datetime']) !== '') {
-        $start = normDt($body['start_datetime']);
+        $start = roundDtToStep(normDt($body['start_datetime']));
         if (!validDatetime($start)) jsonError(400, 'Некорректный формат start_datetime');
         $sets[]            = 'start_datetime = :start';
         $params[':start']  = $start;
@@ -290,7 +348,7 @@ if ($method === 'PUT') {
         if ($end === '' || $end === null) {
             $sets[]          = 'end_datetime = NULL';
         } else {
-            $end = normDt($end);
+            $end = roundDtToStep(normDt($end));
             if (!validDatetime($end)) jsonError(400, 'Некорректный формат end_datetime');
             $sets[]          = 'end_datetime = :end';
             $params[':end']  = $end;
