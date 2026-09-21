@@ -4,6 +4,7 @@ import { useNewsData } from './useNewsData';
 import { useUsersData } from './useUsersData';
 import { useAppToast } from './useAppToast';
 import { apiSessionFetch } from './useAuthSession';
+import { usePortalServices } from './usePortalServices';
 
 type SearchHit = CommandPaletteItem & {
   label: string;
@@ -221,6 +222,7 @@ export async function ensurePortalSearchIndex() {
       loadGallery(),
       loadForms(),
       loadCourses(),
+      usePortalServices().ensureLoaded(),
     ]);
     indexReady.value = true;
   })().finally(() => {
@@ -333,6 +335,37 @@ function buildContentGroups(q: string, toast: ReturnType<typeof useAppToast>['to
     groups.push({ id: 'forms', label: 'Формы', items: formItems, ignoreFilter: true });
   }
 
+  const { enabledServices } = usePortalServices();
+  const serviceItems: SearchHit[] = [];
+  for (const s of enabledServices.value) {
+    if (!includesQuery(q, s.label, s.description, s.path, s.externalUrl, s.internalKey)) continue;
+    if (s.kind === 'external' && s.externalUrl) {
+      const url = s.externalUrl;
+      serviceItems.push({
+        id: `svc-${s.id}`,
+        label: s.label,
+        description: s.description || 'Внешний сервис',
+        icon: s.icon || 'i-lucide-external-link',
+        onSelect(e?: Event) {
+          e?.preventDefault?.();
+          window.open(url, '_blank', 'noopener,noreferrer');
+        },
+      });
+    } else {
+      serviceItems.push({
+        id: `svc-${s.id}`,
+        label: s.label,
+        description: s.description || 'Сервис портала',
+        icon: s.icon || 'i-lucide-layout-grid',
+        to: s.path || '/services',
+      });
+    }
+    if (serviceItems.length >= PER_GROUP) break;
+  }
+  if (serviceItems.length) {
+    groups.push({ id: 'services', label: 'Сервисы', items: serviceItems, ignoreFilter: true });
+  }
+
   const courseItems: SearchHit[] = [];
   for (const c of coursesCache.value) {
     if (!includesQuery(q, c.title, c.status, c.category)) continue;
@@ -364,7 +397,7 @@ function buildContentGroups(q: string, toast: ReturnType<typeof useAppToast>['to
 
 /**
  * Глобальный поиск портала: разделы + сотрудники, новости, мероприятия,
- * галерея, формы, курсы, документация (как в CMDB — клиентский индекс по контенту).
+ * галерея, формы, сервисы, курсы, документация (как в CMDB — клиентский индекс по контенту).
  */
 export function usePortalGlobalSearch(searchTerm: Ref<string>, open: Ref<boolean>) {
   const { toast } = useAppToast();

@@ -38,6 +38,40 @@ const displayServices = computed(() =>
   canEditServices.value ? services.value : enabledServices.value,
 );
 
+const searchQuery = ref('');
+
+const filteredServices = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase();
+  if (!q) return displayServices.value;
+  return displayServices.value.filter((s) => {
+    const hay = `${s.label} ${s.description || ''} ${s.path || ''} ${s.externalUrl || ''}`.toLowerCase();
+    return hay.includes(q);
+  });
+});
+
+const internalServices = computed(() =>
+  filteredServices.value.filter((s) => s.kind === 'internal'),
+);
+
+const externalServices = computed(() =>
+  filteredServices.value.filter((s) => s.kind === 'external'),
+);
+
+const hasAnyFiltered = computed(
+  () => internalServices.value.length > 0 || externalServices.value.length > 0,
+);
+
+const serviceSections = computed(() => {
+  const sections: { key: string; title: string; items: PortalService[] }[] = [];
+  if (internalServices.value.length) {
+    sections.push({ key: 'internal', title: 'Внутренние', items: internalServices.value });
+  }
+  if (externalServices.value.length) {
+    sections.push({ key: 'external', title: 'Внешние', items: externalServices.value });
+  }
+  return sections;
+});
+
 const slideOpen = ref(false);
 const saving = ref(false);
 const deleteOpen = ref(false);
@@ -205,10 +239,8 @@ async function confirmDelete() {
   }
 }
 
-async function moveService(index: number, dir: -1 | 1) {
+async function moveService(service: PortalService, dir: -1 | 1) {
   const list = [...displayServices.value];
-  const j = index + dir;
-  if (j < 0 || j >= list.length) return;
   if (list.some((s) => s.id <= 0)) {
     toast.add({
       title: 'Сначала дождитесь загрузки с сервера',
@@ -217,8 +249,16 @@ async function moveService(index: number, dir: -1 | 1) {
     });
     return;
   }
-  const tmp = list[index];
-  list[index] = list[j];
+  const kindIndices = list
+    .map((s, i) => (s.kind === service.kind ? i : -1))
+    .filter((i) => i >= 0);
+  const pos = kindIndices.findIndex((i) => list[i]?.id === service.id);
+  const swapPos = pos + dir;
+  if (pos < 0 || swapPos < 0 || swapPos >= kindIndices.length) return;
+  const i = kindIndices[pos]!;
+  const j = kindIndices[swapPos]!;
+  const tmp = list[i]!;
+  list[i] = list[j]!;
   list[j] = tmp;
   reordering.value = true;
   try {
@@ -233,6 +273,14 @@ async function moveService(index: number, dir: -1 | 1) {
   } finally {
     reordering.value = false;
   }
+}
+
+function canMove(service: PortalService, dir: -1 | 1): boolean {
+  const kindList = displayServices.value.filter((s) => s.kind === service.kind);
+  const pos = kindList.findIndex((s) => s.id === service.id);
+  if (pos < 0) return false;
+  const next = pos + dir;
+  return next >= 0 && next < kindList.length;
 }
 
 function cardProps(s: PortalService) {
@@ -262,6 +310,28 @@ function cardProps(s: PortalService) {
       </template>
     </UPageHeader>
 
+    <UInput
+      v-model="searchQuery"
+      icon="i-lucide-search"
+      size="md"
+      color="neutral"
+      variant="outline"
+      placeholder="Найти сервис…"
+      class="w-full"
+      :ui="{ trailing: 'pe-1' }"
+    >
+      <template v-if="searchQuery" #trailing>
+        <UButton
+          color="neutral"
+          variant="link"
+          size="sm"
+          icon="i-lucide-x"
+          aria-label="Очистить"
+          @click="searchQuery = ''"
+        />
+      </template>
+    </UInput>
+
     <div v-if="loading && !displayServices.length" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
       <USkeleton v-for="n in 3" :key="n" class="h-28 w-full rounded-panel" />
     </div>
@@ -275,83 +345,101 @@ function cardProps(s: PortalService) {
       :description="error"
     />
 
-    <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-      <div
-        v-for="(service, index) in displayServices"
-        :key="service.id"
-        class="relative group"
+    <UAlert
+      v-else-if="!hasAnyFiltered"
+      color="neutral"
+      variant="subtle"
+      icon="i-lucide-search-x"
+      :title="searchQuery.trim() ? 'Ничего не найдено' : 'Сервисов пока нет'"
+      :description="searchQuery.trim() ? 'Попробуйте изменить запрос' : undefined"
+    />
+
+    <template v-else>
+      <section
+        v-for="section in serviceSections"
+        :key="section.key"
+        class="flex flex-col gap-3"
+        :aria-labelledby="`services-${section.key}`"
       >
-        <UPageCard
-          :title="service.label"
-          :description="service.description || undefined"
-          :icon="service.icon"
-          variant="soft"
-          class="bg-elevated h-full"
-          v-bind="cardProps(service)"
-        />
-        <div
-          v-if="canEditServices && service.id > 0"
-          class="absolute top-2 right-2 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
-        >
-          <UButton
-            color="neutral"
-            variant="soft"
-            size="xs"
-            icon="i-lucide-arrow-up"
-            square
-            :disabled="reordering || index === 0"
-            aria-label="Выше"
-            @click.prevent="moveService(index, -1)"
-          />
-          <UButton
-            color="neutral"
-            variant="soft"
-            size="xs"
-            icon="i-lucide-arrow-down"
-            square
-            :disabled="reordering || index === displayServices.length - 1"
-            aria-label="Ниже"
-            @click.prevent="moveService(index, 1)"
-          />
-          <UButton
-            color="neutral"
-            variant="soft"
-            size="xs"
-            icon="i-lucide-pencil"
-            square
-            aria-label="Редактировать"
-            @click.prevent="openEdit(service)"
-          />
-          <UButton
-            color="error"
-            variant="soft"
-            size="xs"
-            icon="i-lucide-trash-2"
-            square
-            aria-label="Удалить"
-            @click.prevent="askDelete(service)"
-          />
+        <div class="flex items-baseline gap-2">
+          <h2
+            :id="`services-${section.key}`"
+            class="text-base font-semibold text-highlighted"
+          >
+            {{ section.title }}
+          </h2>
+          <span class="text-sm text-muted">{{ section.items.length }}</span>
         </div>
-        <UBadge
-          v-if="canEditServices && !service.isEnabled"
-          color="neutral"
-          variant="subtle"
-          size="sm"
-          class="absolute bottom-3 left-3"
-        >
-          Скрыт
-        </UBadge>
-        <UBadge
-          v-if="canEditServices && service.kind === 'external'"
-          color="primary"
-          variant="subtle"
-          size="sm"
-          class="absolute bottom-3 right-3"
-        >
-          Внешний
-        </UBadge>
-      </div>
-    </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div
+            v-for="service in section.items"
+            :key="service.id"
+            class="relative group"
+          >
+            <UPageCard
+              :title="service.label"
+              :description="service.description || undefined"
+              :icon="service.icon"
+              variant="soft"
+              class="bg-elevated h-full"
+              v-bind="cardProps(service)"
+            />
+            <div
+              v-if="canEditServices && service.id > 0"
+              class="absolute top-2 right-2 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
+            >
+              <UButton
+                color="neutral"
+                variant="soft"
+                size="xs"
+                icon="i-lucide-arrow-up"
+                square
+                :disabled="reordering || !canMove(service, -1)"
+                aria-label="Выше"
+                @click.prevent="moveService(service, -1)"
+              />
+              <UButton
+                color="neutral"
+                variant="soft"
+                size="xs"
+                icon="i-lucide-arrow-down"
+                square
+                :disabled="reordering || !canMove(service, 1)"
+                aria-label="Ниже"
+                @click.prevent="moveService(service, 1)"
+              />
+              <UButton
+                color="neutral"
+                variant="soft"
+                size="xs"
+                icon="i-lucide-pencil"
+                square
+                aria-label="Редактировать"
+                @click.prevent="openEdit(service)"
+              />
+              <UButton
+                color="error"
+                variant="soft"
+                size="xs"
+                icon="i-lucide-trash-2"
+                square
+                aria-label="Удалить"
+                @click.prevent="askDelete(service)"
+              />
+            </div>
+            <UBadge
+              v-if="canEditServices && !service.isEnabled"
+              color="neutral"
+              variant="subtle"
+              size="sm"
+              class="absolute bottom-3 left-3"
+            >
+              Скрыт
+            </UBadge>
+          </div>
+        </div>
+      </section>
+    </template>
 
     <USlideover
       v-model:open="slideOpen"

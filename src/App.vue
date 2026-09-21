@@ -19,7 +19,7 @@
           v-model:open="portalSearchOpen"
           v-model:search-term="portalSearchTerm"
           shortcut="ctrl_shift_alt_f12"
-          placeholder="Поиск по порталу: сотрудники, новости, формы…"
+          placeholder="Поиск по порталу: сотрудники, новости, сервисы…"
           :groups="searchGroups"
           :loading="searchLoading"
           :color-mode="false"
