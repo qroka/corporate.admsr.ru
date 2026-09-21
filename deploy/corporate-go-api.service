@@ -1,0 +1,19 @@
+[Unit]
+Description=corporate.admsr.ru Go API
+After=network.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/corporate.admsr.ru/backend
+ExecStart=/var/www/corporate.admsr.ru/backend/bin/api
+Restart=on-failure
+RestartSec=3
+# .env подхватывается самим бинарником (LoadDotEnv); при необходимости раскомментируйте:
+# EnvironmentFile=-/var/www/corporate.admsr.ru/backend/.env
+# Не даём наследовать случайный HTTP_ADDR из окружения systemd — читаем из .env в cwd
+NoNewPrivileges=true
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

@@ -339,6 +339,8 @@ chmod +x deploy/deploy.sh
 ./deploy/deploy.sh -n                   # dry-run
 ./deploy/deploy.sh --skip-backup        # без pg_dump
 ./deploy/deploy.sh --skip-pull          # только сборка
+./deploy/deploy.sh --skip-go            # без пересборки Go API
+GO_SYNC_NGINX=1 ./deploy/deploy.sh      # ещё обновить nginx site из репо
 ```
 
 Скрипт выполняет:
@@ -348,8 +350,17 @@ chmod +x deploy/deploy.sh
 3. `git pull --ff-only`;
 4. `npm ci` (или `pnpm install --frozen-lockfile`);
 5. `npm run build`;
-6. `systemctl reload php8.3-fpm`;
-7. health-check `GET /api/health.php` (до 10 попыток).
+6. сборка Go API (`backend/bin/api`; при отсутствии Go — автоустановка toolchain, `GO_AUTO_INSTALL=1`);
+7. `systemctl restart corporate-go-api` (unit: `deploy/corporate-go-api.service`);
+8. `systemctl reload php8.3-fpm`;
+9. health-check `GET /api/health.php` (ожидается `"backend":"go"`).
+
+Первый раз на сервере проверьте `backend/.env` (`DB_PASS`, `HTTP_ADDR=127.0.0.1:8081`, `UPLOAD_DIR=.../public`).
+
+```bash
+systemctl status corporate-go-api
+journalctl -u corporate-go-api -n 50 --no-pager
+```
 
 ### 10. Права git на сервере
 
@@ -382,8 +393,11 @@ sudo chown -R deploy-user:www-data /var/www/corporate.admsr.ru
 
 ```
 deploy/
-  deploy.sh                      # скрипт обновления
+  deploy.sh                      # скрипт обновления (SPA + Go API + PHP-FPM)
   deploy.env.example             # пример переменных (скопировать в deploy.env)
+  corporate-go-api.service       # systemd unit для Go API (:8081)
+  nginx-corporate.admsr.ru.conf  # прод-конфиг nginx
+  nginx-go-api-wave2.conf        # allowlist волны 2 (include)
   nginx-corporate.admsr.ru.conf  # виртуальный хост nginx
 ```
 

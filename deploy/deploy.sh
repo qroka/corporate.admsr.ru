@@ -1,24 +1,28 @@
 #!/usr/bin/env bash
-# deploy.sh — обновление corporate.admsr.ru на Ubuntu (Vue SPA + PHP API + PostgreSQL)
+# deploy.sh — обновление corporate.admsr.ru (Vue SPA + Go API + PHP-FPM fallback)
 #
-# Стек отличается от grafic.admsr.ru: здесь нет Node/Fastify — API на PHP-FPM.
-# Переменные можно переопределить через deploy/deploy.env или окружение.
+# Переменные: deploy/deploy.env или окружение.
 
 set -euo pipefail
 
-# --- Параметры по умолчанию (corporate.admsr.ru) ---------------------------
+# --- Параметры по умолчанию ------------------------------------------------
 APP_DIR="${APP_DIR:-/var/www/corporate.admsr.ru}"
 DATA_DIR="${DATA_DIR:-/var/lib/corporate-app}"
 BACKUP_DIR="${BACKUP_DIR:-${DATA_DIR}/backups}"
 BACKUP_KEEP="${BACKUP_KEEP:-7}"
 DOMAIN="${DOMAIN:-corporate.admsr.ru}"
 SERVICE_NAME="${SERVICE_NAME:-php8.3-fpm}"
+GO_SERVICE_NAME="${GO_SERVICE_NAME:-corporate-go-api}"
 HEALTH_URL="${HEALTH_URL:-https://127.0.0.1/api/health.php}"
 HEALTH_HOST="${HEALTH_HOST:-${DOMAIN}}"
 PACKAGE_MANAGER="${PACKAGE_MANAGER:-npm}"
 GIT_BRANCH="${GIT_BRANCH:-main}"
 HEALTH_RETRIES="${HEALTH_RETRIES:-10}"
 HEALTH_SLEEP="${HEALTH_SLEEP:-2}"
+GO_VERSION="${GO_VERSION:-1.22.10}"
+GO_AUTO_INSTALL="${GO_AUTO_INSTALL:-1}"
+GO_SYNC_NGINX="${GO_SYNC_NGINX:-0}"
+SKIP_GO="${SKIP_GO:-0}"
 
 DRY_RUN=0
 SKIP_BACKUP=0
@@ -59,15 +63,18 @@ usage() {
   -n, --dry-run          Показать команды без выполнения
       --skip-backup      Пропустить бэкап PostgreSQL
       --skip-pull        Пропустить git pull
+      --skip-go          Не собирать / не перезапускать Go API
   -h, --help             Справка
 
-Переменные окружения (или deploy/deploy.env):
-  APP_DIR, DATA_DIR, BACKUP_KEEP, SERVICE_NAME, HEALTH_URL, HEALTH_HOST,
-  PACKAGE_MANAGER (npm|pnpm), DOMAIN, GIT_BRANCH
+Переменные (deploy/deploy.env):
+  APP_DIR, DATA_DIR, DOMAIN, SERVICE_NAME, GO_SERVICE_NAME,
+  HEALTH_URL, HEALTH_HOST, PACKAGE_MANAGER, GIT_BRANCH,
+  GO_VERSION, GO_AUTO_INSTALL (1/0), GO_SYNC_NGINX (1/0), SKIP_GO (1/0),
+  PGPASSWORD, PGHOST, PGUSER, PGDATABASE
 
 Пример:
   ./deploy/deploy.sh
-  APP_DIR=/var/www/corporate.admsr.ru ./deploy/deploy.sh -b main
+  GO_SYNC_NGINX=1 ./deploy/deploy.sh -b main
 EOF
 }
 
@@ -77,6 +84,7 @@ while [[ $# -gt 0 ]]; do
     -n|--dry-run) DRY_RUN=1; shift ;;
     --skip-backup) SKIP_BACKUP=1; shift ;;
     --skip-pull) SKIP_PULL=1; shift ;;
+    --skip-go) SKIP_GO=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) err "Неизвестный аргумент: $1"; usage; exit 1 ;;
   esac
@@ -128,7 +136,6 @@ backup_database() {
       "${PGDATABASE:-corporate_portal}" | gzip -9 > "$file"
     ok "Бэкап создан: ${file}"
 
-    # ротация
     mapfile -t old_backups < <(ls -1t "${BACKUP_DIR}"/corporate_portal-*.sql.gz 2>/dev/null || true)
     if ((${#old_backups[@]} > BACKUP_KEEP)); then
       for ((i = BACKUP_KEEP; i < ${#old_backups[@]}; i++)); do
@@ -215,13 +222,12 @@ build_frontend() {
 ensure_data_dirs() {
   run "sudo mkdir -p '${DATA_DIR}/uploads/img' '${DATA_DIR}/uploads/courses' '${BACKUP_DIR}'"
   run "sudo chown -R www-data:www-data '${DATA_DIR}'"
-  # Загрузки галереи/аватаров — вне git (public/img в .gitignore)
   if [[ "$DRY_RUN" -eq 0 ]] && [[ ! -e public/img ]]; then
     run "ln -sfn '${DATA_DIR}/uploads/img' public/img"
   fi
 }
 
-# --- 6b. Миграции PostgreSQL (идемпотентные V*.sql) --------------------------
+# --- 6b. Миграции PostgreSQL -------------------------------------------------
 apply_migrations() {
   if [[ -z "${PGPASSWORD:-}" ]]; then
     warn "PGPASSWORD не задан — миграции БД пропущены. Примените вручную: db/migration/V4__courses_module.sql"
@@ -254,8 +260,172 @@ apply_migrations() {
   ok "Миграции применены (идемпотентно)."
 }
 
+# --- 6c. Go toolchain --------------------------------------------------------
+ensure_go() {
+  if command -v go >/dev/null 2>&1; then
+    return 0
+  fi
+  if [[ -x /usr/local/go/bin/go ]]; then
+    export PATH="/usr/local/go/bin:${PATH}"
+    return 0
+  fi
+  if [[ "${GO_AUTO_INSTALL}" != "1" ]]; then
+    return 1
+  fi
+
+  local arch goarch tarball url tmp
+  arch="$(uname -m)"
+  case "$arch" in
+    x86_64|amd64) goarch=amd64 ;;
+    aarch64|arm64) goarch=arm64 ;;
+    *) warn "Неизвестная архитектура ${arch} — автоустановка Go пропущена"; return 1 ;;
+  esac
+
+  tarball="go${GO_VERSION}.linux-${goarch}.tar.gz"
+  url="https://go.dev/dl/${tarball}"
+  tmp="$(mktemp -d)"
+  log "Установка Go ${GO_VERSION} → /usr/local/go (${url})"
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "(dry-run) download+install Go"
+    return 0
+  fi
+  if ! curl -fsSL "$url" -o "${tmp}/${tarball}"; then
+    warn "Не удалось скачать Go — сборка API пропущена"
+    rm -rf "$tmp"
+    return 1
+  fi
+  sudo rm -rf /usr/local/go
+  sudo tar -C /usr/local -xzf "${tmp}/${tarball}"
+  rm -rf "$tmp"
+  export PATH="/usr/local/go/bin:${PATH}"
+  go version
+  ok "Go установлен."
+}
+
+# --- 6d. backend/.env --------------------------------------------------------
+ensure_go_env() {
+  local envf="${APP_DIR}/backend/.env"
+  local example="${APP_DIR}/backend/.env.example"
+  if [[ -f "$envf" ]]; then
+    return 0
+  fi
+  if [[ ! -f "$example" ]]; then
+    warn "Нет backend/.env и .env.example — создайте вручную."
+    return 1
+  fi
+  log "Создаю backend/.env из .env.example (проверьте DB_PASS / UPLOAD_DIR)"
+  if [[ "$DRY_RUN" -eq 0 ]]; then
+    cp "$example" "$envf"
+    chmod 600 "$envf"
+    # testing defaults that we already know work
+    if grep -q '^UPLOAD_DIR=' "$envf"; then
+      sed -i 's|^UPLOAD_DIR=.*|UPLOAD_DIR=/var/www/corporate.admsr.ru/public|' "$envf"
+    fi
+    if grep -q '^HTTP_ADDR=' "$envf"; then
+      sed -i 's|^HTTP_ADDR=.*|HTTP_ADDR=127.0.0.1:8081|' "$envf"
+    else
+      echo 'HTTP_ADDR=127.0.0.1:8081' >> "$envf"
+    fi
+    warn "Отредактируйте DB_PASS в ${envf} при первом деплое!"
+  fi
+}
+
+# --- 6e. Сборка + systemd Go API ---------------------------------------------
+deploy_go_api() {
+  if [[ "$SKIP_GO" -eq 1 ]]; then
+    warn "Go API пропущен (--skip-go / SKIP_GO=1)."
+    return 0
+  fi
+
+  local backend="${APP_DIR}/backend"
+  if [[ ! -d "$backend" ]]; then
+    warn "Нет каталога backend/ — Go API пропущен."
+    return 0
+  fi
+
+  ensure_go_env || true
+
+  if ensure_go; then
+    log "Сборка Go API…"
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+      mkdir -p "${backend}/bin"
+      (cd "$backend" && CGO_ENABLED=0 go build -o bin/api ./cmd/api)
+      chmod +x "${backend}/bin/api"
+      ok "Собран ${backend}/bin/api"
+    else
+      log "(dry-run) go build -o bin/api ./cmd/api"
+    fi
+  else
+    if [[ -x "${backend}/bin/api" ]]; then
+      warn "Go не найден — перезапуск существующего bin/api без пересборки."
+    else
+      err "Go не установлен и нет ${backend}/bin/api — установите Go или положите бинарник."
+      exit 1
+    fi
+  fi
+
+  # systemd unit
+  local unit_src="${APP_DIR}/deploy/corporate-go-api.service"
+  local unit_dst="/etc/systemd/system/${GO_SERVICE_NAME}.service"
+  if [[ -f "$unit_src" ]]; then
+    run "sudo cp '${unit_src}' '${unit_dst}'"
+    run "sudo systemctl daemon-reload"
+    run "sudo systemctl enable '${GO_SERVICE_NAME}'"
+    # убить старый nohup, если слушал порт
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+      fuser -k 8081/tcp 2>/dev/null || true
+      # на случай старого :8080 (если вдруг)
+      if ! ss -lntp 2>/dev/null | grep -q ':8080.*nginx'; then
+        fuser -k 8080/tcp 2>/dev/null || true
+      fi
+    fi
+    run "sudo systemctl restart '${GO_SERVICE_NAME}'"
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+      sleep 1
+      if systemctl is-active --quiet "$GO_SERVICE_NAME"; then
+        ok "Сервис ${GO_SERVICE_NAME} активен."
+      else
+        err "Сервис ${GO_SERVICE_NAME} не запустился:"
+        sudo journalctl -u "$GO_SERVICE_NAME" -n 30 --no-pager || true
+        exit 1
+      fi
+    fi
+  else
+    warn "Нет ${unit_src} — fallback nohup"
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+      fuser -k 8081/tcp 2>/dev/null || true
+      (cd "$backend" && nohup ./bin/api >> /var/log/corporate-go-api.log 2>&1 &)
+      sleep 1
+    fi
+  fi
+}
+
+# --- 6f. nginx (опционально) -------------------------------------------------
+sync_nginx() {
+  if [[ "${GO_SYNC_NGINX}" != "1" ]]; then
+    return 0
+  fi
+  local src="${APP_DIR}/deploy/nginx-corporate.admsr.ru.conf"
+  local dst="/etc/nginx/sites-available/corporate.admsr.ru.conf"
+  if [[ ! -f "$src" ]]; then
+    warn "Нет ${src} — sync nginx пропущен."
+    return 0
+  fi
+  log "Обновление nginx site из репозитория (GO_SYNC_NGINX=1)"
+  run "sudo cp '${src}' '${dst}'"
+  if [[ "$DRY_RUN" -eq 0 ]]; then
+    if sudo nginx -t; then
+      sudo systemctl reload nginx
+      ok "nginx перезагружен."
+    else
+      err "nginx -t failed — конфиг не применён"
+      exit 1
+    fi
+  fi
+}
+
 # --- 7. Перезапуск PHP-FPM ---------------------------------------------------
-restart_service() {
+restart_php() {
   if [[ "$DRY_RUN" -eq 1 ]]; then
     run "sudo systemctl reload '${SERVICE_NAME}'"
     return 0
@@ -271,7 +441,6 @@ restart_service() {
 # --- 8. Health-check ---------------------------------------------------------
 health_check() {
   local i curl_args=(-fsS)
-  # HTTP на :80 уходит в 301→HTTPS (см. nginx) — для localhost используем HTTPS + -k.
   if [[ "$HEALTH_URL" == http://127.0.0.1/* ]] || [[ "$HEALTH_URL" == http://localhost/* ]]; then
     HEALTH_URL="${HEALTH_URL/http:/https:}"
   fi
@@ -292,7 +461,12 @@ health_check() {
     local body
     body="$(curl "${curl_args[@]}" "$HEALTH_URL" 2>/dev/null || true)"
     if printf '%s' "$body" | grep -q '"ok"[[:space:]]*:[[:space:]]*true'; then
-      ok "Health-check OK (попытка ${i}/${HEALTH_RETRIES})"
+      if printf '%s' "$body" | grep -q '"backend"[[:space:]]*:[[:space:]]*"go"'; then
+        ok "Health-check OK (Go API, попытка ${i}/${HEALTH_RETRIES})"
+      else
+        warn "Health OK, но backend не go — проверьте nginx allowlist / ${GO_SERVICE_NAME}"
+        ok "Health-check OK (попытка ${i}/${HEALTH_RETRIES})"
+      fi
       return 0
     fi
     if [[ -n "$body" ]]; then
@@ -303,7 +477,8 @@ health_check() {
   done
 
   err "Health-check не прошёл после ${HEALTH_RETRIES} попыток: ${HEALTH_URL}"
-  warn "Сборка и миграции уже применены. Проверьте вручную: curl -sk -H \"Host: ${HEALTH_HOST}\" https://127.0.0.1/api/health.php"
+  warn "Проверьте: systemctl status ${GO_SERVICE_NAME}; journalctl -u ${GO_SERVICE_NAME} -n 50"
+  warn "Вручную: curl -sk -H \"Host: ${HEALTH_HOST}\" https://127.0.0.1/api/health.php"
   exit 1
 }
 
@@ -316,6 +491,8 @@ install_deps
 build_frontend
 ensure_data_dirs
 apply_migrations
-restart_service
+deploy_go_api
+sync_nginx
+restart_php
 health_check
 ok "Деплой завершён успешно."
