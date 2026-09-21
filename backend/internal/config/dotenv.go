@@ -18,6 +18,7 @@ func LoadDotEnv(path string) {
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
+		line = strings.TrimSuffix(line, "\r")
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -27,6 +28,7 @@ func LoadDotEnv(path string) {
 		}
 		key = strings.TrimSpace(key)
 		val = strings.TrimSpace(val)
+		val = strings.TrimSuffix(val, "\r")
 		if len(val) >= 2 {
 			if (val[0] == '"' && val[len(val)-1] == '"') || (val[0] == '\'' && val[len(val)-1] == '\'') {
 				val = val[1 : len(val)-1]
