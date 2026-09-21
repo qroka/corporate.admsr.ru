@@ -228,13 +228,20 @@ func parseBirthdayFile(path string) (*birthdayParsed, error) {
 	}
 	defer f.Close()
 
-	sheet := f.GetSheetName(0)
-	if sheet == "" {
+	sheets := f.GetSheetList()
+	if len(sheets) == 0 {
 		return nil, fmt.Errorf("empty sheet")
 	}
-	rows, err := f.GetRows(sheet)
+	sheet := sheets[0]
+
+	// RawCellValue: даты как Excel-сериал, а не локализованная строка
+	rows, err := f.GetRows(sheet, excelize.Options{RawCellValue: true})
 	if err != nil || len(rows) == 0 {
-		return nil, fmt.Errorf("no rows")
+		// fallback без raw
+		rows, err = f.GetRows(sheet)
+		if err != nil || len(rows) == 0 {
+			return nil, fmt.Errorf("no rows")
+		}
 	}
 
 	headerA := ""
@@ -260,6 +267,15 @@ func parseBirthdayFile(path string) (*birthdayParsed, error) {
 		var rawDate any
 		if len(cells) > 1 {
 			rawDate = cells[1]
+		}
+		// если raw пустой — попробуем ячейку B{n} напрямую
+		if rawDate == nil || strings.TrimSpace(fmt.Sprint(rawDate)) == "" {
+			axis, _ := excelize.CoordinatesToCellName(2, i+1)
+			if v, err := f.GetCellValue(sheet, axis, excelize.Options{RawCellValue: true}); err == nil && v != "" {
+				rawDate = v
+			} else if v, err := f.GetCellValue(sheet, axis); err == nil {
+				rawDate = v
+			}
 		}
 		md := excelToMD(rawDate)
 		if fio == "" || md == nil {
@@ -299,23 +315,60 @@ func excelToMD(raw any) *mdPair {
 		if s == "" {
 			return nil
 		}
-		if n, err := strconv.ParseFloat(s, 64); err == nil {
+		if n, err := strconv.ParseFloat(strings.ReplaceAll(s, ",", "."), 64); err == nil {
 			return serialToMD(n)
 		}
-		if t, err := time.Parse("2006-01-02", s); err == nil {
-			return &mdPair{M: int(t.Month()), D: t.Day()}
+		layouts := []string{
+			"2006-01-02",
+			"02.01.2006",
+			"2.01.2006",
+			"02.1.2006",
+			"2.1.2006",
+			"02.01.06",
+			"2.1.06",
+			"01/02/2006",
+			"1/2/2006",
+			"02-01-2006",
+			"2006/01/02",
+			time.RFC3339,
 		}
-		if t, err := time.Parse("02.01.2006", s); err == nil {
-			return &mdPair{M: int(t.Month()), D: t.Day()}
+		for _, layout := range layouts {
+			if t, err := time.Parse(layout, s); err == nil {
+				return &mdPair{M: int(t.Month()), D: t.Day()}
+			}
+		}
+		// «15 июня 1990» / «15 июня» — день + русский месяц
+		if md := parseRussianDate(s); md != nil {
+			return md
 		}
 		return nil
 	case float64:
 		return serialToMD(v)
 	case int:
 		return serialToMD(float64(v))
+	case int64:
+		return serialToMD(float64(v))
 	default:
 		return excelToMD(fmt.Sprint(v))
 	}
+}
+
+func parseRussianDate(s string) *mdPair {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = strings.ReplaceAll(s, "ё", "е")
+	fields := strings.Fields(s)
+	if len(fields) < 2 {
+		return nil
+	}
+	day, err := strconv.Atoi(fields[0])
+	if err != nil || day < 1 || day > 31 {
+		return nil
+	}
+	m := monthNameToNumber(fields[1])
+	if m == 0 {
+		return nil
+	}
+	return &mdPair{M: m, D: day}
 }
 
 func serialToMD(serial float64) *mdPair {
