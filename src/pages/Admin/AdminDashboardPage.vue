@@ -782,19 +782,32 @@ function resetUserFilters() {
   filterOfo.value = '';
 }
 
-function toggleUserStatus(user: AdminUserRow) {
-  const next = user.status === 'Активен' ? 'Заблокирован' : 'Активен';
+async function toggleUserStatus(user: AdminUserRow) {
+  const prev = user.status;
+  const next = prev === 'Активен' ? 'Заблокирован' : 'Активен';
   users.value = users.value.map((u) => (u.id === user.id ? { ...u, status: next } : u));
-  
-  fetch(`/api/users.php?id=${user.id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status: next === 'Активен' })
-  }).catch(e => {
-    toast.add({ title: 'Ошибка обновления статуса', color: 'error', description: String(e) });
-    // revert on error
-    users.value = users.value.map((u) => (u.id === user.id ? { ...u, status: user.status } : u));
-  });
+
+  const revert = (desc: string) => {
+    toast.add({ title: 'Ошибка обновления статуса', color: 'error', description: desc });
+    users.value = users.value.map((u) => (u.id === user.id ? { ...u, status: prev } : u));
+  };
+
+  // BUG-001: раньше откат делался только в .catch (сетевая ошибка). HTTP 401/403/500
+  // и {success:false} fetch НЕ реджектит — оптимистичное изменение оставалось на
+  // экране, хотя сервер запрос отклонил (рассинхрон UI и БД). Теперь проверяем ответ.
+  try {
+    const res = await fetch(`/api/users.php?id=${user.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: next === 'Активен' })
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.success) {
+      revert(json?.message || `Ошибка ${res.status}`);
+    }
+  } catch (e) {
+    revert(String(e));
+  }
 }
 
 const editOpen = ref(false);
@@ -824,13 +837,19 @@ function openEdit(user: AdminUserRow) {
 }
 
 async function saveEdit() {
+  // BUG-002: оптимистичное обновление раньше не откатывалось при ошибке — при
+  // HTTP 401/403/500 или {success:false} строка в таблице показывала несохранённые
+  // значения (рассинхрон UI и БД). Запоминаем прежнюю строку и восстанавливаем её.
+  const prevRow = users.value.find((u) => u.id === editForm.id);
+  const prevSnapshot = prevRow ? { ...prevRow } : null;
+
   users.value = users.value.map((u) =>
-    u.id === editForm.id ? { 
-      ...editForm, 
-      fullName: [editForm.surname, editForm.firstname, editForm.lastname].filter(Boolean).join(' ') || '—' 
+    u.id === editForm.id ? {
+      ...editForm,
+      fullName: [editForm.surname, editForm.firstname, editForm.lastname].filter(Boolean).join(' ') || '—'
     } : u,
   );
-  
+
   try {
     const res = await fetch(`/api/users.php?id=${editForm.id}`, {
       method: 'PUT',
@@ -850,11 +869,14 @@ async function saveEdit() {
         role: editForm.role
       })
     });
-    const json = await res.json();
-    if (!json.success) throw new Error(json.message || 'Ошибка сохранения');
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.success) throw new Error(json?.message || `Ошибка ${res.status}`);
     adminUserSaved([editForm.surname, editForm.firstname, editForm.lastname].filter(Boolean).join(' ') || 'Пользователь');
     editOpen.value = false;
   } catch(e) {
+    if (prevSnapshot) {
+      users.value = users.value.map((u) => (u.id === prevSnapshot.id ? prevSnapshot : u));
+    }
     toast.add({ title: 'Ошибка сохранения', color: 'error', description: String(e) });
   }
 }
