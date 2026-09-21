@@ -158,8 +158,8 @@ async function saveGroup() {
     : [];
   if (groupForm.permissions.includes('courses') && !cats.length) {
     toast.add({
-      title: 'Выберите категории курсов',
-      description: 'Для права «Курсы» нужна хотя бы одна категория.',
+      title: 'Выберите категории обучения',
+      description: 'Для права «Обучение» нужна хотя бы одна категория.',
       color: 'warning',
       icon: 'i-lucide-alert-triangle',
     });
@@ -1235,7 +1235,7 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
             size="lg"
             :to="{ name: 'courses', query: { tab: 'manage' } }"
           >
-            Управление курсами
+            Управление обучением
           </UButton>
         </div>
 
@@ -1625,7 +1625,7 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
           </UFormField>
           <UFormField
             v-if="showCourseCategories"
-            label="Категории курсов"
+            label="Категории обучения"
             name="courseCategories"
             hint="Пользователи группы увидят и смогут редактировать только выбранные категории."
           >

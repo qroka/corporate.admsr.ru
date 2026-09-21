@@ -40,6 +40,7 @@ export type CourseTopic = {
   materials?: CourseMaterial[];
   materialsCount?: number;
   testLink?: CourseTestLink | null;
+  topicTest?: CourseTestLink | null;
   questionCount?: number;
   ready?: boolean;
 };
@@ -68,6 +69,7 @@ export type CourseVersion = {
   defaultDeadlineDays?: number | null;
   finalPassingScore?: number | null;
   requireFinalTest?: boolean;
+  generateCertificate?: boolean;
   topics?: CourseTopic[];
   finalTest?: CourseTestLink | null;
   updatedAt?: string;
@@ -94,6 +96,7 @@ export type EnrollmentSummary = {
   topicsTotal?: number;
   deadlineAt?: string | null;
   lastActivityAt?: string | null;
+  completedAt?: string | null;
   currentTopicTitle?: string | null;
   nextAction?: { type: string; label: string; topicId?: number; courseTestLinkId?: number };
 };
@@ -134,7 +137,7 @@ export function useCoursesStore() {
         method: 'POST',
         json: {},
       });
-      const data = unwrap(res, 'Не удалось загрузить курсы') as any;
+      const data = unwrap(res, 'Не удалось загрузить обучение') as any;
       const raw = Array.isArray(data) ? data : data?.items || [];
       courses.value = raw.map((c: any) => ({
         id: Number(c.id),
@@ -179,7 +182,7 @@ export function useCoursesStore() {
       method: 'POST',
       json: payload,
     });
-    return unwrap(res, 'Не удалось создать курс');
+    return unwrap(res, 'Не удалось создать обучение');
   }
 
   async function updateCourse(payload: Record<string, unknown>) {
@@ -344,6 +347,14 @@ export function useCoursesStore() {
     return unwrap(res, 'Не удалось загрузить карточку');
   }
 
+  async function loadAttemptAnswers(payload: Record<string, unknown>) {
+    const res = await apiSessionFetch('/api/course_admin_attempt.php', {
+      method: 'POST',
+      json: payload,
+    });
+    return unwrap(res, 'Не удалось загрузить ответы');
+  }
+
   async function resetEnrollment(enrollmentId: number) {
     const res = await apiSessionFetch('/api/course_enrollment_reset.php', {
       method: 'POST',
@@ -360,7 +371,7 @@ export function useCoursesStore() {
         '/api/courses_for_me.php',
         { method: 'POST', json: {} },
       );
-      const data = unwrap(res, 'Не удалось загрузить курсы') as any;
+      const data = unwrap(res, 'Не удалось загрузить обучение') as any;
       if (Array.isArray(data)) {
         myEnrollments.value = data;
         return { all: data };
@@ -381,6 +392,7 @@ export function useCoursesStore() {
           topicsTotal: prog?.topicsTotal ?? enr?.topicsTotal ?? 0,
           deadlineAt: enr?.deadlineAt ?? null,
           lastActivityAt: enr?.lastActivityAt ?? null,
+          completedAt: enr?.completedAt ?? null,
           currentTopicTitle: null,
           nextAction: prog?.nextAction ?? enr?.nextAction,
         };
@@ -534,6 +546,7 @@ export function useCoursesStore() {
     assign,
     loadResults,
     loadParticipant,
+    loadAttemptAnswers,
     resetEnrollment,
     loadMyCourses,
     getEnrollment,

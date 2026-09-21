@@ -1,7 +1,6 @@
 ﻿<script setup lang="ts">
 import { reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import type { BreadcrumbItem } from '@nuxt/ui';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
 import { useSectionAccess } from '../../../composables/useSectionAccess';
@@ -20,11 +19,6 @@ const form = reactive({
   fullDescription: '',
   sequentialProgress: true,
 });
-
-const crumbs: BreadcrumbItem[] = [
-  { label: 'Курсы', to: { name: 'courses', query: { tab: 'manage' } } },
-  { label: 'Новый курс' },
-];
 
 async function onSave() {
   if (!form.title.trim()) {
@@ -45,9 +39,18 @@ async function onSave() {
       sequentialProgress: form.sequentialProgress,
     }) as any;
     const id = created?.course?.id ?? created?.id;
-    if (!id) throw new Error('Сервер не вернул id курса');
-    toast.add({ title: 'Курс создан', color: 'success', icon: 'i-lucide-check' });
-    await router.push({ name: 'admin-course-workspace', params: { courseId: String(id) } });
+    if (!id) throw new Error('Сервер не вернул id обучения');
+    toast.add({
+      title: 'Обучение создано',
+      description: 'Шаг 1: добавьте первую тему',
+      color: 'success',
+      icon: 'i-lucide-check',
+    });
+    await router.push({
+      name: 'admin-course-topic-create',
+      params: { courseId: String(id) },
+      query: { guide: '1' },
+    });
   } catch (e: any) {
     toast.add({ title: 'Не удалось создать', description: e?.message, color: 'error', icon: 'i-lucide-x' });
   } finally {
@@ -58,8 +61,7 @@ async function onSave() {
 
 <template>
   <UMain class="flex flex-1 flex-col w-full max-w-3xl mx-auto min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
-    <UBreadcrumb :items="crumbs" />
-    <h1 class="text-2xl font-medium text-highlighted">Новый курс</h1>
+    <h1 class="text-2xl font-medium text-highlighted">Новое обучение</h1>
 
     <div class="flex flex-col gap-4">
       <UFormField label="Название" required>
@@ -95,7 +97,7 @@ async function onSave() {
 
       <div class="flex items-center gap-2 pt-2">
         <UButton color="primary" size="lg" :loading="saving" icon="i-lucide-check" @click="onSave">
-          Создать и открыть
+          Создать и добавить тему
         </UButton>
         <UButton color="neutral" variant="ghost" size="lg" :to="{ name: 'courses', query: { tab: 'manage' } }">
           Отмена

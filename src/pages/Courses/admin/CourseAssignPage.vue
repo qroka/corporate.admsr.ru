@@ -1,16 +1,17 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import type { BreadcrumbItem } from '@nuxt/ui';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useUsersData } from '../../../composables/useUsersData';
 import { useAppToast } from '../../../composables/useAppToast';
 import { useOfoTree } from '../../../composables/useOfoTree';
+import { useAdminCoursePortalBreadcrumbs } from '../useAdminCoursePortalBreadcrumbs';
 
 const route = useRoute();
 const router = useRouter();
 const store = useCoursesStore();
 const { toast } = useAppToast();
+useAdminCoursePortalBreadcrumbs();
 const { users, ensureLoaded: ensureUsers } = useUsersData();
 const {
   categories,
@@ -46,12 +47,6 @@ const ofoItems = computed(() => {
   }
   return items.sort((a, b) => a.label.localeCompare(b.label, 'ru'));
 });
-
-const crumbs = computed<BreadcrumbItem[]>(() => [
-  { label: 'Курсы', to: { name: 'courses', query: { tab: 'manage' } } },
-  { label: store.current.value?.title || 'Курс', to: { name: 'admin-course-workspace', params: { courseId: courseId.value } } },
-  { label: 'Назначение' },
-]);
 
 const canAssign = computed(
   () => (selectedUsers.value.length > 0 || ofoIds.value.length > 0) && store.version.value?.status === 'published',
@@ -124,7 +119,6 @@ const previewList = computed(() => {
 
 <template>
   <UMain class="flex flex-1 flex-col w-full max-w-3xl mx-auto min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
-    <UBreadcrumb :items="crumbs" />
     <h1 class="text-2xl font-medium text-highlighted">Назначение курса</h1>
 
     <UAlert

@@ -1,14 +1,15 @@
 ﻿<script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import type { BreadcrumbItem } from '@nuxt/ui';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
+import { useAdminCoursePortalBreadcrumbs } from '../useAdminCoursePortalBreadcrumbs';
 
 const route = useRoute();
 const router = useRouter();
 const store = useCoursesStore();
 const { toast } = useAppToast();
+useAdminCoursePortalBreadcrumbs();
 
 const courseId = computed(() => Number(route.params.courseId));
 const topicId = computed(() => {
@@ -16,6 +17,7 @@ const topicId = computed(() => {
   return raw ? Number(raw) : null;
 });
 const isEdit = computed(() => topicId.value != null && !Number.isNaN(topicId.value));
+const guideMode = computed(() => String(route.query.guide || '') === '1');
 
 const loading = ref(true);
 const saving = ref(false);
@@ -28,12 +30,6 @@ const form = reactive({
   isRequired: true,
   minimumActiveSeconds: 0,
 });
-
-const crumbs = computed<BreadcrumbItem[]>(() => [
-  { label: 'Курсы', to: { name: 'courses', query: { tab: 'manage' } } },
-  { label: store.current.value?.title || 'Курс', to: { name: 'admin-course-workspace', params: { courseId: courseId.value } } },
-  { label: isEdit.value ? 'Тема' : 'Новая тема' },
-]);
 
 const materialTypeLabels: Record<string, string> = {
   rich_text: 'Текст',
@@ -120,8 +116,21 @@ async function onSave() {
         minimumActiveSeconds: form.minimumActiveSeconds,
       }) as any;
       const newId = res?.topic?.id ?? res?.id;
-      toast.add({ title: 'Тема создана', color: 'success', icon: 'i-lucide-check' });
+      toast.add({
+        title: 'Тема создана',
+        description: guideMode.value ? 'Шаг 2: добавьте материал' : undefined,
+        color: 'success',
+        icon: 'i-lucide-check',
+      });
       if (newId) {
+        if (guideMode.value) {
+          await router.push({
+            name: 'admin-course-material-create',
+            params: { courseId: courseId.value, topicId: newId },
+            query: { guide: '1' },
+          });
+          return;
+        }
         await router.replace({
           name: 'admin-course-topic-edit',
           params: { courseId: courseId.value, topicId: newId },
@@ -140,12 +149,20 @@ async function onSave() {
 
 <template>
   <UMain class="flex flex-1 flex-col w-full max-w-3xl mx-auto min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
-    <UBreadcrumb :items="crumbs" />
     <div class="flex items-center justify-between gap-3 flex-wrap min-w-0">
       <h1 class="text-2xl font-medium text-highlighted break-words">
         {{ isEdit ? 'Редактирование темы' : 'Новая тема' }}
       </h1>
     </div>
+
+    <UAlert
+      v-if="guideMode && !isEdit"
+      color="primary"
+      variant="subtle"
+      icon="i-lucide-list-ordered"
+      title="Шаг 1 из 3 — тема"
+      description="Укажите название. После сохранения сразу откроется добавление материала."
+    />
 
     <div v-if="loading" class="flex flex-col gap-3 p-1">
       <USkeleton v-for="n in 4" :key="n" class="h-12 w-full rounded-lg" />

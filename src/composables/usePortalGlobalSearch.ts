@@ -55,7 +55,7 @@ const PAGE_ITEMS: SearchHit[] = [
   { label: 'Мероприятия', icon: 'i-lucide-calendar', to: '/events', description: 'Афиша корпоративных событий' },
   { label: 'Фотогалерея', icon: 'i-lucide-images', to: '/gallery', description: 'Альбомы и фотографии' },
   { label: 'Заявки', icon: 'i-lucide-file-text', to: '/applications', description: 'Сервисы · сервисные заявки' },
-  { label: 'Обучение', icon: 'i-lucide-graduation-cap', to: '/courses', description: 'Мои курсы и материалы' },
+  { label: 'Обучение', icon: 'i-lucide-graduation-cap', to: '/courses', description: 'Моё обучение и материалы' },
   { label: 'Документация', icon: 'i-lucide-book-open', to: '/documentation', description: 'Справка по порталу' },
   { label: 'Обратная связь', icon: 'i-lucide-message-square-more', to: '/feedback', description: 'Вопросы и предложения' },
   { label: 'Профиль', icon: 'i-lucide-user', to: '/profile', description: 'Личные данные и стена' },
@@ -66,7 +66,7 @@ const DOC_SECTIONS: SearchHit[] = [
   { label: 'Навигация', icon: 'i-lucide-book-open', to: '/documentation', description: 'Документация · меню и шапка' },
   { label: 'Новости и мероприятия', icon: 'i-lucide-book-open', to: '/documentation', description: 'Документация · контент' },
   { label: 'Сервисы и формы', icon: 'i-lucide-book-open', to: '/documentation', description: 'Документация · сервисы' },
-  { label: 'Обучение', icon: 'i-lucide-book-open', to: '/documentation', description: 'Документация · курсы' },
+  { label: 'Обучение', icon: 'i-lucide-book-open', to: '/documentation', description: 'Документация' },
   { label: 'Профиль и тема', icon: 'i-lucide-book-open', to: '/documentation', description: 'Документация · настройки' },
 ];
 

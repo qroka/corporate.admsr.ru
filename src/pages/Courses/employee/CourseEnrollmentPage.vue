@@ -1,26 +1,35 @@
 ﻿<script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import type { BreadcrumbItem } from '@nuxt/ui';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
+import { useBreadcrumbCurrentLabel } from '../../../composables/usePortalNavigation';
 
 const route = useRoute();
 const router = useRouter();
 const store = useCoursesStore();
 const { toast } = useAppToast();
+const breadcrumbLabel = useBreadcrumbCurrentLabel();
 
 const enrollmentId = computed(() => Number(route.params.enrollmentId));
 const loading = ref(true);
+const loadError = ref<string | null>(null);
 const acting = ref(false);
 const data = ref<any>(null);
 
-const crumbs = computed<BreadcrumbItem[]>(() => [
-  { label: 'Мои курсы', to: { name: 'courses' } },
-  { label: title.value },
-]);
+const title = computed(() => data.value?.enrollment?.course?.title || data.value?.version?.title || 'Обучение');
 
-const title = computed(() => data.value?.enrollment?.course?.title || data.value?.version?.title || 'Курс');
+watch(
+  title,
+  (t) => {
+    breadcrumbLabel.value = t.trim() || null;
+  },
+  { immediate: true },
+);
+
+onUnmounted(() => {
+  breadcrumbLabel.value = null;
+});
 const progress = computed(() => data.value?.enrollment?.progress || data.value?.progress || {});
 const percent = computed(() => progress.value?.percent ?? 0);
 const topicsDone = computed(() => progress.value?.topicsCompleted ?? 0);
@@ -29,13 +38,48 @@ const next = computed(() => data.value?.nextAction || progress.value?.nextAction
 const topics = computed(() => data.value?.version?.topics || []);
 const enrollmentStatus = computed(() => String(data.value?.enrollment?.status || ''));
 const isReview = computed(() => ['completed', 'failed'].includes(enrollmentStatus.value));
+const completedAt = computed(() => data.value?.enrollment?.completedAt || null);
+
+const completedAtLabel = computed(() => {
+  const raw = completedAt.value;
+  if (!raw) return '';
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return '';
+  const date = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+  const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return `${date}, ${time}`;
+});
+
+const continueLabel = computed(() => {
+  if (isReview.value) return 'Смотреть материалы';
+  if (data.value?.enrollment?.status === 'not_started') return 'Начать курс';
+  return next.value?.label || 'Продолжить';
+});
+
+const nextHint = computed(() => {
+  if (enrollmentStatus.value === 'completed' && completedAtLabel.value) {
+    return `Обучение завершено ${completedAtLabel.value}. Можно снова открыть темы.`;
+  }
+  if (isReview.value) return 'Курс завершён — можно снова открыть темы.';
+  if (data.value?.enrollment?.status === 'not_started') {
+    return 'Нажмите «Начать курс», чтобы открыть первую тему.';
+  }
+  const t = next.value?.type;
+  if (t === 'topic' || t === 'topic_material') return 'Следующий шаг — продолжить тему.';
+  if (t === 'topic_test') return 'Следующий шаг — тест по теме.';
+  if (t === 'final_test') return 'Следующий шаг — итоговый тест.';
+  if (t === 'done' || t === 'complete_course') return 'Курс почти завершён — откройте итоги.';
+  return next.value?.label || 'Продолжите с того места, где остановились.';
+});
 
 onMounted(async () => {
   loading.value = true;
+  loadError.value = null;
   try {
     data.value = await store.getEnrollment(enrollmentId.value);
   } catch (e: any) {
-    toast.add({ title: 'Курс недоступен', description: e?.message, color: 'error', icon: 'i-lucide-alert-circle' });
+    loadError.value = e?.message || 'Курс недоступен';
+    toast.add({ title: 'Курс недоступен', description: loadError.value, color: 'error', icon: 'i-lucide-alert-circle' });
   } finally {
     loading.value = false;
   }
@@ -99,59 +143,59 @@ function openTopic(t: any) {
 
 <template>
   <UMain class="flex flex-1 flex-col w-full max-w-3xl mx-auto min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
-    <UBreadcrumb :items="crumbs" />
-
     <div v-if="loading" class="flex flex-col gap-3 p-1">
       <USkeleton class="h-10 w-2/3 rounded-lg" />
       <USkeleton class="h-24 w-full rounded-xl" />
     </div>
 
     <template v-else-if="data">
-      <div class="flex flex-col gap-2 min-w-0 p-1">
-        <h1 class="text-2xl font-medium text-highlighted break-words">{{ title }}</h1>
-        <p v-if="data.version?.shortDescription" class="text-sm text-muted break-words whitespace-pre-wrap">
-          {{ data.version.shortDescription }}
-        </p>
-        <p v-if="isReview" class="text-sm text-muted">
-          Можно снова открыть темы и материалы курса.
-        </p>
-      </div>
+      <div class="flex flex-col gap-3 min-w-0 rounded-xl ring-1 ring-default bg-elevated/40 p-4">
+        <div class="flex flex-col gap-2 min-w-0">
+          <h1 class="text-2xl font-medium text-highlighted break-words">{{ title }}</h1>
+          <p v-if="data.version?.shortDescription" class="text-sm text-muted break-words whitespace-pre-wrap">
+            {{ data.version.shortDescription }}
+          </p>
+        </div>
 
-      <div class="flex flex-col gap-2 p-1">
-        <UProgress
-          :model-value="percent"
-          size="md"
-          color="primary"
-          :aria-label="`Завершено ${topicsDone} из ${topicsTotal} тем, ${percent} процентов`"
-        />
-        <p class="text-sm text-dimmed">
-          Завершено {{ topicsDone }} из {{ topicsTotal }} тем, {{ percent }}%
-        </p>
-      </div>
+        <div class="flex flex-col gap-2">
+          <UProgress
+            :model-value="percent"
+            size="md"
+            color="primary"
+            :aria-label="`Завершено ${topicsDone} из ${topicsTotal} тем, ${percent} процентов`"
+          />
+          <p class="text-sm text-dimmed">
+            Завершено {{ topicsDone }} из {{ topicsTotal }} тем · {{ percent }}%
+          </p>
+          <p v-if="enrollmentStatus === 'completed' && completedAtLabel" class="text-sm text-muted">
+            Дата завершения: {{ completedAtLabel }}
+          </p>
+        </div>
 
-      <div class="flex flex-wrap gap-2 p-1">
-        <UButton
-          color="primary"
-          size="lg"
-          class="w-fit"
-          :loading="acting"
-          :icon="isReview ? 'i-lucide-book-open' : (data.enrollment?.status === 'not_started' ? 'i-lucide-play' : 'i-lucide-arrow-right')"
-          @click="continueLearning"
-        >
-          <template v-if="isReview">Смотреть материалы</template>
-          <template v-else-if="data.enrollment?.status === 'not_started'">Начать курс</template>
-          <template v-else>{{ next?.label || 'Продолжить' }}</template>
-        </UButton>
-        <UButton
-          v-if="isReview"
-          color="neutral"
-          variant="soft"
-          size="lg"
-          icon="i-lucide-award"
-          :to="{ name: 'course-result', params: { enrollmentId } }"
-        >
-          Результат
-        </UButton>
+        <p class="text-sm text-muted">{{ nextHint }}</p>
+
+        <div class="flex flex-wrap gap-2">
+          <UButton
+            color="primary"
+            size="lg"
+            class="w-fit"
+            :loading="acting"
+            :icon="isReview ? 'i-lucide-book-open' : (data.enrollment?.status === 'not_started' ? 'i-lucide-play' : 'i-lucide-arrow-right')"
+            @click="continueLearning"
+          >
+            {{ continueLabel }}
+          </UButton>
+          <UButton
+            v-if="isReview"
+            color="neutral"
+            variant="soft"
+            size="lg"
+            icon="i-lucide-award"
+            :to="{ name: 'course-result', params: { enrollmentId } }"
+          >
+            Итоги
+          </UButton>
+        </div>
       </div>
 
       <section class="flex flex-col gap-2 min-w-0 p-1">
@@ -176,5 +220,18 @@ function openTopic(t: any) {
         </ul>
       </section>
     </template>
+
+    <UAlert
+      v-else
+      color="error"
+      variant="subtle"
+      icon="i-lucide-alert-circle"
+      title="Курс не загрузился"
+      :description="loadError || 'Не удалось открыть запись на курс.'"
+    >
+      <template #actions>
+        <UButton color="neutral" variant="outline" :to="{ name: 'courses' }">К моему обучению</UButton>
+      </template>
+    </UAlert>
   </UMain>
 </template>

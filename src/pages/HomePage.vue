@@ -6,7 +6,7 @@ import { resolveNewsImageSrc } from '../composables/useNewsData';
 import { useNewsFeed, useFeedSentinel } from '../composables/useNewsFeed';
 import { useNewsReactions } from '../composables/useNewsReactions';
 import { useBirthdayColleagues } from '../composables/useBirthdayColleagues';
-import { attachAbsenceStorageSync } from '../stores/absenceJournal';
+import { attachAbsenceStorageSync, hasActiveAbsence } from '../stores/absenceJournal';
 import { useSectionAccess } from '../composables/useSectionAccess';
 import { apiSessionUpload } from '../composables/useAuthSession';
 import { useHeaderUser } from '../composables/useHeaderUser';
@@ -15,12 +15,19 @@ import LearningHomeWidget from './Courses/components/LearningHomeWidget.vue';
 import HomeNewsCard from '../components/home/HomeNewsCard.vue';
 import HomeCalendarWidget from '../components/home/HomeCalendarWidget.vue';
 import HomeAbsenceWidget from '../components/home/HomeAbsenceWidget.vue';
+import { usePortalServices } from '../composables/usePortalServices';
 
 const { toast, error } = useAppToast();
 
 const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
 ensureSectionAccess();
 const canEditBirthdays = computed(() => canEditSection('birthdays'));
+
+const learningAsideVisible = ref(false);
+const calendarAsideVisible = ref(false);
+
+const { enabledServices, ensureLoaded: ensurePortalServices } = usePortalServices();
+ensurePortalServices();
 
 const { profile, headerName } = useHeaderUser();
 
@@ -42,50 +49,42 @@ type HomeService = {
   label: string;
   icon: string;
   to?: string;
-  action?: 'sed';
+  href?: string;
+  external?: boolean;
 };
 
-const homeServices: HomeService[] = [
-  {
-    id: 'absence',
-    label: 'Журнал отсутствия',
-    icon: 'i-lucide-calendar-off',
-    to: '/absence-journal',
-  },
-  {
-    id: 'applications',
-    label: 'Заявки',
-    icon: 'i-lucide-file-text',
-    to: '/applications',
-  },
-  {
-    id: 'sed',
-    label: 'СЭД',
-    icon: 'i-lucide-file-stack',
-    action: 'sed',
-  },
-  {
-    id: 'knowledge',
-    label: 'Документация',
-    icon: 'i-lucide-book-open',
-    to: '/documentation',
-  },
-  {
-    id: 'all',
-    label: 'Все сервисы',
-    icon: 'i-lucide-layout-grid',
-    to: '/services',
-  },
-];
+const HOME_SERVICES_LIMIT = 4;
 
-function onSedClick() {
-  toast.add({
-    title: 'СЭД',
-    description: 'Внешняя ссылка на систему электронного документооборота пока не настроена.',
-    color: 'neutral',
-    icon: 'i-lucide-file-stack',
-  });
-}
+const homeServices = computed<HomeService[]>(() => {
+  const fromApi: HomeService[] = enabledServices.value
+    .slice(0, HOME_SERVICES_LIMIT)
+    .map((s) => {
+      if (s.kind === 'external' && s.externalUrl) {
+        return {
+          id: `svc-${s.id}`,
+          label: s.label,
+          icon: s.icon,
+          href: s.externalUrl,
+          external: true,
+        };
+      }
+      return {
+        id: `svc-${s.id}`,
+        label: s.label,
+        icon: s.icon,
+        to: s.path || '/services',
+      };
+    });
+  return [
+    ...fromApi,
+    {
+      id: 'all',
+      label: 'Все сервисы',
+      icon: 'i-lucide-layout-grid',
+      to: '/services',
+    },
+  ];
+});
 
 type NewsFeedItem = {
   id: string;
@@ -260,6 +259,18 @@ const visibleBirthdayGroups = computed(() =>
   birthdayGroups.value.filter((g) => g.people.length > 0),
 );
 
+const showBirthdaysWidget = computed(
+  () => visibleBirthdayGroups.value.length > 0 || canEditBirthdays.value,
+);
+
+const hasAsideContent = computed(
+  () =>
+    hasActiveAbsence.value ||
+    learningAsideVisible.value ||
+    calendarAsideVisible.value ||
+    showBirthdaysWidget.value,
+);
+
 function congratulate(_name: string) {
   error('Пока нельзя поздравить', 'Функция поздравления временно недоступна.');
 }
@@ -356,7 +367,12 @@ onUnmounted(() => {
     <div
       ref="homeScrollEl"
       class="flex w-full flex-1 flex-col gap-2 min-h-0 overflow-y-auto scrollbar-hide"
+      :class="hasAsideContent ? '' : 'items-center'"
     >
+      <div
+        class="flex w-full min-w-0 flex-col gap-2"
+        :class="hasAsideContent ? '' : 'max-w-4xl'"
+      >
       <UPageHeader
         :title="greetingTitle"
         class="border-none py-4 px-0 w-full"
@@ -368,7 +384,14 @@ onUnmounted(() => {
         }"
       />
 
-      <div class="grid w-full min-w-0 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-4 items-start">
+      <div
+        class="w-full min-w-0 gap-4 items-start"
+        :class="
+          hasAsideContent
+            ? 'grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px]'
+            : 'flex flex-col'
+        "
+      >
         <div class="flex min-w-0 w-full flex-col gap-4">
       <section class="flex flex-col gap-4 w-full" aria-labelledby="home-services-title">
         <div class="flex items-center gap-1 min-w-0">
@@ -394,8 +417,11 @@ onUnmounted(() => {
             :key="svc.id"
             :title="svc.label"
             :icon="svc.icon"
-            :to="svc.to"
-            :on-click="svc.action === 'sed' ? onSedClick : undefined"
+            :to="svc.external ? undefined : svc.to"
+            :as="svc.external ? 'a' : undefined"
+            :href="svc.external ? svc.href : undefined"
+            :target="svc.external ? '_blank' : undefined"
+            :rel="svc.external ? 'noopener noreferrer' : undefined"
             variant="soft"
             class="bg-elevated"
           />
@@ -518,13 +544,17 @@ onUnmounted(() => {
         </div>
 
         <!-- Правая колонка -->
-        <aside class="w-full min-w-0 flex flex-col gap-4">
+        <aside
+          v-show="hasAsideContent"
+          class="w-full min-w-0 flex flex-col gap-4"
+        >
           <HomeAbsenceWidget />
 
-          <LearningHomeWidget />
-          <HomeCalendarWidget />
+          <LearningHomeWidget @visible="learningAsideVisible = $event" />
+          <HomeCalendarWidget @visible="calendarAsideVisible = $event" />
 
           <UCard
+            v-if="showBirthdaysWidget"
             variant="soft"
             class="w-full rounded-panel"
             :ui="{
@@ -614,6 +644,7 @@ onUnmounted(() => {
           </UCard>
 
         </aside>
+      </div>
       </div>
     </div>
 

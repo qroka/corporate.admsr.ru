@@ -3,7 +3,7 @@ export const PORTAL_SECTIONS = [
   { key: 'news', label: 'Новости' },
   { key: 'events', label: 'Мероприятия' },
   { key: 'gallery', label: 'Фотогалерея' },
-  { key: 'courses', label: 'Курсы' },
+  { key: 'courses', label: 'Обучение' },
   { key: 'tests', label: 'Формы' },
   { key: 'absence_journal', label: 'Журнал отсутствий' },
   { key: 'birthdays', label: 'Дни рождения' },

@@ -15,12 +15,16 @@ const props = withDefaults(
     form: TestForm;
     settings: TestSettingsModel;
     saving?: boolean;
+    removing?: boolean;
+    canRemove?: boolean;
     titlePlaceholder?: string;
     headline?: string;
     subtitle?: string;
   }>(),
   {
     saving: false,
+    removing: false,
+    canRemove: false,
     titlePlaceholder: 'Название теста',
     headline: 'Тест',
     subtitle: '',
@@ -29,6 +33,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   save: [];
+  remove: [];
 }>();
 
 type StepKey = 'settings' | 'questions' | 'preview';
@@ -67,6 +72,10 @@ function prevStep() {
 
 function onSave() {
   emit('save');
+}
+
+function onRemove() {
+  emit('remove');
 }
 </script>
 
@@ -243,11 +252,24 @@ function onSave() {
 
       <div class="flex gap-2 flex-wrap">
         <UButton
+          v-if="canRemove"
+          color="error"
+          variant="ghost"
+          size="lg"
+          icon="i-lucide-trash-2"
+          :loading="removing"
+          :disabled="saving"
+          @click="onRemove"
+        >
+          Убрать тест
+        </UButton>
+        <UButton
           color="primary"
           variant="soft"
           size="lg"
           icon="i-lucide-check"
           :loading="saving"
+          :disabled="removing"
           @click="onSave"
         >
           Сохранить тест

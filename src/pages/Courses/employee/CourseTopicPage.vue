@@ -1,9 +1,12 @@
 ﻿<script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import type { BreadcrumbItem } from '@nuxt/ui';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
+import {
+  useBreadcrumbCurrentLabel,
+  useBreadcrumbLabelsByRoute,
+} from '../../../composables/usePortalNavigation';
 import { newsEditorHtmlClass } from '../../../composables/newsEditorHtmlClass';
 import CourseStatusBadge from '../components/CourseStatusBadge.vue';
 
@@ -11,6 +14,8 @@ const route = useRoute();
 const router = useRouter();
 const store = useCoursesStore();
 const { toast } = useAppToast();
+const breadcrumbLabel = useBreadcrumbCurrentLabel();
+const breadcrumbByRoute = useBreadcrumbLabelsByRoute();
 
 const enrollmentId = computed(() => Number(route.params.enrollmentId));
 const topicId = computed(() => Number(route.params.topicId));
@@ -20,20 +25,72 @@ const activeMaterialId = ref<number | null>(null);
 const lastActivityAt = ref(Date.now());
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
-const crumbs = computed<BreadcrumbItem[]>(() => [
-  { label: 'Мои курсы', to: { name: 'courses' } },
-  {
-    label: 'Курс',
-    to: { name: 'course-enrollment', params: { enrollmentId: enrollmentId.value } },
+const courseTitle = computed(
+  () =>
+    data.value?.enrollment?.course?.title
+    || data.value?.course?.title
+    || data.value?.version?.title
+    || 'Обучение',
+);
+
+const topicTitle = computed(() => data.value?.topic?.title || 'Тема');
+
+watch(
+  [courseTitle, topicTitle],
+  ([course, topic]) => {
+    breadcrumbByRoute.value = {
+      ...breadcrumbByRoute.value,
+      'course-enrollment': course,
+    };
+    breadcrumbLabel.value = topic;
   },
-  { label: data.value?.topic?.title || 'Тема' },
-]);
+  { immediate: true },
+);
 
 const materials = computed(() => data.value?.topic?.materials || data.value?.materials || []);
 const topicTest = computed(() => data.value?.topic?.topicTest || data.value?.topic?.testLink || data.value?.testLink);
 const isReview = computed(() => Boolean(data.value?.reviewMode));
 const nextAction = computed(() => data.value?.nextAction || null);
 const topicsList = computed(() => data.value?.topicsList || []);
+
+const requiredMaterials = computed(() =>
+  materials.value.filter((m: any) => m.isRequired !== false),
+);
+const materialsDoneCount = computed(
+  () => requiredMaterials.value.filter((m: any) => matStatus(m) === 'completed').length,
+);
+const materialsTotalCount = computed(() => requiredMaterials.value.length || materials.value.length);
+const materialsProgressLabel = computed(() => {
+  if (!materials.value.length) return 'Нет материалов';
+  if (!requiredMaterials.value.length) {
+    return `Изучено ${materials.value.filter((m: any) => matStatus(m) === 'completed').length} из ${materials.value.length}`;
+  }
+  return `Изучено ${materialsDoneCount.value} из ${materialsTotalCount.value} обязательных`;
+});
+
+const pendingMaterial = computed(() => {
+  if (isReview.value) return null;
+  return (
+    requiredMaterials.value.find((m: any) => matStatus(m) !== 'completed')
+    || materials.value.find((m: any) => matStatus(m) !== 'completed')
+    || null
+  );
+});
+
+function materialActionLabel(m: any) {
+  const st = matStatus(m);
+  if (isReview.value || st === 'completed') return 'Смотреть снова';
+  if (st === 'in_progress' || st === 'opened') return 'Продолжить';
+  return 'Открыть';
+}
+
+function materialHint(m: any) {
+  const st = matStatus(m);
+  if (st === 'completed') return 'Изучено';
+  if (st === 'in_progress' || st === 'opened') return 'Открыто — отметьте изученным';
+  if (m.isRequired === false) return 'Необязательный';
+  return 'Не открыт';
+}
 
 const allMaterialsDone = computed(() => {
   const list = materials.value;
@@ -90,6 +147,10 @@ const showTopicTest = computed(() => {
   return allMaterialsDone.value || needsTopicTest.value;
 });
 
+const showStickyNext = computed(
+  () => !loading.value && data.value && (allMaterialsDone.value || isReview.value) && (showTopicTest.value || canGoNext.value),
+);
+
 function onActivity() {
   lastActivityAt.value = Date.now();
 }
@@ -132,6 +193,9 @@ async function loadTopic() {
     ]);
     data.value = {
       ...topicData,
+      enrollment: enrollment?.enrollment || topicData?.enrollment || null,
+      course: enrollment?.enrollment?.course || enrollment?.course || topicData?.course || null,
+      version: enrollment?.version || topicData?.version || null,
       topicsList: enrollment?.version?.topics || topicData?.topicsList || [],
     };
   } catch (e: any) {
@@ -152,6 +216,10 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onActivity);
   window.removeEventListener('scroll', onActivity, true);
   window.removeEventListener('click', onActivity);
+  breadcrumbLabel.value = null;
+  const next = { ...breadcrumbByRoute.value };
+  delete next['course-enrollment'];
+  breadcrumbByRoute.value = next;
 });
 
 async function openMaterial(m: any) {
@@ -231,8 +299,6 @@ function goNext() {
 
 <template>
   <UMain class="flex flex-1 flex-col w-full max-w-3xl mx-auto min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
-    <UBreadcrumb :items="crumbs" />
-
     <div v-if="loading" class="flex flex-col gap-3 p-1">
       <USkeleton v-for="n in 4" :key="n" class="h-16 w-full rounded-xl" />
     </div>
@@ -255,7 +321,27 @@ function goNext() {
       />
 
       <section class="flex flex-col gap-2 min-w-0">
-        <h2 class="text-lg font-medium">Материалы</h2>
+        <div class="flex items-end justify-between gap-2 flex-wrap">
+          <h2 class="text-lg font-medium">Материалы</h2>
+          <p v-if="materials.length" class="text-sm text-muted tabular-nums">
+            {{ materialsProgressLabel }}
+          </p>
+        </div>
+        <UProgress
+          v-if="materialsTotalCount > 0 && !isReview"
+          :model-value="materialsTotalCount ? Math.round((materialsDoneCount / materialsTotalCount) * 100) : 0"
+          size="sm"
+          color="primary"
+          :aria-label="materialsProgressLabel"
+        />
+        <UAlert
+          v-if="!isReview && pendingMaterial && allMaterialsDone === false"
+          color="neutral"
+          variant="subtle"
+          icon="i-lucide-book-open"
+          title="Сначала изучите материалы"
+          :description="`Откройте «${pendingMaterial.title}» и нажмите «Отметить изученным».`"
+        />
         <UEmpty
           v-if="!materials.length"
           icon="i-lucide-file"
@@ -272,6 +358,7 @@ function goNext() {
             <div class="flex items-start justify-between gap-2 min-w-0">
               <div class="min-w-0">
                 <p class="font-medium break-words">{{ m.title }}</p>
+                <p class="text-xs text-muted mt-1">{{ materialHint(m) }}</p>
                 <CourseStatusBadge :status="matStatus(m)" class="mt-1" />
               </div>
             </div>
@@ -290,12 +377,11 @@ function goNext() {
                 icon="i-lucide-book-open"
                 @click="openMaterial(m)"
               >
-                {{ isReview || matStatus(m) === 'completed' ? 'Смотреть снова' : 'Открыть' }}
+                {{ materialActionLabel(m) }}
               </UButton>
               <UButton
                 v-if="!isReview && matStatus(m) !== 'completed'"
-                color="neutral"
-                variant="outline"
+                color="primary"
                 size="sm"
                 icon="i-lucide-check"
                 @click="completeMaterial(m)"
@@ -308,12 +394,12 @@ function goNext() {
       </section>
 
       <div
-        v-if="allMaterialsDone || isReview"
-        class="flex flex-col gap-3 pt-2 border-t border-default"
+        v-if="showStickyNext"
+        class="sticky bottom-0 z-10 -mx-1 px-1 pt-3 pb-1 bg-default/95 backdrop-blur border-t border-default"
       >
-        <p v-if="!isReview && allMaterialsDone" class="text-sm text-muted">
-          <template v-if="needsTopicTest">Материалы изучены — пройдите тест темы, чтобы открыть следующую.</template>
-          <template v-else-if="nextTopic">Материалы изучены — можно перейти к следующей теме.</template>
+        <p v-if="!isReview && allMaterialsDone" class="text-sm text-muted mb-2">
+          <template v-if="needsTopicTest">Материалы изучены — пройдите тест темы.</template>
+          <template v-else-if="nextTopic">Материалы изучены — можно к следующей теме.</template>
           <template v-else>Материалы изучены.</template>
         </p>
         <div class="flex flex-wrap gap-2">

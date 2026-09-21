@@ -1,18 +1,19 @@
 ﻿<script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import type { BreadcrumbItem } from '@nuxt/ui';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
 import { newsEditorToolbarItems } from '../../../composables/newsEditorToolbar';
 import { newsEditorExtensions, newsEditorEmojiMenuItems } from '../../../composables/newsEditorExtensions';
 import { newsEditorHandlers } from '../../../composables/newsEditorHandlers';
 import { newsEditorSlideoverUi } from '../../../composables/newsEditorSlideoverUi';
+import { useAdminCoursePortalBreadcrumbs } from '../useAdminCoursePortalBreadcrumbs';
 
 const route = useRoute();
 const router = useRouter();
 const store = useCoursesStore();
 const { toast } = useAppToast();
+useAdminCoursePortalBreadcrumbs();
 
 const courseId = computed(() => Number(route.params.courseId));
 const topicId = computed(() => Number(route.params.topicId));
@@ -21,6 +22,7 @@ const materialId = computed(() => {
   return raw ? Number(raw) : null;
 });
 const isEdit = computed(() => materialId.value != null);
+const guideMode = computed(() => String(route.query.guide || '') === '1');
 
 const typeItems = [
   { label: 'Текст', value: 'rich_text' },
@@ -45,12 +47,9 @@ const form = reactive({
   minimumActiveSeconds: 0,
 });
 
-const crumbs = computed<BreadcrumbItem[]>(() => [
-  { label: 'Курсы', to: { name: 'courses', query: { tab: 'manage' } } },
-  { label: store.current.value?.title || 'Курс', to: { name: 'admin-course-workspace', params: { courseId: courseId.value } } },
-  { label: 'Тема', to: { name: 'admin-course-topic-edit', params: { courseId: courseId.value, topicId: topicId.value } } },
-  { label: isEdit.value ? 'Материал' : 'Новый материал' },
-]);
+watch(file, (f) => {
+  if (f && !form.title.trim()) form.title = f.name;
+});
 
 const FILE_TYPES = new Set(['file', 'pdf', 'image', 'video']);
 
@@ -88,12 +87,6 @@ onMounted(async () => {
     loading.value = false;
   }
 });
-
-function onFileChange(e: Event) {
-  const input = e.target as HTMLInputElement;
-  file.value = input.files?.[0] || null;
-  if (file.value && !form.title) form.title = file.value.name;
-}
 
 async function onSave() {
   if (!form.title.trim()) {
@@ -139,7 +132,20 @@ async function onSave() {
         minimumActiveSeconds: form.minimumActiveSeconds,
       });
     }
-    toast.add({ title: 'Материал сохранён', color: 'success', icon: 'i-lucide-check' });
+    toast.add({
+      title: 'Материал сохранён',
+      description: guideMode.value && !isEdit.value ? 'Шаг 3: настройте тест темы или вернитесь в курс' : undefined,
+      color: 'success',
+      icon: 'i-lucide-check',
+    });
+    if (guideMode.value && !isEdit.value) {
+      await router.push({
+        name: 'admin-course-topic-test',
+        params: { courseId: courseId.value, topicId: topicId.value },
+        query: { guide: '1' },
+      });
+      return;
+    }
     await router.push({
       name: 'admin-course-topic-edit',
       params: { courseId: courseId.value, topicId: topicId.value },
@@ -154,10 +160,18 @@ async function onSave() {
 
 <template>
   <UMain class="flex flex-1 flex-col w-full max-w-3xl mx-auto min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
-    <UBreadcrumb :items="crumbs" />
     <h1 class="text-2xl font-medium text-highlighted">
       {{ isEdit ? 'Редактирование материала' : 'Новый материал' }}
     </h1>
+
+    <UAlert
+      v-if="guideMode && !isEdit"
+      color="primary"
+      variant="subtle"
+      icon="i-lucide-list-ordered"
+      title="Шаг 2 из 3 — материал"
+      description="Добавьте текст, файл или ссылку. Дальше откроется тест темы."
+    />
 
     <div v-if="loading" class="flex flex-col gap-3">
       <USkeleton v-for="n in 5" :key="n" class="h-12 w-full rounded-lg" />
@@ -210,13 +224,15 @@ async function onSave() {
         <UInput v-model="form.externalUrl" size="lg" class="w-full" placeholder="https://" />
       </UFormField>
 
-      <UFormField v-if="needsFile" label="Файл">
-        <input
-          type="file"
-          class="block w-full text-sm text-muted file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-white"
-          @change="onFileChange"
-        >
-        <p v-if="file" class="text-xs text-dimmed mt-1">{{ file.name }}</p>
+      <UFormField v-if="needsFile" label="Файл" :required="!isEdit">
+        <UFileUpload
+          v-model="file"
+          label="Перетащите файл сюда"
+          description="Или нажмите, чтобы выбрать. PDF, документы, изображения, видео."
+          icon="i-lucide-upload"
+          class="w-full min-h-32"
+          layout="list"
+        />
       </UFormField>
 
       <UFormField label="Обязательный">

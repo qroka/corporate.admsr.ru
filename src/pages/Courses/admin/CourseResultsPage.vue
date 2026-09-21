@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import type { BreadcrumbItem, DropdownMenuItem } from '@nuxt/ui';
+import type { DropdownMenuItem } from '@nuxt/ui';
 import * as XLSX from 'xlsx';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
 import { useOfoTree } from '../../../composables/useOfoTree';
+import { fmtDuration } from '../../../composables/useTestStats';
 import CourseStatusBadge from '../components/CourseStatusBadge.vue';
+import { useAdminCoursePortalBreadcrumbs } from '../useAdminCoursePortalBreadcrumbs';
 
 const route = useRoute();
 const store = useCoursesStore();
 const { toast } = useAppToast();
+useAdminCoursePortalBreadcrumbs();
 const {
   categories,
   ensureLoaded: ensureOfo,
@@ -32,6 +35,12 @@ const resetTarget = ref<any | null>(null);
 const resetting = ref(false);
 const exporting = ref(false);
 
+const answersOpen = ref(false);
+const answersTitle = ref('');
+const answersLoading = ref(false);
+const answersError = ref('');
+const answersData = ref<any | null>(null);
+
 const searchQuery = ref('');
 /** '_all' = все ОФО; иначе id корневого подразделения (строка) */
 const ofoFilter = ref<string>('_all');
@@ -49,12 +58,6 @@ const statusItems = [
   { label: 'Просрочен', value: 'overdue' },
   { label: 'Отменён', value: 'cancelled' },
 ];
-
-const crumbs = computed<BreadcrumbItem[]>(() => [
-  { label: 'Курсы', to: { name: 'courses', query: { tab: 'manage' } } },
-  { label: store.current.value?.title || 'Курс', to: { name: 'admin-course-workspace', params: { courseId: courseId.value } } },
-  { label: 'Результаты' },
-]);
 
 /** Корневые ОФО (без родителя) — как верхний уровень вкладки ОФО на дашборде. */
 const ofoItems = computed(() => {
@@ -329,6 +332,25 @@ async function openDetail(enrollmentId: number) {
   }
 }
 
+async function openTestAnswers(t: any) {
+  if (!selectedId.value || !t?.attemptId) return;
+  answersTitle.value = t.title || 'Ответы теста';
+  answersData.value = null;
+  answersError.value = '';
+  answersOpen.value = true;
+  answersLoading.value = true;
+  try {
+    answersData.value = await store.loadAttemptAnswers({
+      enrollmentId: selectedId.value,
+      attemptId: t.attemptId,
+    });
+  } catch (e: any) {
+    answersError.value = e?.message || 'Не удалось загрузить ответы';
+  } finally {
+    answersLoading.value = false;
+  }
+}
+
 async function confirmReset() {
   const row = resetTarget.value;
   if (!row?.id) return;
@@ -362,7 +384,6 @@ async function confirmReset() {
 
 <template>
   <UMain class="flex flex-1 flex-col w-full min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
-    <UBreadcrumb :items="crumbs" />
     <div class="flex items-center justify-between gap-3 flex-wrap min-w-0">
       <h1 class="text-2xl font-medium text-highlighted">Результаты курса</h1>
       <UButton
@@ -544,6 +565,7 @@ async function confirmReset() {
 
               <div class="flex flex-col gap-2 min-w-0">
                 <h3 class="text-sm font-medium text-highlighted">Тесты</h3>
+                <p class="text-xs text-dimmed">Нажмите на тест с попыткой, чтобы открыть ответы по вопросам</p>
                 <UEmpty
                   v-if="!detail.tests.length"
                   icon="i-lucide-clipboard-list"
@@ -555,15 +577,25 @@ async function confirmReset() {
                     v-for="t in detail.tests"
                     :key="t.courseTestLinkId"
                     class="rounded-lg ring-1 ring-default p-3 flex flex-col gap-1.5 min-w-0"
+                    :class="t.attemptId ? 'cursor-pointer hover:bg-elevated/50' : ''"
+                    @click="t.attemptId ? openTestAnswers(t) : undefined"
                   >
                     <div class="flex items-start justify-between gap-2">
                       <div class="min-w-0">
                         <p class="text-sm font-medium break-words">{{ t.title }}</p>
                         <p class="text-xs text-dimmed break-words">{{ testKindLabel(t) }}</p>
                       </div>
-                      <UBadge :color="testResultColor(t)" variant="subtle" class="shrink-0">
-                        {{ testResultLabel(t) }}
-                      </UBadge>
+                      <div class="flex items-center gap-1 shrink-0">
+                        <UBadge :color="testResultColor(t)" variant="subtle">
+                          {{ testResultLabel(t) }}
+                        </UBadge>
+                        <UIcon
+                          v-if="t.attemptId"
+                          name="i-lucide-eye"
+                          class="size-4 text-dimmed"
+                          aria-hidden="true"
+                        />
+                      </div>
                     </div>
                     <div class="flex items-center gap-3 text-xs text-muted flex-wrap">
                       <span v-if="t.score != null" class="tabular-nums">Балл: {{ t.score }}</span>
@@ -573,11 +605,99 @@ async function confirmReset() {
                   </li>
                 </ul>
               </div>
+
+              <template v-if="detail.topics?.length">
+                <USeparator />
+                <div class="flex flex-col gap-2 min-w-0">
+                  <h3 class="text-sm font-medium text-highlighted">Темы</h3>
+                  <ul class="flex flex-col gap-1.5 list-none m-0 p-0">
+                    <li
+                      v-for="tp in detail.topics"
+                      :key="tp.topicId"
+                      class="flex items-center justify-between gap-2 text-sm min-w-0"
+                    >
+                      <span class="break-words min-w-0">{{ tp.title }}</span>
+                      <CourseStatusBadge :status="tp.status" class="shrink-0" />
+                    </li>
+                  </ul>
+                </div>
+              </template>
             </template>
           </aside>
         </div>
       </template>
     </div>
+
+    <UModal
+      v-model:open="answersOpen"
+      :title="`Ответы — ${answersTitle}`"
+      description=""
+      :ui="{ content: 'max-w-2xl' }"
+    >
+      <template #body>
+        <div class="max-h-[70vh] overflow-y-auto px-1 py-1 flex flex-col gap-3">
+          <div v-if="answersLoading" class="py-8 text-center text-muted text-sm">Загрузка…</div>
+          <div v-else-if="answersError" class="py-8 text-center text-error text-sm">{{ answersError }}</div>
+          <template v-else-if="answersData">
+            <div class="flex items-center gap-2 flex-wrap">
+              <UBadge
+                v-if="answersData.attempt?.score != null"
+                :color="answersData.attempt.passed === false ? 'error' : 'success'"
+                variant="subtle"
+                class="tabular-nums"
+              >
+                {{ Math.round(Number(answersData.attempt.score)) }}%
+              </UBadge>
+              <UBadge
+                v-if="answersData.attempt?.passed != null"
+                :color="answersData.attempt.passed ? 'success' : 'error'"
+                variant="subtle"
+              >
+                {{ answersData.attempt.passed ? 'Тест пройден' : 'Не пройден' }}
+              </UBadge>
+              <span
+                v-if="answersData.attempt?.durationSec != null"
+                class="text-xs text-dimmed"
+              >
+                время: {{ fmtDuration(Number(answersData.attempt.durationSec)) }}
+              </span>
+            </div>
+            <div
+              v-for="(a, i) in (answersData.answers || [])"
+              :key="i"
+              class="rounded-xl ring-1 p-3 flex flex-col gap-1"
+              :class="a.isCorrect === false
+                ? 'ring-red-500/40 bg-red-500/5'
+                : (a.isCorrect === true ? 'ring-green-500/40 bg-green-500/5' : 'ring-default')"
+            >
+              <div class="flex items-center gap-2">
+                <UIcon
+                  v-if="a.isCorrect === true"
+                  name="i-lucide-check-circle-2"
+                  class="size-4 text-success shrink-0"
+                />
+                <UIcon
+                  v-else-if="a.isCorrect === false"
+                  name="i-lucide-x-circle"
+                  class="size-4 text-error shrink-0"
+                />
+                <span class="text-sm text-highlighted">{{ i + 1 }}. {{ a.title || 'Без названия' }}</span>
+              </div>
+              <p class="text-sm text-muted pl-6">Ответ: {{ a.userAnswer }}</p>
+              <p
+                v-if="a.isCorrect === false && a.correctAnswer"
+                class="text-sm text-success pl-6"
+              >
+                Правильно: {{ a.correctAnswer }}
+              </p>
+            </div>
+            <p v-if="!(answersData.answers || []).length" class="text-sm text-muted py-4 text-center">
+              Ответов в попытке нет.
+            </p>
+          </template>
+        </div>
+      </template>
+    </UModal>
 
     <UModal
       v-model:open="resetOpen"

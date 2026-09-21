@@ -41,6 +41,11 @@ Thumbs.db
 .env.*.local
 api/config.local.php
 deploy/deploy.env
+backend/.env
+
+# Go
+backend/bin/
+*.exe
 
 # Cache
 .cache/

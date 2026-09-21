@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   CALENDAR_SOURCE_META,
@@ -8,6 +8,8 @@ import {
   type CalendarItem,
   type CalendarSource,
 } from '../../composables/useCalendarFeed';
+
+const emit = defineEmits<{ visible: [value: boolean] }>();
 
 const router = useRouter();
 const { loading, error, items, ensureLoaded } = useCalendarFeed();
@@ -72,6 +74,10 @@ const upcomingRows = computed((): HomeCalRow[] => {
   return rows;
 });
 
+const showWidget = computed(() => !loading.value && upcomingRows.value.length > 0);
+
+watch(showWidget, (v) => emit('visible', v), { immediate: true });
+
 function sourceMeta(source: CalendarSource) {
   return CALENDAR_SOURCE_META[source];
 }
@@ -87,6 +93,7 @@ function openItem(item: CalendarItem) {
 
 <template>
   <UCard
+    v-if="showWidget"
     variant="soft"
     class="w-full rounded-panel"
     :ui="{
@@ -129,9 +136,6 @@ function openItem(item: CalendarItem) {
       <USkeleton v-for="n in 3" :key="n" class="h-14 w-full rounded-lg" />
     </div>
     <p v-else-if="error" class="text-sm text-error">{{ error }}</p>
-    <p v-else-if="!upcomingRows.length" class="text-sm text-muted">
-      На ближайшие дни событий нет
-    </p>
     <div
       v-for="row in upcomingRows"
       :key="row.key"

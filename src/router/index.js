@@ -31,8 +31,7 @@ import CourseWorkspacePage from '../pages/Courses/admin/CourseWorkspacePage.vue'
 import CourseSettingsPage from '../pages/Courses/admin/CourseSettingsPage.vue';
 import TopicFormPage from '../pages/Courses/admin/TopicFormPage.vue';
 import MaterialFormPage from '../pages/Courses/admin/MaterialFormPage.vue';
-import TopicTestPage from '../pages/Courses/admin/TopicTestPage.vue';
-import FinalTestPage from '../pages/Courses/admin/FinalTestPage.vue';
+import CourseAdminTestPage from '../pages/Courses/admin/CourseAdminTestPage.vue';
 import CoursePublishPage from '../pages/Courses/admin/CoursePublishPage.vue';
 import CourseAssignPage from '../pages/Courses/admin/CourseAssignPage.vue';
 import CourseResultsPage from '../pages/Courses/admin/CourseResultsPage.vue';
@@ -90,7 +89,7 @@ const routes = [
   { path: '/feedback', name: 'feedback', component: FeedbackPage, meta: { title: 'Обратная связь' } },
   { path: '/personnel-reserve', name: 'personnel-reserve', component: PersonnelReservePage, meta: { title: 'Кадровый резерв' } },
   { path: '/tests', name: 'tests', component: TestsBlankPage, meta: { title: 'Формы' } },
-  { path: '/tests/old', name: 'tests-old', component: TestsPage, meta: { title: 'Формы (старые)' } },
+  { path: '/tests/old', redirect: { name: 'tests' } },
   { path: '/services', name: 'services', component: ServicesPage, meta: { title: 'Сервисы' } },
   { path: '/development-motivation', name: 'development-motivation', component: DevelopmentMotivationDepartmentPage, meta: { title: 'Отдел развития и мотивации' } },
   { path: '/admin', name: 'admin', component: AdminDashboardPage, meta: { title: 'Дэшборд администратора', requiresAdmin: true } },
@@ -98,20 +97,44 @@ const routes = [
   { path: '/chatbot', redirect: { name: 'feedback' } },
 
   // ── Курсы: админ ───────────────────────────────────────────────────────────
-  { path: '/admin/courses', name: 'admin-courses', component: CoursesListPage, meta: { title: 'Управление курсами', requiresSection: 'courses' } },
-  { path: '/admin/courses/create', name: 'admin-course-create', component: CourseCreatePage, meta: { title: 'Новый курс', requiresSection: 'courses' } },
-  { path: '/admin/courses/:courseId', name: 'admin-course-workspace', component: CourseWorkspacePage, meta: { title: 'Курс', requiresSection: 'courses' } },
+  { path: '/admin/courses', name: 'admin-courses', component: CoursesListPage, meta: { title: 'Управление обучением', requiresSection: 'courses' } },
+  { path: '/admin/courses/create', name: 'admin-course-create', component: CourseCreatePage, meta: { title: 'Новое обучение', requiresSection: 'courses' } },
+  { path: '/admin/courses/:courseId', name: 'admin-course-workspace', component: CourseWorkspacePage, meta: { title: 'Обучение', requiresSection: 'courses' } },
   { path: '/admin/courses/:courseId/settings', name: 'admin-course-settings', component: CourseSettingsPage, meta: { title: 'Настройки курса', requiresSection: 'courses' } },
   { path: '/admin/courses/:courseId/topics/create', name: 'admin-course-topic-create', component: TopicFormPage, meta: { title: 'Новая тема', requiresSection: 'courses' } },
   { path: '/admin/courses/:courseId/topics/:topicId', name: 'admin-course-topic-edit', component: TopicFormPage, meta: { title: 'Тема', requiresSection: 'courses' } },
   { path: '/admin/courses/:courseId/topics/:topicId/materials/create', name: 'admin-course-material-create', component: MaterialFormPage, meta: { title: 'Новый материал', requiresSection: 'courses' } },
   { path: '/admin/courses/:courseId/topics/:topicId/materials/:materialId', name: 'admin-course-material-edit', component: MaterialFormPage, meta: { title: 'Материал', requiresSection: 'courses' } },
-  { path: '/admin/courses/:courseId/topics/:topicId/test', name: 'admin-course-topic-test', component: TopicTestPage, meta: { title: 'Тест темы', requiresSection: 'courses' } },
-  { path: '/admin/courses/:courseId/topics/:topicId/test/questions/create', name: 'admin-course-topic-test-q-create', component: TopicTestPage, meta: { title: 'Тест темы', requiresSection: 'courses' } },
-  { path: '/admin/courses/:courseId/topics/:topicId/test/questions/:questionId', name: 'admin-course-topic-test-q-edit', component: TopicTestPage, meta: { title: 'Тест темы', requiresSection: 'courses' } },
-  { path: '/admin/courses/:courseId/final-test', name: 'admin-course-final-test', component: FinalTestPage, meta: { title: 'Итоговый тест', requiresSection: 'courses' } },
-  { path: '/admin/courses/:courseId/final-test/questions/create', name: 'admin-course-final-test-q-create', component: FinalTestPage, meta: { title: 'Итоговый тест', requiresSection: 'courses' } },
-  { path: '/admin/courses/:courseId/final-test/questions/:questionId', name: 'admin-course-final-test-q-edit', component: FinalTestPage, meta: { title: 'Итоговый тест', requiresSection: 'courses' } },
+  { path: '/admin/courses/:courseId/topics/:topicId/test', name: 'admin-course-topic-test', component: CourseAdminTestPage, meta: { title: 'Тест темы', requiresSection: 'courses' } },
+  {
+    path: '/admin/courses/:courseId/topics/:topicId/test/questions/create',
+    redirect: (to) => ({
+      name: 'admin-course-topic-test',
+      params: { courseId: to.params.courseId, topicId: to.params.topicId },
+    }),
+  },
+  {
+    path: '/admin/courses/:courseId/topics/:topicId/test/questions/:questionId',
+    redirect: (to) => ({
+      name: 'admin-course-topic-test',
+      params: { courseId: to.params.courseId, topicId: to.params.topicId },
+    }),
+  },
+  { path: '/admin/courses/:courseId/final-test', name: 'admin-course-final-test', component: CourseAdminTestPage, meta: { title: 'Итоговый тест', requiresSection: 'courses' } },
+  {
+    path: '/admin/courses/:courseId/final-test/questions/create',
+    redirect: (to) => ({
+      name: 'admin-course-final-test',
+      params: { courseId: to.params.courseId },
+    }),
+  },
+  {
+    path: '/admin/courses/:courseId/final-test/questions/:questionId',
+    redirect: (to) => ({
+      name: 'admin-course-final-test',
+      params: { courseId: to.params.courseId },
+    }),
+  },
   { path: '/admin/courses/:courseId/publish', name: 'admin-course-publish', component: CoursePublishPage, meta: { title: 'Публикация курса', requiresSection: 'courses' } },
   { path: '/admin/courses/:courseId/review', redirect: (to) => ({ name: 'admin-course-publish', params: { courseId: to.params.courseId } }) },
 
@@ -119,12 +142,12 @@ const routes = [
   { path: '/admin/courses/:courseId/results', name: 'admin-course-results', component: CourseResultsPage, meta: { title: 'Результаты курса', requiresSection: 'courses' } },
 
   // ── Курсы: сотрудник ───────────────────────────────────────────────────────
-  { path: '/courses', name: 'courses', component: MyCoursesPage, meta: { title: 'Мои курсы' } },
+  { path: '/courses', name: 'courses', component: MyCoursesPage, meta: { title: 'Моё обучение' } },
   { path: '/courses/history', redirect: { name: 'courses' } },
-  { path: '/courses/:enrollmentId', name: 'course-enrollment', component: CourseEnrollmentPage, meta: { title: 'Курс' } },
-  { path: '/courses/:enrollmentId/topics/:topicId', name: 'course-topic', component: CourseTopicPage, meta: { title: 'Тема курса' } },
-  { path: '/courses/:enrollmentId/tests/:courseTestLinkId', name: 'course-test', component: CourseTestPage, meta: { title: 'Тест курса' } },
-  { path: '/courses/:enrollmentId/result', name: 'course-result', component: CourseResultPage, meta: { title: 'Результат курса' } },
+  { path: '/courses/:enrollmentId', name: 'course-enrollment', component: CourseEnrollmentPage, meta: { title: 'Обучение' } },
+  { path: '/courses/:enrollmentId/topics/:topicId', name: 'course-topic', component: CourseTopicPage, meta: { title: 'Тема' } },
+  { path: '/courses/:enrollmentId/tests/:courseTestLinkId', name: 'course-test', component: CourseTestPage, meta: { title: 'Тест' } },
+  { path: '/courses/:enrollmentId/result', name: 'course-result', component: CourseResultPage, meta: { title: 'Итоги' } },
 ];
 
 export const router = createRouter({

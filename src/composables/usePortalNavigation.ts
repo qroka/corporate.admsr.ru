@@ -1,12 +1,20 @@
 import { computed, ref } from 'vue';
 import { useRoute, useRouter, type RouteLocationRaw, type RouteParamsGeneric } from 'vue-router';
 import type { BreadcrumbItem, NavigationMenuItem } from '@nuxt/ui';
+import { usePortalServices } from './usePortalServices';
 
 /** Динамическая подпись текущего сегмента крошек (например, название альбома). */
 const breadcrumbCurrentLabel = ref<string | null>(null);
 
+/** Подписи родительских сегментов по имени маршрута (например, название обучения). */
+const breadcrumbLabelsByRoute = ref<Record<string, string>>({});
+
 export function useBreadcrumbCurrentLabel() {
   return breadcrumbCurrentLabel;
+}
+
+export function useBreadcrumbLabelsByRoute() {
+  return breadcrumbLabelsByRoute;
 }
 
 type NavRouteName = string;
@@ -42,7 +50,6 @@ const BREADCRUMB_PARENTS: Record<string, ParentCrumb[]> = {
   'gallery-album': [{ name: 'gallery' }],
   'absence-journal': [{ name: 'services' }],
   tests: [{ name: 'services' }],
-  'tests-old': [{ name: 'services' }, { name: 'tests' }],
   'test-link': [{ name: 'services' }, { name: 'tests' }],
   applications: [{ name: 'services' }],
   'course-enrollment': [{ name: 'courses' }],
@@ -184,7 +191,6 @@ const BREADCRUMB_ICONS: Record<string, string> = {
   documentation: 'i-lucide-book-open',
   feedback: 'i-lucide-message-square-more',
   tests: 'i-lucide-clipboard-list',
-  'tests-old': 'i-lucide-clipboard-list',
   'test-link': 'i-lucide-clipboard-list',
   applications: 'i-lucide-file-text',
   courses: 'i-lucide-graduation-cap',
@@ -256,8 +262,9 @@ export function usePortalBreadcrumbs() {
       const to: RouteLocationRaw = parent.params
         ? { name: parent.name, params: parent.params(route.params) }
         : { name: parent.name };
+      const override = breadcrumbLabelsByRoute.value[parent.name];
       items.push({
-        label: titleForRouteName(router, parent.name),
+        label: (override && override.trim()) || titleForRouteName(router, parent.name),
         icon: iconForRouteName(parent.name),
         to,
       });
@@ -283,6 +290,21 @@ export function usePortalBreadcrumbs() {
 export function useSidebarNavItems() {
   const route = useRoute();
   const router = useRouter();
+  const { internalEnabled, ensureLoaded } = usePortalServices();
+  ensureLoaded();
+
+  const serviceChildren = computed<NavigationMenuItem[]>(() =>
+    internalEnabled.value.map((s) => ({
+      label: s.label,
+      icon: s.icon || 'i-lucide-layout-grid',
+      to: s.path || '/services',
+      active: pathActive(route.path, s.path || ''),
+    })),
+  );
+
+  const serviceActivePaths = computed(() =>
+    internalEnabled.value.map((s) => s.path).filter(Boolean) as string[],
+  );
 
   const mainItems = computed<NavigationMenuItem[]>(() => [
     {
@@ -308,37 +330,13 @@ export function useSidebarNavItems() {
       icon: 'i-lucide-layout-grid',
       to: '/services',
       defaultOpen: true,
-      active: isRouteMatch(route.name, [
-        'services',
-        'absence-journal',
-        'tests',
-        'tests-old',
-        'test-link',
-        'applications',
-      ]),
+      active:
+        route.name === 'services'
+        || serviceActivePaths.value.some((p) => pathActive(route.path, p)),
       onSelect: () => {
         void router.push({ name: 'services' });
       },
-      children: [
-        {
-          label: 'Журнал отсутствия',
-          icon: 'i-lucide-calendar-off',
-          to: '/absence-journal',
-          active: route.name === 'absence-journal',
-        },
-        {
-          label: 'Формы',
-          icon: 'i-lucide-clipboard-list',
-          to: '/tests',
-          active: isRouteMatch(route.name, ['tests', 'tests-old', 'test-link']),
-        },
-        {
-          label: 'Заявки',
-          icon: 'i-lucide-file-text',
-          to: '/applications',
-          active: route.name === 'applications',
-        },
-      ],
+      children: serviceChildren.value,
     },
     {
       label: 'Мероприятия',
@@ -378,4 +376,10 @@ export function useSidebarNavItems() {
   ]);
 
   return { mainItems, footerItems };
+}
+
+function pathActive(currentPath: string, targetPath: string): boolean {
+  if (!targetPath) return false;
+  if (targetPath === '/') return currentPath === '/';
+  return currentPath === targetPath || currentPath.startsWith(`${targetPath}/`);
 }

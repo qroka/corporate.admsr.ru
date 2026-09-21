@@ -7,7 +7,7 @@
 | Слой | Стек |
 |------|------|
 | Frontend | Vue 3 · Vite · Nuxt UI · Vue Router · Pinia · Tailwind CSS 4 |
-| API | PHP 8.3 (PHP-FPM) |
+| API | PHP 8.3 (PHP-FPM) + **Go** (параллельная миграция, `backend/`) |
 | БД | PostgreSQL 14+ |
 | AI-чат | Python · FastAPI · Ollama (`python-ai/`) |
 
@@ -86,10 +86,10 @@ npm run preview  # проверка production-сборки
 
 ```
 ┌─────────────────┐     /api/*.php      ┌──────────────────┐
-│  Vue 3 SPA      │ ──────────────────► │  PHP-FPM         │
-│  (dist/)        │                     │  api/            │
-└────────┬────────┘                     └────────┬─────────┘
-         │ /img/*                                │
+│  Vue 3 SPA      │ ──── nginx ───────► │  Go API (:8080)  │  allowlist
+│  (dist/)        │         │           │  backend/        │
+└────────┬────────┘         └─────────► │  PHP-FPM api/    │  fallback
+         │ /img/*                       └────────┬─────────┘
          ▼                                       ▼
 ┌─────────────────┐                     ┌──────────────────┐
 │  Uploads        │                     │  PostgreSQL      │
@@ -98,6 +98,19 @@ npm run preview  # проверка production-сборки
 
          /chatbot ──► python-ai (FastAPI + Ollama)
 ```
+
+### Go API (миграция)
+
+Параллельный перенос PHP → Go без смены Vue. Контракты URL `/api/*.php` сохраняются.
+Локальный запуск и список перенесённых эндпоинтов: [`backend/README.md`](backend/README.md).
+
+```bash
+cd backend && cp .env.example .env && make run
+curl -s http://127.0.0.1:8080/api/health.php
+```
+
+Сейчас на Go: auth/session, news, events, gallery, upload, users/profile/feedback, ofo_*, absence_journal, portal_groups.
+Ещё на PHP: birthdays, sync, tests/forms, LMS courses.
 
 ### Структура репозитория
 
@@ -109,7 +122,8 @@ npm run preview  # проверка production-сборки
 │   ├── stores/          # Pinia / локальные сторы (role, absence)
 │   ├── router/          # Vue Router + auth guards
 │   └── tests/           # Модуль форм/тестов (типы, API, схемы Zod)
-├── api/                 # PHP endpoints
+├── backend/             # Go API (параллельная миграция с PHP)
+├── api/                 # PHP endpoints (fallback)
 │   └── Upload/          # Загрузка изображений
 ├── db/migration/        # SQL-миграции (Flyway-стиль)
 ├── deploy/              # nginx, deploy.sh, env-пример

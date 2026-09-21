@@ -1,10 +1,10 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import type { BreadcrumbItem } from '@nuxt/ui';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
 import { useSectionAccess } from '../../../composables/useSectionAccess';
+import { useAdminCoursePortalBreadcrumbs } from '../useAdminCoursePortalBreadcrumbs';
 
 const route = useRoute();
 const router = useRouter();
@@ -12,6 +12,7 @@ const store = useCoursesStore();
 const { toast } = useAppToast();
 const { allowedCourseCategoryItems, ensureLoaded } = useSectionAccess();
 ensureLoaded();
+useAdminCoursePortalBreadcrumbs();
 
 const courseId = computed(() => Number(route.params.courseId));
 const loading = ref(true);
@@ -23,13 +24,8 @@ const form = reactive({
   shortDescription: '',
   sequentialProgress: true,
   requireFinalTest: true,
+  generateCertificate: false,
 });
-
-const crumbs = computed<BreadcrumbItem[]>(() => [
-  { label: 'Курсы', to: { name: 'courses', query: { tab: 'manage' } } },
-  { label: store.current.value?.title || 'Курс', to: { name: 'admin-course-workspace', params: { courseId: courseId.value } } },
-  { label: 'Настройки' },
-]);
 
 const isEditable = computed(() => store.version.value?.status !== 'archived');
 
@@ -47,6 +43,7 @@ onMounted(async () => {
       form.shortDescription = v.shortDescription || '';
       form.sequentialProgress = v.sequentialProgress !== false;
       form.requireFinalTest = v.requireFinalTest !== false;
+      form.generateCertificate = v.generateCertificate === true;
     }
   } catch (e: any) {
     toast.add({ title: 'Ошибка загрузки', description: e?.message, color: 'error', icon: 'i-lucide-alert-circle' });
@@ -73,6 +70,7 @@ async function onSave() {
       shortDescription: form.shortDescription,
       sequentialProgress: form.sequentialProgress,
       requireFinalTest: form.requireFinalTest,
+      generateCertificate: form.generateCertificate,
     });
     toast.add({ title: 'Сохранено', color: 'success', icon: 'i-lucide-check' });
     await router.push({ name: 'admin-course-workspace', params: { courseId: courseId.value } });
@@ -86,7 +84,6 @@ async function onSave() {
 
 <template>
   <UMain class="flex flex-1 flex-col w-full max-w-3xl mx-auto min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
-    <UBreadcrumb :items="crumbs" />
     <h1 class="text-2xl font-medium text-highlighted">Настройки курса</h1>
 
     <UAlert
@@ -129,6 +126,13 @@ async function onSave() {
       </UFormField>
       <UFormField label="Итоговый тест">
         <USwitch v-model="form.requireFinalTest" label="Требовать итоговый тест" :disabled="!isEditable" />
+      </UFormField>
+      <UFormField label="Сертификат">
+        <USwitch
+          v-model="form.generateCertificate"
+          label="Формировать сертификат после прохождения"
+          :disabled="!isEditable"
+        />
       </UFormField>
 
       <div class="flex gap-2 pt-2">

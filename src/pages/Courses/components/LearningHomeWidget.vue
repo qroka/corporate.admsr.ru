@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useCoursesStore, type EnrollmentSummary } from '../../../composables/useCoursesStore';
+
+const emit = defineEmits<{ visible: [value: boolean] }>();
 
 const router = useRouter();
 const store = useCoursesStore();
 const loading = ref(true);
 const items = ref<EnrollmentSummary[]>([]);
+const loaded = ref(false);
 
 onMounted(async () => {
   loading.value = true;
@@ -26,10 +29,14 @@ onMounted(async () => {
     items.value = [];
   } finally {
     loading.value = false;
+    loaded.value = true;
   }
 });
 
 const primary = computed(() => items.value[0] ?? null);
+const showWidget = computed(() => loaded.value && !loading.value && items.value.length > 0);
+
+watch(showWidget, (v) => emit('visible', v), { immediate: true });
 
 function open(e: EnrollmentSummary) {
   router.push({ name: 'course-enrollment', params: { enrollmentId: String(e.id) } });
@@ -38,7 +45,7 @@ function open(e: EnrollmentSummary) {
 
 <template>
   <UCard
-    v-if="!loading && items.length"
+    v-if="showWidget"
     variant="soft"
     class="w-full rounded-panel"
     :ui="{
@@ -53,7 +60,7 @@ function open(e: EnrollmentSummary) {
           <h2 id="learning-home-title" class="text-lg font-bold leading-7 text-highlighted truncate">
             Моё обучение
           </h2>
-          <UTooltip text="Активные и просроченные курсы">
+          <UTooltip text="Активные и просроченные назначения">
             <UButton
               type="button"
               color="neutral"
@@ -72,7 +79,7 @@ function open(e: EnrollmentSummary) {
           size="xs"
           icon="i-lucide-arrow-up-right"
           square
-          aria-label="Открыть курсы"
+          aria-label="Открыть обучение"
         />
       </div>
     </template>

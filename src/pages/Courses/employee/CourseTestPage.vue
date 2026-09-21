@@ -1,36 +1,54 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import type { BreadcrumbItem } from '@nuxt/ui';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
+import {
+  useBreadcrumbCurrentLabel,
+  useBreadcrumbLabelsByRoute,
+} from '../../../composables/usePortalNavigation';
 import { createEmptyForm, type TestForm } from '../../Tests/testForm';
 import TestRunner from '../../Tests/TestRunner.vue';
+import { followCourseNextAction } from '../followNextAction';
 
 const route = useRoute();
 const router = useRouter();
 const store = useCoursesStore();
 const { toast } = useAppToast();
+const breadcrumbLabel = useBreadcrumbCurrentLabel();
+const breadcrumbByRoute = useBreadcrumbLabelsByRoute();
 
 const enrollmentId = computed(() => Number(route.params.enrollmentId));
 const courseTestLinkId = computed(() => Number(route.params.courseTestLinkId));
 
 const loading = ref(true);
+const loadError = ref<string | null>(null);
 const form = reactive<TestForm>(createEmptyForm());
 const attemptId = ref<number | null>(null);
 const ready = ref(false);
 const savedAnswers = ref<Record<string, unknown>>({});
 const runnerKey = ref(0);
 const retaking = ref(false);
+const courseTitle = ref('Обучение');
 
-const crumbs = computed<BreadcrumbItem[]>(() => [
-  { label: 'Мои курсы', to: { name: 'courses' } },
-  {
-    label: 'Курс',
-    to: { name: 'course-enrollment', params: { enrollmentId: enrollmentId.value } },
+watch(
+  [courseTitle, () => form.title],
+  ([course, testTitle]) => {
+    breadcrumbByRoute.value = {
+      ...breadcrumbByRoute.value,
+      'course-enrollment': course,
+    };
+    breadcrumbLabel.value = String(testTitle || 'Тест');
   },
-  { label: form.title || 'Тест' },
-]);
+  { immediate: true },
+);
+
+onUnmounted(() => {
+  breadcrumbLabel.value = null;
+  const next = { ...breadcrumbByRoute.value };
+  delete next['course-enrollment'];
+  breadcrumbByRoute.value = next;
+});
 
 async function beginAttempt(opts?: { clearAnswers?: boolean }) {
   const started = (await store.attemptStart({
@@ -72,16 +90,39 @@ async function beginAttempt(opts?: { clearAnswers?: boolean }) {
   ready.value = true;
 }
 
-onMounted(async () => {
+onMounted(() => {
+  void loadAttempt();
+});
+
+watch(courseTestLinkId, (id, prev) => {
+  if (!id || id === prev) return;
+  void loadAttempt();
+});
+
+async function loadAttempt() {
   loading.value = true;
+  loadError.value = null;
+  ready.value = false;
   try {
+    const enrollment = await store.getEnrollment(enrollmentId.value).catch(() => null) as any;
+    courseTitle.value =
+      enrollment?.enrollment?.course?.title
+      || enrollment?.course?.title
+      || enrollment?.version?.title
+      || 'Обучение';
     await beginAttempt();
   } catch (e: any) {
-    toast.add({ title: 'Не удалось начать тест', description: e?.message, color: 'error', icon: 'i-lucide-alert-circle' });
+    loadError.value = e?.message || 'Не удалось начать тест';
+    toast.add({
+      title: 'Не удалось начать тест',
+      description: loadError.value,
+      color: 'error',
+      icon: 'i-lucide-alert-circle',
+    });
   } finally {
     loading.value = false;
   }
-});
+}
 
 async function onSubmit(answers: Record<string, unknown>, durationSec: number) {
   if (!attemptId.value) throw new Error('Нет попытки');
@@ -114,7 +155,9 @@ function onFinish(payload?: {
       color: 'error',
       icon: 'i-lucide-x',
     });
-  } else if (r?.passed === true) {
+    return;
+  }
+  if (r?.passed === true) {
     const score = r.score != null ? `${Math.round(Number(r.score))}%` : null;
     toast.add({
       title: 'Тест сдан',
@@ -125,7 +168,16 @@ function onFinish(payload?: {
   } else {
     toast.add({ title: 'Тест завершён', color: 'success', icon: 'i-lucide-check' });
   }
-  router.push({ name: 'course-enrollment', params: { enrollmentId: enrollmentId.value } });
+  void goNextAfterPass();
+}
+
+async function goNextAfterPass() {
+  try {
+    const raw = (await store.nextAction(enrollmentId.value)) as { nextAction?: { type?: string; topicId?: number; courseTestLinkId?: number } };
+    await followCourseNextAction(router, enrollmentId.value, raw?.nextAction ?? raw);
+  } catch {
+    await router.push({ name: 'course-enrollment', params: { enrollmentId: enrollmentId.value } });
+  }
 }
 
 async function onRetake() {
@@ -148,7 +200,6 @@ async function onRetake() {
 
 <template>
   <UMain class="flex flex-1 flex-col w-full min-w-0 h-full min-h-0 gap-3 overflow-x-hidden">
-    <UBreadcrumb :items="crumbs" />
     <h1 class="sr-only">{{ form.title || 'Прохождение теста' }}</h1>
 
     <div v-if="loading || retaking" class="flex flex-col gap-3 flex-1">
@@ -159,8 +210,15 @@ async function onRetake() {
       v-else-if="!ready"
       color="error"
       variant="subtle"
+      icon="i-lucide-alert-circle"
       title="Тест недоступен"
-      description="Вернитесь к курсу и попробуйте снова."
+      :description="loadError || 'Вернитесь к курсу и попробуйте снова.'"
+      :actions="[{
+        label: 'К курсу',
+        color: 'neutral',
+        variant: 'outline',
+        onClick: () => router.push({ name: 'course-enrollment', params: { enrollmentId: enrollmentId } }),
+      }]"
     />
 
     <TestRunner

@@ -1,15 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import type { BreadcrumbItem } from '@nuxt/ui';
 import { useCoursesStore, type CourseTopic } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
 import CourseStatusBadge from '../components/CourseStatusBadge.vue';
+import { courseAuthorNextStep, courseReadiness } from '../courseReadiness';
+import { useAdminCoursePortalBreadcrumbs } from '../useAdminCoursePortalBreadcrumbs';
 
 const route = useRoute();
 const router = useRouter();
 const store = useCoursesStore();
 const { toast } = useAppToast();
+useAdminCoursePortalBreadcrumbs({ asCurrent: true });
 
 const courseId = computed(() => Number(route.params.courseId));
 const loading = ref(true);
@@ -19,16 +21,23 @@ const ordering = ref(false);
 const unpublishOpen = ref(false);
 const unpublishing = ref(false);
 
+const removeTestOpen = ref(false);
+const removeTestTarget = ref<{
+  linkId: number;
+  label: string;
+} | null>(null);
+const removingTest = ref(false);
+
 const course = computed(() => store.current.value);
 const version = computed(() => store.version.value);
 const topics = computed(() => store.topics.value);
 const isPublished = computed(() => version.value?.status === 'published');
 const isEditable = computed(() => version.value?.status !== 'archived');
-
-const crumbs = computed<BreadcrumbItem[]>(() => [
-  { label: 'Курсы', to: { name: 'courses', query: { tab: 'manage' } } },
-  { label: course.value?.title || 'Курс' },
-]);
+const readiness = computed(() => courseReadiness(version.value));
+const authorNext = computed(() =>
+  isPublished.value ? null : courseAuthorNextStep(courseId.value, version.value),
+);
+const guideMode = computed(() => String(route.query.guide || '') === '1');
 
 async function reload() {
   loading.value = true;
@@ -99,14 +108,53 @@ async function confirmUnpublish() {
 }
 
 function topicTest(t: CourseTopic) {
-  return (t as any).testLink || (t as any).topicTest || null;
+  return t.topicTest || t.testLink || null;
+}
+
+function askRemoveTopicTest(t: CourseTopic) {
+  const link = topicTest(t);
+  if (!link?.id) return;
+  removeTestTarget.value = {
+    linkId: Number(link.id),
+    label: `тест темы «${t.title}»`,
+  };
+  removeTestOpen.value = true;
+}
+
+function askRemoveFinalTest() {
+  const link = version.value?.finalTest;
+  if (!link?.id) return;
+  removeTestTarget.value = {
+    linkId: Number(link.id),
+    label: 'итоговый тест',
+  };
+  removeTestOpen.value = true;
+}
+
+async function confirmRemoveTest() {
+  if (!removeTestTarget.value) return;
+  removingTest.value = true;
+  try {
+    await store.deleteCourseTest({ courseTestLinkId: removeTestTarget.value.linkId });
+    toast.add({ title: 'Тест убран', color: 'success', icon: 'i-lucide-check' });
+    removeTestOpen.value = false;
+    removeTestTarget.value = null;
+    await reload();
+  } catch (e: any) {
+    toast.add({
+      title: 'Не удалось убрать тест',
+      description: e?.message,
+      color: 'error',
+      icon: 'i-lucide-x',
+    });
+  } finally {
+    removingTest.value = false;
+  }
 }
 </script>
 
 <template>
   <UMain class="flex flex-1 flex-col w-full min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
-    <UBreadcrumb :items="crumbs" />
-
     <div v-if="loading" class="flex flex-col gap-3 p-1">
       <USkeleton class="h-10 w-2/3 rounded-lg" />
       <USkeleton class="h-24 w-full rounded-xl" />
@@ -147,7 +195,8 @@ function topicTest(t: CourseTopic) {
             v-else-if="isEditable"
             color="primary"
             icon="i-lucide-send"
-            :to="{ name: 'admin-course-publish', params: { courseId } }"
+            :disabled="!readiness.ready"
+            :to="readiness.ready ? { name: 'admin-course-publish', params: { courseId } } : undefined"
           >
             Опубликовать
           </UButton>
@@ -172,6 +221,82 @@ function topicTest(t: CourseTopic) {
         </div>
       </div>
 
+      <section
+        v-if="!isPublished && isEditable"
+        class="rounded-xl ring-1 ring-default bg-elevated/40 p-4 flex flex-col gap-3 min-w-0 mx-1"
+      >
+        <div class="flex items-start justify-between gap-3 flex-wrap">
+          <div class="min-w-0">
+            <h2 class="text-lg font-medium text-highlighted">Готовность к публикации</h2>
+            <p class="text-sm text-muted mt-0.5">
+              <template v-if="guideMode && !topics.length">
+                Обучение создано. Дальше — первая тема, материалы и тест.
+              </template>
+              <template v-else-if="readiness.ready">
+                Структура собрана — можно публиковать и назначать.
+              </template>
+              <template v-else>
+                Закройте пункты ниже, затем откройте публикацию.
+              </template>
+            </p>
+          </div>
+          <UBadge
+            :color="readiness.ready ? 'success' : 'warning'"
+            variant="subtle"
+          >
+            {{ readiness.ready ? 'Готов' : 'Не готов' }}
+          </UBadge>
+        </div>
+
+        <ul class="flex flex-col gap-1.5 list-none p-0 m-0">
+          <li
+            v-for="check in readiness.checks"
+            :key="check.id"
+            class="flex items-start gap-2 text-sm min-w-0"
+          >
+            <UIcon
+              :name="check.ok ? 'i-lucide-circle-check' : 'i-lucide-circle'"
+              class="size-4 mt-0.5 shrink-0"
+              :class="check.ok ? 'text-success' : 'text-dimmed'"
+            />
+            <span :class="check.ok ? 'text-muted' : 'text-highlighted'">{{ check.label }}</span>
+          </li>
+        </ul>
+
+        <ul
+          v-if="readiness.errors.length"
+          class="flex flex-col gap-1 list-none p-0 m-0 rounded-lg bg-warning/5 ring-1 ring-warning/20 px-3 py-2"
+        >
+          <li
+            v-for="err in readiness.errors"
+            :key="err"
+            class="text-xs text-muted flex items-start gap-1.5"
+          >
+            <UIcon name="i-lucide-alert-triangle" class="size-3.5 mt-0.5 text-warning shrink-0" />
+            <span>{{ err }}</span>
+          </li>
+        </ul>
+
+        <div v-if="authorNext" class="flex flex-wrap gap-2 pt-1">
+          <UButton
+            color="primary"
+            :icon="readiness.ready ? 'i-lucide-send' : 'i-lucide-arrow-right'"
+            :to="authorNext.to"
+          >
+            {{ authorNext.label }}
+          </UButton>
+          <UButton
+            v-if="!topics.length"
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-list"
+            :to="{ name: 'admin-course-topic-create', params: { courseId }, query: { guide: '1' } }"
+          >
+            Начать с темы
+          </UButton>
+        </div>
+      </section>
+
       <section class="flex flex-col gap-3 min-w-0 p-1">
         <div class="flex items-center justify-between gap-2 flex-wrap">
           <h2 class="text-lg font-medium text-highlighted">Темы</h2>
@@ -180,7 +305,7 @@ function topicTest(t: CourseTopic) {
             color="primary"
             variant="soft"
             icon="i-lucide-plus"
-            :to="{ name: 'admin-course-topic-create', params: { courseId } }"
+            :to="{ name: 'admin-course-topic-create', params: { courseId }, query: guideMode ? { guide: '1' } : {} }"
           >
             Добавить тему
           </UButton>
@@ -192,7 +317,18 @@ function topicTest(t: CourseTopic) {
           title="Тем пока нет"
           description="Добавьте первую тему и материалы."
           class="py-8"
-        />
+        >
+          <template #actions>
+            <UButton
+              v-if="isEditable"
+              color="primary"
+              icon="i-lucide-plus"
+              :to="{ name: 'admin-course-topic-create', params: { courseId }, query: { guide: '1' } }"
+            >
+              Добавить первую тему
+            </UButton>
+          </template>
+        </UEmpty>
 
         <ul v-else class="flex flex-col gap-2 list-none p-0 m-0 min-w-0">
           <li
@@ -249,8 +385,17 @@ function topicTest(t: CourseTopic) {
                 icon="i-lucide-clipboard-list"
                 :to="{ name: 'admin-course-topic-test', params: { courseId, topicId: t.id } }"
               >
-                Тест
+                {{ topicTest(t) ? 'Тест' : 'Добавить тест' }}
               </UButton>
+              <UButton
+                v-if="isEditable && topicTest(t)"
+                color="error"
+                variant="ghost"
+                size="sm"
+                icon="i-lucide-unlink"
+                aria-label="Убрать тест темы"
+                @click="askRemoveTopicTest(t)"
+              />
               <UButton
                 v-if="isEditable"
                 color="error"
@@ -276,14 +421,25 @@ function topicTest(t: CourseTopic) {
             <template v-else>Ещё не создан</template>
           </p>
         </div>
-        <UButton
-          color="primary"
-          variant="soft"
-          icon="i-lucide-clipboard-check"
-          :to="{ name: 'admin-course-final-test', params: { courseId } }"
-        >
-          {{ version?.finalTest ? 'Редактировать' : 'Создать' }}
-        </UButton>
+        <div class="flex items-center gap-2 flex-wrap shrink-0">
+          <UButton
+            color="primary"
+            variant="soft"
+            icon="i-lucide-clipboard-check"
+            :to="{ name: 'admin-course-final-test', params: { courseId } }"
+          >
+            {{ version?.finalTest ? 'Редактировать' : 'Создать' }}
+          </UButton>
+          <UButton
+            v-if="isEditable && version?.finalTest"
+            color="error"
+            variant="ghost"
+            icon="i-lucide-unlink"
+            @click="askRemoveFinalTest"
+          >
+            Убрать
+          </UButton>
+        </div>
       </section>
     </template>
 
@@ -297,6 +453,32 @@ function topicTest(t: CourseTopic) {
         <div class="flex justify-end gap-2">
           <UButton color="neutral" variant="ghost" @click="deleteOpen = false">Отмена</UButton>
           <UButton color="error" icon="i-lucide-trash-2" @click="confirmDelete">Удалить</UButton>
+        </div>
+      </template>
+    </UModal>
+
+    <UModal
+      v-model:open="removeTestOpen"
+      title="Убрать тест?"
+      description="Тест будет отвязан от обучения. Черновик без попыток удалится."
+    >
+      <template #body>
+        <p class="text-sm text-muted">
+          Убрать
+          <span class="text-highlighted font-medium">{{ removeTestTarget?.label || 'тест' }}</span>?
+        </p>
+      </template>
+      <template #footer>
+        <div class="flex justify-end gap-2 w-full">
+          <UButton color="neutral" variant="ghost" @click="removeTestOpen = false">Отмена</UButton>
+          <UButton
+            color="error"
+            icon="i-lucide-unlink"
+            :loading="removingTest"
+            @click="confirmRemoveTest"
+          >
+            Убрать
+          </UButton>
         </div>
       </template>
     </UModal>

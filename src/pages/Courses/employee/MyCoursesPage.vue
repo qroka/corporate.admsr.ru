@@ -28,7 +28,7 @@ const isCourseAdmin = computed(() => canEditSection('courses'));
 const tabItems = computed(() => {
   const items = [{ label: 'Назначенные мне', value: 'mine' as const }];
   if (isCourseAdmin.value) {
-    items.push({ label: 'Управление курсами', value: 'manage' as const });
+    items.push({ label: 'Управление обучением', value: 'manage' as const });
   }
   return items;
 });
@@ -89,7 +89,7 @@ async function loadMine() {
     loadErrorMine.value = e?.message || 'Ошибка загрузки';
     if (!isCourseAdmin.value) {
       toast.add({
-        title: 'Не удалось загрузить курсы',
+        title: 'Не удалось загрузить обучение',
         description: e?.message,
         color: 'error',
         icon: 'i-lucide-alert-circle',
@@ -109,7 +109,7 @@ async function ensureManageLoaded() {
   } catch (e: any) {
     loadErrorManage.value = e?.message || 'Ошибка загрузки';
     toast.add({
-      title: 'Не удалось загрузить список курсов',
+      title: 'Не удалось загрузить список обучения',
       description: e?.message,
       color: 'error',
       icon: 'i-lucide-alert-circle',
@@ -140,8 +140,46 @@ function openWorkspace(id: number) {
   router.push({ name: 'admin-course-workspace', params: { courseId: String(id) } });
 }
 
+const deleteOpen = ref(false);
+const deleteTarget = ref<{ id: number; title: string } | null>(null);
+const deleting = ref(false);
+
+function askDelete(c: { id: number; title: string }) {
+  deleteTarget.value = { id: c.id, title: c.title };
+  deleteOpen.value = true;
+}
+
+async function confirmDelete() {
+  if (!deleteTarget.value) return;
+  deleting.value = true;
+  try {
+    await store.deleteCourse(deleteTarget.value.id);
+    toast.add({ title: 'Обучение удалено', color: 'success', icon: 'i-lucide-check' });
+    deleteOpen.value = false;
+    deleteTarget.value = null;
+    await ensureManageLoaded();
+  } catch (e: any) {
+    toast.add({
+      title: 'Не удалось удалить',
+      description: e?.message,
+      color: 'error',
+      icon: 'i-lucide-x',
+    });
+  } finally {
+    deleting.value = false;
+  }
+}
+
 function open(e: EnrollmentSummary) {
   router.push({ name: 'course-enrollment', params: { enrollmentId: String(e.id) } });
+}
+
+function formatCompletedAt(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const date = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+  const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return `${date}, ${time}`;
 }
 
 function ctaLabel(e: EnrollmentSummary) {
@@ -158,15 +196,15 @@ function ctaLabel(e: EnrollmentSummary) {
     <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-[1600px] mx-auto overflow-y-auto scrollbar-hide p-px pb-8">
       <UPageHeader
         headline="Обучение"
-        title="Мои курсы"
-        description="Назначенные курсы, прогресс прохождения и управление материалами"
+        title="Моё обучение"
+        description="Назначенные программы, прогресс прохождения и управление материалами"
       >
         <template #links>
           <UButton
             v-if="isCourseAdmin"
             color="primary"
             icon="i-lucide-plus"
-            label="Создать курс"
+            label="Создать обучение"
             @click="goCreateCourse"
           />
         </template>
@@ -212,7 +250,7 @@ function ctaLabel(e: EnrollmentSummary) {
         >
           <template v-if="isCourseAdmin" #actions>
             <UButton color="primary" variant="soft" @click="tab = 'manage'">
-              Перейти к управлению курсами
+              Перейти к управлению обучением
             </UButton>
           </template>
         </UEmpty>
@@ -319,9 +357,14 @@ function ctaLabel(e: EnrollmentSummary) {
                 body: 'flex flex-col md:flex-row md:items-center gap-3 p-4 sm:p-4',
               }"
             >
-              <div class="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
-                <CourseStatusBadge status="completed" />
-                <span class="font-medium text-highlighted break-words">{{ e.courseTitle }}</span>
+              <div class="flex-1 min-w-0 flex flex-col gap-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <CourseStatusBadge status="completed" />
+                  <span class="font-medium text-highlighted break-words">{{ e.courseTitle }}</span>
+                </div>
+                <p v-if="e.completedAt" class="text-xs text-muted">
+                  Завершено {{ formatCompletedAt(e.completedAt) }}
+                </p>
               </div>
               <UButton color="neutral" variant="soft" class="shrink-0" @click="open(e)">
                 Смотреть
@@ -331,7 +374,7 @@ function ctaLabel(e: EnrollmentSummary) {
         </div>
       </template>
 
-      <!-- Управление курсами -->
+      <!-- Управление обучением -->
       <template v-else-if="tab === 'manage' && isCourseAdmin">
         <div v-if="loadingManage" class="flex flex-col gap-3">
           <USkeleton v-for="n in 4" :key="n" class="h-20 w-full rounded-panel" />
@@ -342,7 +385,7 @@ function ctaLabel(e: EnrollmentSummary) {
           color="warning"
           variant="subtle"
           icon="i-lucide-server"
-          title="API курсов недоступен"
+          title="API обучения недоступен"
           :description="`${loadErrorManage}. Нужны файлы api/courses_*.php и миграция V4 на сервере.`"
         />
 
@@ -350,13 +393,13 @@ function ctaLabel(e: EnrollmentSummary) {
           v-else-if="!store.courses.value.length"
           variant="naked"
           icon="i-lucide-library-big"
-          title="Курсов пока нет"
-          description="Создайте первый курс и наполните его темами и материалами."
+          title="Обучения пока нет"
+          description="Создайте первое обучение и наполните его темами и материалами."
           class="w-full py-12"
         >
           <template #actions>
             <UButton color="primary" icon="i-lucide-plus" @click="goCreateCourse">
-              Создать курс
+              Создать обучение
             </UButton>
           </template>
         </UEmpty>
@@ -366,12 +409,11 @@ function ctaLabel(e: EnrollmentSummary) {
             v-for="c in store.courses.value"
             :key="c.id"
             variant="soft"
-            class="w-full rounded-panel cursor-pointer transition-colors hover:bg-elevated/80"
+            class="w-full rounded-panel"
             :ui="{
               root: 'rounded-panel bg-elevated ring-0 border-0 divide-y-0',
               body: 'flex flex-col md:flex-row md:items-center gap-3 p-4 sm:p-4',
             }"
-            @click="openWorkspace(c.id)"
           >
             <div class="flex-1 min-w-0 flex flex-col gap-1">
               <div class="flex items-center gap-2 flex-wrap">
@@ -388,19 +430,48 @@ function ctaLabel(e: EnrollmentSummary) {
                 </template>
               </p>
             </div>
-            <UButton
-              color="neutral"
-              variant="soft"
-              icon="i-lucide-arrow-right"
-              class="shrink-0"
-              aria-label="Открыть курс"
-              @click.stop="openWorkspace(c.id)"
-            >
-              Открыть
-            </UButton>
+            <div class="flex items-center gap-2 shrink-0">
+              <UButton
+                color="neutral"
+                variant="soft"
+                icon="i-lucide-pencil"
+                @click="openWorkspace(c.id)"
+              >
+                Редактировать
+              </UButton>
+              <UButton
+                color="error"
+                variant="ghost"
+                icon="i-lucide-trash-2"
+                @click="askDelete(c)"
+              >
+                Удалить
+              </UButton>
+            </div>
           </UCard>
         </div>
       </template>
     </div>
+
+    <UModal
+      v-model:open="deleteOpen"
+      title="Удалить обучение?"
+      description="Обучение и его материалы будут удалены. Это действие нельзя отменить."
+    >
+      <template #body>
+        <p class="text-sm text-muted">
+          Обучение:
+          <span class="text-highlighted font-medium">{{ deleteTarget?.title || '—' }}</span>
+        </p>
+      </template>
+      <template #footer>
+        <div class="flex justify-end gap-2 w-full">
+          <UButton color="neutral" variant="ghost" @click="deleteOpen = false">Отмена</UButton>
+          <UButton color="error" icon="i-lucide-trash-2" :loading="deleting" @click="confirmDelete">
+            Удалить
+          </UButton>
+        </div>
+      </template>
+    </UModal>
   </UMain>
 </template>
