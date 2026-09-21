@@ -1,22 +1,37 @@
 package handlers
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"corporate.admsr.ru/backend/internal/config"
 	"corporate.admsr.ru/backend/internal/httpx"
 )
 
 type Sync struct {
-	Pool *pgxpool.Pool
+	Pool   *pgxpool.Pool
+	Config config.Config
 }
 
 func (h *Sync) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		httpx.WriteJSON(w, http.StatusMethodNotAllowed, map[string]any{
 			"success": false, "message": "Method not allowed",
+		})
+		return
+	}
+
+	// Server-to-server эндпоинт (ASU → портал). Без общего секрета он позволял
+	// анонимно создать пользователя с любым логином и паролем и затем войти
+	// в портал под ним (SEC-001). Секрет — тот же ASU_SECRET, что портал шлёт в ASU.
+	expected := strings.TrimSpace(h.Config.ASUSecret)
+	got := strings.TrimSpace(r.Header.Get("X-Sync-Secret"))
+	if expected == "" || subtle.ConstantTimeCompare([]byte(expected), []byte(got)) != 1 {
+		httpx.WriteJSON(w, http.StatusUnauthorized, map[string]any{
+			"success": false, "message": "Unauthorized",
 		})
 		return
 	}

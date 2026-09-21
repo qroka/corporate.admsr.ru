@@ -15,14 +15,21 @@ import (
 
 type Profile struct {
 	Pool *pgxpool.Pool
+	Auth *auth.Service
 }
 
 func (h *Profile) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Карточка сотрудника — внутренние данные портала: читать может
+	// авторизованный пользователь, изменять — только владелец или админ (SEC-001).
+	cur, ok := requireUser(w, r, h.Auth)
+	if !ok {
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		h.get(w, r)
 	case http.MethodPost:
-		h.post(w, r)
+		h.post(w, r, cur)
 	default:
 		httpx.Fail(w, http.StatusMethodNotAllowed, "Метод не поддерживается")
 	}
@@ -104,7 +111,7 @@ func (h *Profile) get(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *Profile) post(w http.ResponseWriter, r *http.Request) {
+func (h *Profile) post(w http.ResponseWriter, r *http.Request, cur *auth.User) {
 	var body map[string]any
 	if err := httpx.DecodeJSON(r, &body); err != nil {
 		httpx.Fail(w, http.StatusBadRequest, "Некорректный JSON")
@@ -114,6 +121,13 @@ func (h *Profile) post(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(strVal(body["id"]), 10, 64)
 	if err != nil || id <= 0 {
 		httpx.Fail(w, http.StatusBadRequest, "Некорректный id")
+		return
+	}
+
+	// id из тела запроса — не доказательство личности: редактировать можно
+	// только свою карточку, чужую — только администратору (SEC-001, IDOR).
+	if id != cur.ID && !auth.IsAdmin(cur) {
+		httpx.Fail(w, http.StatusForbidden, "Недостаточно прав")
 		return
 	}
 

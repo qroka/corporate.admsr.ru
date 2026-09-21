@@ -34,16 +34,16 @@ func main() {
 	galleryH := &handlers.Gallery{Pool: pool, Auth: authSvc, UploadDir: cfg.UploadDir}
 	galleryBaseH := &handlers.GalleryBase{Pool: pool, Auth: authSvc, UploadDir: cfg.UploadDir}
 	uploadH := &handlers.Upload{UploadDir: cfg.UploadDir}
-	usersH := &handlers.Users{Pool: pool}
-	profileH := &handlers.Profile{Pool: pool}
+	usersH := &handlers.Users{Pool: pool, Auth: authSvc}
+	profileH := &handlers.Profile{Pool: pool, Auth: authSvc}
 	feedbackH := &handlers.Feedback{Pool: pool, Auth: authSvc}
-	ofoH := &handlers.OFO{Pool: pool}
+	ofoH := &handlers.OFO{Pool: pool, Auth: authSvc}
 	absenceH := &handlers.Absence{Pool: pool, Auth: authSvc}
 	portalH := &handlers.Portal{Pool: pool, Auth: authSvc}
 	coursesH := &handlers.CoursesHandler{Pool: pool, Auth: authSvc, UploadDir: cfg.UploadDir}
 	testsH := &handlers.TestsHandler{Pool: pool, Auth: authSvc}
-	formsH := &handlers.FormsHandler{Pool: pool}
-	syncH := &handlers.Sync{Pool: pool}
+	formsH := &handlers.FormsHandler{Pool: pool, Auth: authSvc}
+	syncH := &handlers.Sync{Pool: pool, Config: cfg}
 	birthdaysH := &handlers.Birthdays{Pool: pool, Auth: authSvc, UploadDir: cfg.UploadDir}
 	healthH := &handlers.Health{Pool: pool}
 

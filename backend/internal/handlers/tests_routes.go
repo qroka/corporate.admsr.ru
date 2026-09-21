@@ -37,20 +37,34 @@ func (h *TestsHandler) decodeBody(r *http.Request) (map[string]any, error) {
 	return body, nil
 }
 
-func (h *TestsHandler) viewer(body map[string]any, r *http.Request) int64 {
-	if body != nil {
-		if v, ok := body["userId"]; ok {
-			if id, err := tests.ToInt64Public(v); err == nil {
-				return id
-			}
-		}
+// viewer возвращает личность вызывающего, полученную ИСКЛЮЧИТЕЛЬНО из серверной
+// сессии (cookie corp_session / Bearer).
+//
+// SEC-008: раньше личность бралась из userId в теле/query, который присылает сам
+// клиент. Проверки владельца вида `owner_id != viewer` тем самым обходились —
+// злоумышленник подставлял userId владельца и мог редактировать, удалять,
+// снимать с публикации чужие формы и читать ответы участников. Параметр body
+// сохранён в сигнатуре для совместимости мест вызова, но больше не используется.
+func (h *TestsHandler) viewer(_ map[string]any, r *http.Request) int64 {
+	if h.Auth == nil {
+		return 0
 	}
-	if v := r.URL.Query().Get("userId"); v != "" {
-		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
-			return id
-		}
+	u, err := h.Auth.CurrentUser(r.Context(), r)
+	if err != nil || u == nil {
+		return 0
 	}
-	return 0
+	return u.ID
+}
+
+// requireViewer требует авторизованную сессию для операций над формами
+// (создание/публикация/снятие/удаление/просмотр ответов). Возвращает 401 иначе.
+func (h *TestsHandler) requireViewer(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	id := h.viewer(nil, r)
+	if id <= 0 {
+		httpx.Fail(w, http.StatusUnauthorized, "Требуется авторизация")
+		return 0, false
+	}
+	return id, true
 }
 
 func (h *TestsHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -169,7 +183,10 @@ func (h *TestsHandler) Save(w http.ResponseWriter, r *http.Request) {
 		httpx.Fail(w, http.StatusBadRequest, "Некорректный JSON")
 		return
 	}
-	viewer := h.viewer(body, r)
+	viewer, ok := h.requireViewer(w, r)
+	if !ok {
+		return
+	}
 	form, ok := body["form"].(map[string]any)
 	if !ok {
 		httpx.Fail(w, http.StatusBadRequest, "Не передана форма")
@@ -203,7 +220,10 @@ func (h *TestsHandler) Publish(w http.ResponseWriter, r *http.Request) {
 		httpx.Fail(w, http.StatusBadRequest, "Некорректный JSON")
 		return
 	}
-	viewer := h.viewer(body, r)
+	viewer, ok := h.requireViewer(w, r)
+	if !ok {
+		return
+	}
 	form, ok := body["form"].(map[string]any)
 	if !ok {
 		httpx.Fail(w, http.StatusBadRequest, "Не передана форма")
@@ -252,7 +272,10 @@ func (h *TestsHandler) Unpublish(w http.ResponseWriter, r *http.Request) {
 		httpx.Fail(w, http.StatusBadRequest, "Некорректный JSON")
 		return
 	}
-	viewer := h.viewer(body, r)
+	viewer, ok := h.requireViewer(w, r)
+	if !ok {
+		return
+	}
 	formID, _ := tests.ToInt64Public(body["formId"])
 	if formID <= 0 {
 		httpx.Fail(w, http.StatusBadRequest, "Не передан formId")
@@ -268,7 +291,9 @@ func (h *TestsHandler) Unpublish(w http.ResponseWriter, r *http.Request) {
 		httpx.Fail(w, http.StatusInternalServerError, "Ошибка подключения к БД")
 		return
 	}
-	if ownerID != nil && *ownerID != viewer {
+	// Форму без владельца (nil) может трогать только админ: иначе любой
+	// авторизованный пользователь мог бы снять с публикации легаси-форму.
+	if ownerID == nil || *ownerID != viewer {
 		httpx.Fail(w, http.StatusForbidden, "Снять с публикации может только создатель")
 		return
 	}
@@ -287,7 +312,10 @@ func (h *TestsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		httpx.Fail(w, http.StatusBadRequest, "Некорректный JSON")
 		return
 	}
-	viewer := h.viewer(body, r)
+	viewer, ok := h.requireViewer(w, r)
+	if !ok {
+		return
+	}
 	formID, _ := tests.ToInt64Public(body["formId"])
 	if formID <= 0 {
 		httpx.Fail(w, http.StatusBadRequest, "Не передан formId")
@@ -304,7 +332,7 @@ func (h *TestsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		httpx.Fail(w, http.StatusInternalServerError, "Ошибка подключения к БД")
 		return
 	}
-	if ownerID != nil && *ownerID != viewer {
+	if ownerID == nil || *ownerID != viewer {
 		httpx.Fail(w, http.StatusForbidden, "Удалить может только создатель")
 		return
 	}
@@ -326,7 +354,10 @@ func (h *TestsHandler) Direct(w http.ResponseWriter, r *http.Request) {
 		httpx.Fail(w, http.StatusBadRequest, "Некорректный JSON")
 		return
 	}
-	viewer := h.viewer(body, r)
+	viewer, ok := h.requireViewer(w, r)
+	if !ok {
+		return
+	}
 	formID, _ := tests.ToInt64Public(body["formId"])
 	mode := fmt.Sprint(body["mode"])
 	force := tests.Bool(body["force"])
@@ -353,7 +384,7 @@ func (h *TestsHandler) Direct(w http.ResponseWriter, r *http.Request) {
 		httpx.Fail(w, http.StatusInternalServerError, "Ошибка подключения к БД")
 		return
 	}
-	if ownerID != nil && *ownerID != viewer {
+	if ownerID == nil || *ownerID != viewer {
 		httpx.Fail(w, http.StatusForbidden, "Направлять может только создатель")
 		return
 	}
@@ -657,6 +688,10 @@ func (h *TestsHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		httpx.Fail(w, http.StatusBadRequest, "Некорректный JSON")
 		return
 	}
+	requester, ok := h.requireViewer(w, r)
+	if !ok {
+		return
+	}
 	formID, _ := tests.ToInt64Public(body["formId"])
 	if formID <= 0 {
 		httpx.Fail(w, http.StatusBadRequest, "Не передан formId")
@@ -672,6 +707,12 @@ func (h *TestsHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		httpx.Fail(w, http.StatusInternalServerError, "Ошибка подключения к БД")
+		return
+	}
+	// SEC-008: статистика формы (агрегаты по попыткам, баллы, прохождения)
+	// раньше отдавалась любому по formId без проверки. Теперь — только создателю.
+	if formRow.OwnerID == nil || *formRow.OwnerID != requester {
+		httpx.Fail(w, http.StatusForbidden, "Доступно только создателю формы")
 		return
 	}
 
@@ -945,7 +986,10 @@ func (h *TestsHandler) Participant(w http.ResponseWriter, r *http.Request) {
 		httpx.Fail(w, http.StatusBadRequest, "Некорректный JSON")
 		return
 	}
-	requester := h.viewer(body, r)
+	requester, ok := h.requireViewer(w, r)
+	if !ok {
+		return
+	}
 	formID, _ := tests.ToInt64Public(body["formId"])
 	participantID, _ := tests.ToInt64Public(body["participantId"])
 	if formID <= 0 || participantID <= 0 {

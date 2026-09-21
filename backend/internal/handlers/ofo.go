@@ -6,16 +6,22 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"corporate.admsr.ru/backend/internal/auth"
 	"corporate.admsr.ru/backend/internal/httpx"
 )
 
 type OFO struct {
 	Pool *pgxpool.Pool
+	Auth *auth.Service
 }
 
 func (h *OFO) List(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		httpx.MethodNotAllowed(w)
+		return
+	}
+	// Оргструктура — внутренние данные портала, анонимам не отдаём (SEC-001).
+	if _, ok := requireUser(w, r, h.Auth); !ok {
 		return
 	}
 	rows, err := h.Pool.Query(r.Context(), `
@@ -61,6 +67,10 @@ func (h *OFO) Seats(w http.ResponseWriter, r *http.Request) {
 		httpx.MethodNotAllowed(w)
 		return
 	}
+	// Оргструктура — внутренние данные портала, анонимам не отдаём (SEC-001).
+	if _, ok := requireUser(w, r, h.Auth); !ok {
+		return
+	}
 	rows, err := h.Pool.Query(r.Context(), `
 		SELECT id, title, ofo, insurance, rating
 		FROM public.ofo_seats
@@ -102,6 +112,10 @@ func (h *OFO) Seats(w http.ResponseWriter, r *http.Request) {
 func (h *OFO) Tree(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		httpx.MethodNotAllowed(w)
+		return
+	}
+	// Оргструктура — внутренние данные портала, анонимам не отдаём (SEC-001).
+	if _, ok := requireUser(w, r, h.Auth); !ok {
 		return
 	}
 	ctx := r.Context()
@@ -203,6 +217,10 @@ func (h *OFO) Tree(w http.ResponseWriter, r *http.Request) {
 func (h *OFO) Positions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		httpx.MethodNotAllowed(w)
+		return
+	}
+	// Оргструктура — внутренние данные портала, анонимам не отдаём (SEC-001).
+	if _, ok := requireUser(w, r, h.Auth); !ok {
 		return
 	}
 	unitNumber, err := strconv.ParseInt(r.URL.Query().Get("unit_number"), 10, 64)

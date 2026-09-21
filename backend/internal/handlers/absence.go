@@ -53,6 +53,11 @@ func absenceFail(w http.ResponseWriter, code int, msg string) {
 }
 
 func (h *Absence) get(w http.ResponseWriter, r *http.Request) {
+	// SEC-009: журнал содержит ФИО сотрудников и причины отсутствия — читать может
+	// только авторизованный пользователь. Раньше GET был полностью открыт.
+	if _, ok := requireUser(w, r, h.Auth); !ok {
+		return
+	}
 	q := r.URL.Query()
 	if idStr := q.Get("id"); idStr != "" {
 		id, _ := strconv.ParseInt(idStr, 10, 64)
@@ -152,6 +157,11 @@ func (h *Absence) get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Absence) post(w http.ResponseWriter, r *http.Request) {
+	// SEC-009: создание записей журнала — только для редакторов раздела.
+	// Раньше POST был открыт: любой мог добавить запись об отсутствии любому сотруднику.
+	if _, ok := requireSection(w, r, h.Pool, h.Auth, "absence_journal"); !ok {
+		return
+	}
 	var body map[string]any
 	if err := httpx.DecodeJSON(r, &body); err != nil {
 		absenceFail(w, http.StatusBadRequest, "Некорректный JSON")
@@ -227,6 +237,10 @@ func (h *Absence) post(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Absence) put(w http.ResponseWriter, r *http.Request) {
+	// SEC-009: изменение записей — только для редакторов раздела.
+	if _, ok := requireSection(w, r, h.Pool, h.Auth, "absence_journal"); !ok {
+		return
+	}
 	id, ok := queryID(r)
 	if !ok {
 		absenceFail(w, http.StatusBadRequest, "Не указан id")
@@ -307,6 +321,11 @@ func (h *Absence) put(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Absence) del(w http.ResponseWriter, r *http.Request) {
+	// SEC-009: удаление записей — только для редакторов раздела.
+	// Раньше DELETE был открыт: любой мог удалить любую запись журнала.
+	if _, ok := requireSection(w, r, h.Pool, h.Auth, "absence_journal"); !ok {
+		return
+	}
 	id, ok := queryID(r)
 	if !ok {
 		absenceFail(w, http.StatusBadRequest, "Не указан id")

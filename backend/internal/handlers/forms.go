@@ -19,11 +19,13 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"corporate.admsr.ru/backend/internal/auth"
 	"corporate.admsr.ru/backend/internal/httpx"
 )
 
 type FormsHandler struct {
 	Pool *pgxpool.Pool
+	Auth *auth.Service
 }
 
 var uuidRe = regexp.MustCompile(`(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
@@ -57,14 +59,24 @@ func (h *FormsHandler) Forms(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodPost:
+		if !h.formsRequireEditor(w, r) {
+			return
+		}
 		h.formsCreate(w, r)
 	case http.MethodGet:
+		// Полная форма содержит в т.ч. правильные ответы теста — анонимам не отдаём.
+		if _, ok := h.formsRequireUser(w, r); !ok {
+			return
+		}
 		if id == "" {
 			formsFail(w, http.StatusBadRequest, "Укажите ?id=UUID")
 			return
 		}
 		h.formsGet(w, r, id)
 	case http.MethodPut:
+		if !h.formsRequireEditor(w, r) {
+			return
+		}
 		if id == "" {
 			formsFail(w, http.StatusBadRequest, "Укажите ?id=UUID")
 			return
@@ -82,6 +94,10 @@ func (h *FormsHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method != http.MethodGet {
 		formsFail(w, http.StatusMethodNotAllowed, "Метод не поддерживается")
+		return
+	}
+
+	if _, ok := h.formsRequireUser(w, r); !ok {
 		return
 	}
 
@@ -161,6 +177,9 @@ func (h *FormsHandler) Publish(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method != http.MethodPost {
 		formsFail(w, http.StatusMethodNotAllowed, "Метод не поддерживается")
+		return
+	}
+	if !h.formsRequireEditor(w, r) {
 		return
 	}
 	id := r.URL.Query().Get("id")
@@ -568,6 +587,10 @@ func (h *FormsHandler) Report(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method != http.MethodGet {
 		formsFail(w, http.StatusMethodNotAllowed, "Метод не поддерживается")
+		return
+	}
+	// Отчёт содержит все ответы респондентов и их ФИО — только для редакторов раздела.
+	if !h.formsRequireEditor(w, r) {
 		return
 	}
 	formID := r.URL.Query().Get("id")
@@ -1049,22 +1072,50 @@ func (h *FormsHandler) formsUpdate(w http.ResponseWriter, r *http.Request, id st
 	formsOK(w, nil)
 }
 
+// isLegacyFormsAdmin определяет право редактировать формы.
+//
+// SEC-007: раньше личность бралась из заголовка X-User-Id, который присылает сам
+// клиент, — любой мог объявить себя администратором форм. Теперь источник личности
+// только один: серверная сессия. Признак редактора согласован с остальным
+// порталом — user_group='admin' либо права на раздел tests через группы
+// (раньше проверялась колонка role, которая хранит должность, а не роль доступа).
 func (h *FormsHandler) isLegacyFormsAdmin(ctx context.Context, r *http.Request) bool {
-	uidStr := r.Header.Get("X-User-Id")
-	if uidStr == "" {
+	if h.Auth == nil {
 		return false
 	}
-	id, err := toInt64Forms(uidStr)
-	if err != nil || id <= 0 {
+	u, err := h.Auth.CurrentUser(ctx, r)
+	if err != nil || u == nil {
 		return false
 	}
-	var role string
-	var authFlag, status bool
-	err = h.Pool.QueryRow(ctx, `SELECT role, auth, status FROM public.user_info WHERE id = $1`, id).Scan(&role, &authFlag, &status)
-	if err != nil {
+	return auth.CanEditSection(ctx, h.Pool, u, "tests")
+}
+
+// formsRequireUser — доступ к модулю форм только для авторизованных (SEC-001).
+func (h *FormsHandler) formsRequireUser(w http.ResponseWriter, r *http.Request) (*auth.User, bool) {
+	if h.Auth == nil {
+		formsFail(w, http.StatusUnauthorized, "Требуется авторизация")
+		return nil, false
+	}
+	u, err := h.Auth.CurrentUser(r.Context(), r)
+	if err != nil || u == nil {
+		formsFail(w, http.StatusUnauthorized, "Требуется авторизация")
+		return nil, false
+	}
+	return u, true
+}
+
+// formsRequireEditor — операции над самими формами (создание, правка, публикация,
+// архивация, удаление, отчёты) доступны только редакторам раздела.
+func (h *FormsHandler) formsRequireEditor(w http.ResponseWriter, r *http.Request) bool {
+	u, ok := h.formsRequireUser(w, r)
+	if !ok {
 		return false
 	}
-	return role == "admin" && authFlag && status
+	if !auth.CanEditSection(r.Context(), h.Pool, u, "tests") {
+		formsFail(w, http.StatusForbidden, "Недостаточно прав для этого раздела")
+		return false
+	}
+	return true
 }
 
 func (h *FormsHandler) loadLegacyFormMeta(ctx context.Context, id string) (map[string]any, error) {

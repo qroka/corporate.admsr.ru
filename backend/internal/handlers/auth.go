@@ -203,26 +203,23 @@ func (h *AuthHandlers) SessionBootstrap(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var body idBody
-	if err := httpx.DecodeJSON(r, &body); err != nil || body.ID <= 0 {
-		httpx.Fail(w, http.StatusBadRequest, "Некорректный id")
-		return
-	}
+	_ = httpx.DecodeJSON(r, &body)
 
-	var (
-		id        int64
-		userGroup string
-		sessionOK bool
-	)
-	err := h.Pool.QueryRow(r.Context(), `
-		SELECT id, user_group,
-		       (auth = true AND last_activity IS NOT NULL AND last_activity > now() - interval '24 hours') AS session_ok
-		FROM public.user_info
-		WHERE id = $1 AND status = true
-		LIMIT 1`, body.ID).Scan(&id, &userGroup, &sessionOK)
-	if err != nil || !sessionOK {
+	// Личность берётся ТОЛЬКО из действующей сессии (cookie corp_session / Bearer).
+	// id из тела запроса не является доказательством личности: раньше он позволял
+	// выпустить токен для любого активного пользователя без единого секрета.
+	cur, err := h.Auth.CurrentUser(r.Context(), r)
+	if err != nil {
 		httpx.Fail(w, http.StatusUnauthorized, "Сессия портала недействительна. Войдите снова.")
 		return
 	}
+	if body.ID > 0 && body.ID != cur.ID {
+		httpx.Fail(w, http.StatusForbidden, "Недостаточно прав")
+		return
+	}
+
+	id := cur.ID
+	userGroup := cur.UserGroup
 
 	token, err := h.Auth.CreateSession(r.Context(), w, r, id)
 	if err != nil {

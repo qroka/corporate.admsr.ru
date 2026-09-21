@@ -6,15 +6,26 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/bcrypt"
+
+	"corporate.admsr.ru/backend/internal/auth"
 
 	"corporate.admsr.ru/backend/internal/httpx"
 )
 
 type Users struct {
 	Pool *pgxpool.Pool
+	Auth *auth.Service
 }
 
 func (h *Users) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Справочник пользователей и его редактирование — только для администратора.
+	// До исправления (SEC-001) эндпоинт был полностью открыт: GET отдавал колонку
+	// password всех сотрудников, PUT позволял менять любому пользователю пароль
+	// и user_group.
+	if _, ok := requireAdmin(w, r, h.Auth); !ok {
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		h.list(w, r)
@@ -26,8 +37,10 @@ func (h *Users) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Users) list(w http.ResponseWriter, r *http.Request) {
+	// Колонка password намеренно не выбирается и не отдаётся клиенту (SEC-001/SEC-005):
+	// админке она не нужна, а любая утечка ответа означала бы утечку учётных данных.
 	const qWithGroups = `
-		SELECT u.id, u.status, u.login, u.password, u.firstname, u.surname, u.lastname, u.ofo, u.user_group, u.phone, u.email,
+		SELECT u.id, u.status, u.login, u.firstname, u.surname, u.lastname, u.ofo, u.user_group, u.phone, u.email,
 		       (u.auth = true AND u.last_activity IS NOT NULL AND u.last_activity > now() - interval '24 hours') AS auth,
 		       to_char(u.last_activity AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_activity,
 		       u.avatar_url, u.role,
@@ -38,7 +51,7 @@ func (h *Users) list(w http.ResponseWriter, r *http.Request) {
 		FROM public.user_info u
 		ORDER BY u.id ASC`
 	const qFallback = `
-		SELECT id, status, login, password, firstname, surname, lastname, ofo, user_group, phone, email,
+		SELECT id, status, login, firstname, surname, lastname, ofo, user_group, phone, email,
 		       (auth = true AND last_activity IS NOT NULL AND last_activity > now() - interval '24 hours') AS auth,
 		       to_char(last_activity AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS last_activity,
 		       avatar_url, role, ''::text AS access_groups
@@ -59,14 +72,14 @@ func (h *Users) list(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var (
 			id                                  int64
-			status, login, password             any
+			status, login                       any
 			firstname, surname, lastname        any
 			ofo, userGroup, phone, email        any
 			authActive                          bool
 			lastActivity, avatarURL, role, aggs any
 		)
 		if err := rows.Scan(
-			&id, &status, &login, &password, &firstname, &surname, &lastname, &ofo, &userGroup,
+			&id, &status, &login, &firstname, &surname, &lastname, &ofo, &userGroup,
 			&phone, &email, &authActive, &lastActivity, &avatarURL, &role, &aggs,
 		); err != nil {
 			httpx.Fail(w, http.StatusInternalServerError, "Ошибка подключения к БД: "+err.Error())
@@ -80,7 +93,6 @@ func (h *Users) list(w http.ResponseWriter, r *http.Request) {
 			"id":            id,
 			"status":        anyToString(status),
 			"login":         anyToString(login),
-			"password":      anyToString(password),
 			"firstname":     anyToString(firstname),
 			"surname":       anyToString(surname),
 			"lastname":      anyToString(lastname),
@@ -146,11 +158,28 @@ func (h *Users) put(w http.ResponseWriter, r *http.Request) {
 	args := []any{id}
 	argN := 2
 	for _, field := range updatable {
-		if _, has := d[field]; has {
-			setParts = append(setParts, fmt.Sprintf("%s = $%d", field, argN))
-			args = append(args, d[field])
-			argN++
+		v, has := d[field]
+		if !has {
+			continue
 		}
+		if field == "password" {
+			// Пустая строка = «не менять пароль»: в списке пользователей пароль
+			// больше не отдаётся, поэтому форма редактирования присылает пустое поле,
+			// когда администратор пароль не трогал. Раньше это затирало пароль.
+			plain, _ := v.(string)
+			if strings.TrimSpace(plain) == "" {
+				continue
+			}
+			hashed, err := bcrypt.GenerateFromPassword([]byte(plain), bcrypt.DefaultCost)
+			if err != nil {
+				httpx.Fail(w, http.StatusInternalServerError, "Не удалось сохранить пароль")
+				return
+			}
+			v = string(hashed)
+		}
+		setParts = append(setParts, fmt.Sprintf("%s = $%d", field, argN))
+		args = append(args, v)
+		argN++
 	}
 	if len(setParts) > 0 {
 		sql := "UPDATE public.user_info SET " + strings.Join(setParts, ", ") + " WHERE id = $1"
@@ -161,12 +190,12 @@ func (h *Users) put(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		outID                           int64
-		status, login                   any
-		firstname, surname, lastname    any
-		ofo, userGroup, phone, email    any
-		authVal                         bool
-		avatarURL, role                 any
+		outID                        int64
+		status, login                any
+		firstname, surname, lastname any
+		ofo, userGroup, phone, email any
+		authVal                      bool
+		avatarURL, role              any
 	)
 	err = h.Pool.QueryRow(r.Context(), `
 		SELECT id, status, login, firstname, surname, lastname, ofo, user_group, phone, email, auth, avatar_url, role
