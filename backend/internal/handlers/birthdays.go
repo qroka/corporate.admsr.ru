@@ -32,15 +32,65 @@ type Birthdays struct {
 }
 
 func (h *Birthdays) dir() string {
-	return filepath.Join(h.UploadDir, "birthdays_xlsx")
+	return h.resolveBirthdaysDir()
 }
 
 func (h *Birthdays) oldDir() string {
-	return filepath.Join(h.UploadDir, "birthdays_xlsx_old")
+	// рядом с выбранным birthdays_xlsx
+	return filepath.Join(filepath.Dir(h.dir()), "birthdays_xlsx_old")
 }
 
 func (h *Birthdays) manifestPath() string {
 	return filepath.Join(h.dir(), "manifest.json")
+}
+
+// resolveBirthdaysDir выбирает каталог с реальными xlsx (UPLOAD_DIR может
+// указывать не туда, где лежат файлы PHP/админки).
+func (h *Birthdays) resolveBirthdaysDir() string {
+	var candidates []string
+	if v := strings.TrimSpace(os.Getenv("BIRTHDAYS_DIR")); v != "" {
+		candidates = append(candidates, v)
+	}
+	upload := strings.TrimSpace(h.UploadDir)
+	if upload != "" {
+		candidates = append(candidates, filepath.Join(upload, "birthdays_xlsx"))
+	}
+	candidates = append(candidates,
+		"/var/lib/corporate-app/uploads/birthdays_xlsx",
+		"/var/www/corporate.admsr.ru/public/birthdays_xlsx",
+		"public/birthdays_xlsx",
+	)
+
+	var fallback string
+	for _, d := range candidates {
+		d = strings.TrimSpace(d)
+		if d == "" {
+			continue
+		}
+		if fallback == "" {
+			fallback = d
+		}
+		matches, _ := filepath.Glob(filepath.Join(d, "*.xlsx"))
+		n := 0
+		for _, m := range matches {
+			if strings.EqualFold(filepath.Base(m), ".gitkeep") {
+				continue
+			}
+			if strings.HasSuffix(strings.ToLower(m), ".xlsx") {
+				n++
+			}
+		}
+		if n > 0 {
+			return d
+		}
+		if st, err := os.Stat(filepath.Join(d, "manifest.json")); err == nil && st.Size() > 2 {
+			return d
+		}
+	}
+	if fallback != "" {
+		return fallback
+	}
+	return "birthdays_xlsx"
 }
 
 func (h *Birthdays) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -55,15 +105,36 @@ func (h *Birthdays) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Birthdays) handleGet(w http.ResponseWriter, r *http.Request) {
+	dir := h.dir()
 	if r.URL.Query().Get("debug") != "" {
-		matches, _ := filepath.Glob(filepath.Join(h.dir(), "*.xlsx"))
-		info, err := os.Stat(h.dir())
+		matches, _ := filepath.Glob(filepath.Join(dir, "*.xlsx"))
+		info, err := os.Stat(dir)
+		parseErrs := map[string]string{}
+		entryCounts := map[string]int{}
+		for _, file := range matches {
+			parsed, perr := parseBirthdayFile(file)
+			base := filepath.Base(file)
+			if perr != nil {
+				parseErrs[base] = perr.Error()
+				continue
+			}
+			if parsed == nil {
+				parseErrs[base] = "nil parse"
+				continue
+			}
+			entryCounts[base] = len(parsed.Entries)
+			if len(parsed.Entries) == 0 {
+				parseErrs[base] = "0 entries"
+			}
+		}
 		httpx.OK(w, map[string]any{
 			"uploadDir":    h.UploadDir,
-			"dir":          h.dir(),
+			"dir":          dir,
 			"manifestPath": h.manifestPath(),
 			"dirExists":    err == nil && info.IsDir(),
 			"xlsx":         matches,
+			"entryCounts":  entryCounts,
+			"parseErrors":  parseErrs,
 			"manifest":     h.loadManifest(),
 		}, "OK")
 		return
@@ -74,7 +145,7 @@ func (h *Birthdays) handleGet(w http.ResponseWriter, r *http.Request) {
 	}
 	avatarMap := h.buildAvatarMap(r.Context())
 	all := make([]map[string]any, 0)
-	matches, _ := filepath.Glob(filepath.Join(h.dir(), "*.xlsx"))
+	matches, _ := filepath.Glob(filepath.Join(dir, "*.xlsx"))
 	sort.Strings(matches)
 	for _, file := range matches {
 		parsed, err := parseBirthdayFile(file)
@@ -234,54 +305,29 @@ func parseBirthdayFile(path string) (*birthdayParsed, error) {
 	}
 	sheet := sheets[0]
 
-	// RawCellValue: даты как Excel-сериал, а не локализованная строка
 	rows, err := f.GetRows(sheet, excelize.Options{RawCellValue: true})
 	if err != nil || len(rows) == 0 {
-		// fallback без raw
 		rows, err = f.GetRows(sheet)
-		if err != nil || len(rows) == 0 {
-			return nil, fmt.Errorf("no rows")
+		if err != nil {
+			return nil, fmt.Errorf("no rows: %w", err)
 		}
 	}
 
-	headerA := ""
-	headerB := ""
-	if len(rows) >= 1 {
-		if len(rows[0]) > 0 {
-			headerA = rows[0][0]
-		}
-		if len(rows[0]) > 1 {
-			headerB = rows[0][1]
-		}
+	headerA, _ := f.GetCellValue(sheet, "A1", excelize.Options{RawCellValue: true})
+	headerB, _ := f.GetCellValue(sheet, "B1", excelize.Options{RawCellValue: true})
+	if strings.TrimSpace(headerA) == "" && len(rows) > 0 && len(rows[0]) > 0 {
+		headerA = rows[0][0]
+	}
+	if strings.TrimSpace(headerB) == "" && len(rows) > 0 && len(rows[0]) > 1 {
+		headerB = rows[0][1]
 	}
 	month := monthNameToNumber(headerA)
 	year, _ := strconv.Atoi(strings.TrimSpace(headerB))
 
-	var entries []birthdayEntry
-	for i := 1; i < len(rows); i++ {
-		cells := rows[i]
-		fio := ""
-		if len(cells) > 0 {
-			fio = strings.TrimSpace(cells[0])
-		}
-		var rawDate any
-		if len(cells) > 1 {
-			rawDate = cells[1]
-		}
-		// если raw пустой — попробуем ячейку B{n} напрямую
-		if rawDate == nil || strings.TrimSpace(fmt.Sprint(rawDate)) == "" {
-			axis, _ := excelize.CoordinatesToCellName(2, i+1)
-			if v, err := f.GetCellValue(sheet, axis, excelize.Options{RawCellValue: true}); err == nil && v != "" {
-				rawDate = v
-			} else if v, err := f.GetCellValue(sheet, axis); err == nil {
-				rawDate = v
-			}
-		}
-		md := excelToMD(rawDate)
-		if fio == "" || md == nil {
-			continue
-		}
-		entries = append(entries, birthdayEntry{FIO: fio, Month: md.M, Day: md.D})
+	entries := collectBirthdayEntries(f, sheet, rows)
+	if len(entries) == 0 {
+		// GetRows иногда пропускает ячейки с датами — читаем A/B по номерам строк
+		entries = collectBirthdayEntriesByCells(f, sheet, 500)
 	}
 
 	if month == 0 && len(entries) > 0 {
@@ -299,6 +345,64 @@ func parseBirthdayFile(path string) (*birthdayParsed, error) {
 	}
 
 	return &birthdayParsed{Month: month, Year: year, Entries: entries}, nil
+}
+
+func collectBirthdayEntries(f *excelize.File, sheet string, rows [][]string) []birthdayEntry {
+	var entries []birthdayEntry
+	for i := 1; i < len(rows); i++ {
+		cells := rows[i]
+		fio := ""
+		if len(cells) > 0 {
+			fio = strings.TrimSpace(cells[0])
+		}
+		var rawDate any
+		if len(cells) > 1 {
+			rawDate = cells[1]
+		}
+		if rawDate == nil || strings.TrimSpace(fmt.Sprint(rawDate)) == "" {
+			axis, _ := excelize.CoordinatesToCellName(2, i+1)
+			if v, err := f.GetCellValue(sheet, axis, excelize.Options{RawCellValue: true}); err == nil && v != "" {
+				rawDate = v
+			} else if v, err := f.GetCellValue(sheet, axis); err == nil {
+				rawDate = v
+			}
+		}
+		md := excelToMD(rawDate)
+		if fio == "" || md == nil {
+			continue
+		}
+		entries = append(entries, birthdayEntry{FIO: fio, Month: md.M, Day: md.D})
+	}
+	return entries
+}
+
+func collectBirthdayEntriesByCells(f *excelize.File, sheet string, maxRows int) []birthdayEntry {
+	var entries []birthdayEntry
+	emptyStreak := 0
+	for row := 2; row <= maxRows; row++ {
+		axisA, _ := excelize.CoordinatesToCellName(1, row)
+		axisB, _ := excelize.CoordinatesToCellName(2, row)
+		fio, _ := f.GetCellValue(sheet, axisA)
+		fio = strings.TrimSpace(fio)
+		raw, _ := f.GetCellValue(sheet, axisB, excelize.Options{RawCellValue: true})
+		if raw == "" {
+			raw, _ = f.GetCellValue(sheet, axisB)
+		}
+		if fio == "" {
+			emptyStreak++
+			if emptyStreak >= 15 {
+				break
+			}
+			continue
+		}
+		emptyStreak = 0
+		md := excelToMD(raw)
+		if md == nil {
+			continue
+		}
+		entries = append(entries, birthdayEntry{FIO: fio, Month: md.M, Day: md.D})
+	}
+	return entries
 }
 
 type mdPair struct {

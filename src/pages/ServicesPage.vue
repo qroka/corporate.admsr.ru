@@ -238,11 +238,10 @@ async function moveService(index: number, dir: -1 | 1) {
 function cardProps(s: PortalService) {
   if (s.kind === 'external' && s.externalUrl) {
     return {
-      to: undefined,
-      as: 'a' as const,
-      href: s.externalUrl,
-      target: '_blank',
+      to: s.externalUrl,
+      target: '_blank' as const,
       rel: 'noopener noreferrer',
+      external: true,
     };
   }
   return { to: s.path || '/services' };

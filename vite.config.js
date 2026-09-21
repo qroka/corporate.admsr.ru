@@ -83,7 +83,12 @@ export default defineConfig({
       '/api/portal_my_permissions.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/api/portal_services.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/api/sync.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
-      '/api/birthdays.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
+      // ДР: xlsx лежат на testing в uploads; локальный public/birthdays_xlsx пустой
+      '/api/birthdays.php': {
+        target: 'https://172.17.4.21',
+        changeOrigin: true,
+        secure: false,
+      },
       '/api/tests_list.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/api/tests_save.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/api/tests_publish.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },

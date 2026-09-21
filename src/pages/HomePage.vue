@@ -48,8 +48,7 @@ type HomeService = {
   id: string;
   label: string;
   icon: string;
-  to?: string;
-  href?: string;
+  to: string;
   external?: boolean;
 };
 
@@ -64,7 +63,7 @@ const homeServices = computed<HomeService[]>(() => {
           id: `svc-${s.id}`,
           label: s.label,
           icon: s.icon,
-          href: s.externalUrl,
+          to: s.externalUrl,
           external: true,
         };
       }
@@ -417,11 +416,10 @@ onUnmounted(() => {
             :key="svc.id"
             :title="svc.label"
             :icon="svc.icon"
-            :to="svc.external ? undefined : svc.to"
-            :as="svc.external ? 'a' : undefined"
-            :href="svc.external ? svc.href : undefined"
+            :to="svc.to"
             :target="svc.external ? '_blank' : undefined"
             :rel="svc.external ? 'noopener noreferrer' : undefined"
+            :external="svc.external || undefined"
             variant="soft"
             class="bg-elevated"
           />
