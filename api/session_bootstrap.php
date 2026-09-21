@@ -17,10 +17,15 @@ header('Content-Type: application/json; charset=utf-8');
 
 $allowedOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173'];
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-header('Access-Control-Allow-Origin: ' . (in_array($origin, $allowedOrigins, true) ? $origin : ($origin ?: '*')));
+// Отражать произвольный Origin вместе с Allow-Credentials нельзя:
+// это позволяло любому стороннему сайту читать ответ с токеном сессии.
+if (in_array($origin, $allowedOrigins, true)) {
+    header('Access-Control-Allow-Origin: ' . $origin);
+    header('Access-Control-Allow-Credentials: true');
+    header('Vary: Origin');
+}
 header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Session-Token');
-header('Access-Control-Allow-Credentials: true');
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
     http_response_code(204);
@@ -59,23 +64,23 @@ try {
     exit;
 }
 
-$stmt = $pdo->prepare(
-    "SELECT id, user_group, auth, status, last_activity,
-            (auth = true AND last_activity IS NOT NULL AND last_activity > now() - interval '24 hours') AS session_ok
-     FROM public.user_info
-     WHERE id = :id AND status = true
-     LIMIT 1"
-);
-$stmt->execute([':id' => $id]);
-$row = $stmt->fetch();
+require_once __DIR__ . '/auth_context.php';
 
-if (!$row || !($row['session_ok'] === true || $row['session_ok'] === 't' || $row['session_ok'] === '1')) {
+// Личность берётся ТОЛЬКО из действующей сессии (cookie corp_session / Bearer).
+// id из тела запроса не доказывает личность: раньше он позволял выпустить
+// токен для любого активного пользователя без единого секрета.
+$current = auth_current_user($pdo);
+if (!$current) {
     http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Сессия портала недействительна. Войдите снова.', 'data' => null], JSON_UNESCAPED_UNICODE);
     exit;
 }
-
-require_once __DIR__ . '/auth_context.php';
+if ($id > 0 && $id !== (int)$current['id']) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Недостаточно прав', 'data' => null], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+$row = ['id' => (int)$current['id'], 'user_group' => (string)($current['user_group'] ?? '')];
 
 try {
     $token = auth_create_session($pdo, (int)$row['id']);

@@ -41,6 +41,13 @@ try {
   jsonError(500, 'Ошибка подключения к БД');
 }
 
+require_once __DIR__ . '/auth_context.php';
+
+// Справочник пользователей и его редактирование — только для администратора (SEC-001).
+// Раньше эндпоинт был полностью открыт: GET отдавал колонку password всех
+// сотрудников, PUT позволял любому сменить чужой пароль и user_group.
+auth_require_admin($pdo);
+
 $method = $_SERVER['REQUEST_METHOD'];
 $id     = isset($_GET['id']) ? (int)$_GET['id'] : null;
 
@@ -48,7 +55,7 @@ switch ($method) {
   case 'GET':
     try {
       $stmt = $pdo->prepare(
-        "SELECT u.id, u.status, u.login, u.password, u.firstname, u.surname, u.lastname, u.ofo, u.user_group, u.phone, u.email,
+        "SELECT u.id, u.status, u.login, u.firstname, u.surname, u.lastname, u.ofo, u.user_group, u.phone, u.email,
                 (u.auth = true AND u.last_activity IS NOT NULL AND u.last_activity > now() - interval '24 hours') AS auth,
                 to_char(u.last_activity AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS last_activity,
                 u.avatar_url, u.role,
@@ -62,7 +69,7 @@ switch ($method) {
       $rows = $stmt->fetchAll();
     } catch (Throwable $e) {
       $stmt = $pdo->prepare(
-        "SELECT id, status, login, password, firstname, surname, lastname, ofo, user_group, phone, email,
+        "SELECT id, status, login, firstname, surname, lastname, ofo, user_group, phone, email,
                 (auth = true AND last_activity IS NOT NULL AND last_activity > now() - interval '24 hours') AS auth,
                 to_char(last_activity AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS last_activity,
                 avatar_url, role, '' AS access_groups
@@ -77,7 +84,7 @@ switch ($method) {
         'id'            => (int)$r['id'],
         'status'        => (string)$r['status'],
         'login'         => (string)$r['login'],
-        'password'      => (string)$r['password'],
+        // Колонка password намеренно не отдаётся клиенту (SEC-001/SEC-005).
         'firstname'     => (string)$r['firstname'],
         'surname'       => (string)$r['surname'],
         'lastname'      => (string)$r['lastname'],
@@ -114,10 +121,22 @@ switch ($method) {
     $updatable = ['status', 'login', 'password', 'firstname', 'surname', 'lastname', 'ofo', 'user_group', 'phone', 'email', 'auth', 'avatar_url', 'role'];
     
     foreach ($updatable as $field) {
-        if (array_key_exists($field, $d)) {
-            $fields[] = "$field = :$field";
-            $params[":$field"] = $d[$field];
+        if (!array_key_exists($field, $d)) {
+            continue;
         }
+        $value = $d[$field];
+        if ($field === 'password') {
+            // Пустая строка = «не менять пароль»: список пользователей больше не
+            // отдаёт пароль, поэтому форма редактирования присылает пустое поле,
+            // когда администратор его не трогал. Раньше это затирало пароль.
+            $plain = is_string($value) ? trim($value) : '';
+            if ($plain === '') {
+                continue;
+            }
+            $value = password_hash($plain, PASSWORD_DEFAULT);
+        }
+        $fields[] = "$field = :$field";
+        $params[":$field"] = $value;
     }
     
     if (count($fields) > 0) {

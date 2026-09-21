@@ -55,6 +55,11 @@ try {
     jsonError(500, 'Ошибка подключения к БД');
 }
 
+require_once __DIR__ . '/auth_context.php';
+
+// Карточка сотрудника — внутренние данные портала (SEC-001).
+$currentUser = auth_require_user($pdo);
+
 // --- GET: загрузить профиль ---
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
@@ -119,6 +124,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $avatar_url = isset($body['avatar_url']) ? trim((string)$body['avatar_url']) : null;
 
     if ($id <= 0) jsonError(400, 'Некорректный id');
+
+    // id из тела запроса — не доказательство личности: менять можно только
+    // свою карточку, чужую — только администратору (SEC-001, IDOR).
+    if ($id !== (int)$currentUser['id'] && !auth_is_admin($currentUser)) {
+        jsonError(403, 'Недостаточно прав');
+    }
 
     $stmt = $pdo->prepare(
         'UPDATE public.user_info
