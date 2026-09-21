@@ -55,6 +55,19 @@ func (h *Birthdays) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Birthdays) handleGet(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("debug") != "" {
+		matches, _ := filepath.Glob(filepath.Join(h.dir(), "*.xlsx"))
+		info, err := os.Stat(h.dir())
+		httpx.OK(w, map[string]any{
+			"uploadDir":    h.UploadDir,
+			"dir":          h.dir(),
+			"manifestPath": h.manifestPath(),
+			"dirExists":    err == nil && info.IsDir(),
+			"xlsx":         matches,
+			"manifest":     h.loadManifest(),
+		}, "OK")
+		return
+	}
 	if r.URL.Query().Get("manifest") != "" {
 		httpx.OK(w, h.loadManifest(), "OK")
 		return

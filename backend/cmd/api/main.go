@@ -144,7 +144,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("go api listening on %s", cfg.HTTPAddr)
+	log.Printf("go api listening on %s (upload_dir=%s)", cfg.HTTPAddr, cfg.UploadDir)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("listen: %v", err)
 		}
