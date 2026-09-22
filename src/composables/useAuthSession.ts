@@ -24,8 +24,13 @@ export function getSessionToken(): string | null {
 
 export function setSessionToken(token: string | null) {
   try {
-    if (token) localStorage.setItem(SESSION_KEY, token);
-    else localStorage.removeItem(SESSION_KEY);
+    if (token) {
+      localStorage.setItem(SESSION_KEY, token);
+      // Получен валидный токен → снова разрешаем реагировать на будущий 401.
+      unauthorizedFired = false;
+    } else {
+      localStorage.removeItem(SESSION_KEY);
+    }
   } catch {
     /* ignore */
   }
@@ -56,6 +61,36 @@ export type ApiResult<T = unknown> = {
 };
 
 let bootstrapPromise: Promise<boolean> | null = null;
+
+/**
+ * Единый обработчик недействительной сессии.
+ * Регистрируется приложением (см. useSessionActivity → forceLogout) и вызывается,
+ * когда авторизованный запрос получил 401 даже после попытки восстановить токен.
+ * Это убирает повторяющуюся ошибку «Требуется авторизация»: вместо неё пользователь
+ * один раз чисто уводится на страницу входа.
+ */
+let onUnauthorized: (() => void) | null = null;
+let unauthorizedFired = false;
+
+export function setUnauthorizedHandler(fn: (() => void) | null) {
+  onUnauthorized = fn;
+  unauthorizedFired = false;
+}
+
+/** Вызвать обработчик недействительной сессии не чаще одного раза за «залипание». */
+function triggerUnauthorized() {
+  // Реагируем только если считали себя залогиненными (иначе это обычный аноним).
+  if (!getAuthUser()?.id) return;
+  if (unauthorizedFired) return;
+  unauthorizedFired = true;
+  try {
+    onUnauthorized?.();
+  } finally {
+    // Разрешаем повторный триггер позже (после нового входа счётчик сбрасывается
+    // в setUnauthorizedHandler / setSessionToken).
+    setTimeout(() => { unauthorizedFired = false; }, 5000);
+  }
+}
 
 /**
  * Если sessionToken нет, но пользователь залогинен в портале —
@@ -140,14 +175,19 @@ export async function apiSessionFetch<T = unknown>(
 
   let result = await doFetch();
   if ((result as any)._unauthorized && getAuthUser()?.id) {
-    // токен протух — попробовать выдать новый один раз
+    // Токен мог протухнуть/потеряться — пробуем один раз восстановить его.
+    // ensureSessionToken → session_bootstrap опознаёт пользователя по cookie
+    // corp_session (same-origin), поэтому для реально залогиненного пользователя
+    // токен восстановится, и 401 не дойдёт до выхода.
     setSessionToken(null);
     const ok = await ensureSessionToken();
     if (ok) result = await doFetch();
   }
 
   if ((result as any)._unauthorized) {
-    result.message = 'Требуется авторизация. Выйдите из портала и войдите снова.';
+    result.message = 'Сессия истекла. Войдите снова.';
+    // Сессия действительно недействительна → единый чистый выход на вход.
+    triggerUnauthorized();
   }
   return result;
 }
@@ -167,13 +207,18 @@ export async function apiSessionUpload<T = unknown>(
   try {
     const data = await res.json();
     if (res.status === 401) {
+      triggerUnauthorized();
       return {
         success: false,
-        message: 'Требуется авторизация. Выйдите из портала и войдите снова.',
+        message: 'Сессия истекла. Войдите снова.',
       };
     }
     return data;
   } catch {
+    if (res.status === 401) {
+      triggerUnauthorized();
+      return { success: false, message: 'Сессия истекла. Войдите снова.' };
+    }
     return { success: false, message: `HTTP ${res.status}` };
   }
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import * as z from 'zod'
-import { reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { FormSubmitEvent } from '@nuxt/ui'
 import { userNeedsOnboarding } from '../composables/useOnboarding'
@@ -22,6 +22,17 @@ const state = reactive({
 
 const loading = ref(false)
 const errorMessage = ref('')
+
+// Если сюда привёл автоматический выход по истёкшей сессии — показываем понятную
+// причину вместо тихого редиректа (флаг ставит forceLogout в useSessionActivity).
+onMounted(() => {
+  try {
+    if (sessionStorage.getItem('session-expired')) {
+      sessionStorage.removeItem('session-expired')
+      errorMessage.value = 'Сессия истекла. Войдите снова.'
+    }
+  } catch { /* ignore */ }
+})
 
 async function onSubmit(event: FormSubmitEvent<Schema>) {
   loading.value = true

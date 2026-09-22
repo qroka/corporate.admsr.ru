@@ -191,7 +191,18 @@ func (s *Service) CurrentUser(ctx context.Context, r *http.Request) (*User, erro
 		return nil, ErrUnauthorized
 	}
 
-	_, _ = s.Pool.Exec(ctx, `UPDATE public.user_sessions SET last_seen_at = now() WHERE id = $1`, sessionID)
+	// Скользящее продление сессии: каждый авторизованный запрос сдвигает срок
+	// действия на полный TTL от текущего момента. Активный пользователь не
+	// «отваливается» посреди работы (меньше ошибок «Требуется авторизация»),
+	// а по-настоящему простоявшая дольше TTL сессия честно истекает по условию выше.
+	ttlHours := s.TTLHours
+	if ttlHours <= 0 {
+		ttlHours = DefaultTTLHours
+	}
+	_, _ = s.Pool.Exec(ctx, `
+		UPDATE public.user_sessions
+		SET last_seen_at = now(), expires_at = now() + make_interval(hours => $2)
+		WHERE id = $1`, sessionID, ttlHours)
 	_, _ = s.Pool.Exec(ctx, `UPDATE public.user_info SET last_activity = now() WHERE id = $1`, u.ID)
 
 	u.Status = true

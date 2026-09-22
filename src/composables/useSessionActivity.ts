@@ -1,4 +1,5 @@
 import type { Router } from 'vue-router';
+import { setUnauthorizedHandler } from './useAuthSession';
 
 /**
  * Авто-логаут по бездействию.
@@ -48,9 +49,16 @@ export function startSessionActivity(router: Router) {
     localStorage.removeItem('auth-user');
     localStorage.removeItem('auth-last-check');
     if (router.currentRoute.value.name !== 'login') {
+      // Отметка для страницы входа: показать «сессия истекла» вместо тихого редиректа.
+      try { sessionStorage.setItem('session-expired', '1'); } catch { /* ignore */ }
       void router.replace({ name: 'login' });
     }
   }
+
+  // Любой авторизованный API-запрос (курсы/попытки и т.п.), получивший 401 после
+  // попытки восстановления, приводит к тому же чистому выходу — без повторяющейся
+  // ошибки «Требуется авторизация».
+  setUnauthorizedHandler(forceLogout);
 
   async function checkAuth() {
     const id = getUserId();
