@@ -26,6 +26,34 @@ const { headerName, avatarSrc, loading, canToggleAdminRole } = useHeaderUser();
 const breadcrumbItems = usePortalBreadcrumbs();
 const appConfig = useAppConfig();
 
+/**
+ * Длинный путь сворачиваем: первый элемент и два последних, середина — под «…».
+ * Скрытые уровни доступны из меню, так что переход по ним не теряется.
+ */
+const visibleBreadcrumbs = computed(() => {
+  const items = breadcrumbItems.value;
+  if (items.length <= 3) return items;
+  return [items[0], { slot: 'ellipsis' }, ...items.slice(-2)];
+});
+
+const hiddenBreadcrumbMenu = computed(() => {
+  const items = breadcrumbItems.value;
+  if (items.length <= 3) return [];
+  return [items.slice(1, -2).map((i) => ({ label: i.label, icon: i.icon, to: i.to }))];
+});
+
+/** Подсказку у крошки показываем, только если подпись действительно обрезана. */
+const truncatedCrumbs = ref({});
+
+function markCrumbTruncation(index, event) {
+  const el = event.currentTarget;
+  truncatedCrumbs.value = { ...truncatedCrumbs.value, [index]: el.scrollWidth > el.clientWidth + 1 };
+}
+
+watch(breadcrumbItems, () => {
+  truncatedCrumbs.value = {};
+});
+
 const props = defineProps({
   isDark: {
     type: Boolean,
@@ -265,9 +293,13 @@ const userMenuItems = computed(() => {
 </script>
 
 <template>
+  <!--
+    `@container` на корне: ширина шапки зависит от сайдбара (его тянут в 220–400px
+    и сворачивают), поэтому поиск подстраивается под ширину шапки, а не окна.
+  -->
   <UDashboardNavbar
     :ui="{
-      root: 'h-[60px] shrink-0 border-0 mx-2 sm:mx-4 mt-4 rounded-panel bg-elevated px-2 sm:px-4',
+      root: '@container h-[60px] shrink-0 border-0 mx-2 sm:mx-4 mt-4 rounded-panel bg-elevated px-2 sm:px-4',
       left: 'min-w-0 flex-1',
       right: 'gap-2 sm:gap-4 shrink-0 min-w-0',
       title: 'min-w-0',
@@ -275,7 +307,7 @@ const userMenuItems = computed(() => {
   >
     <template #title>
       <UBreadcrumb
-        :items="breadcrumbItems"
+        :items="visibleBreadcrumbs"
         class="min-w-0"
         :ui="{
           root: 'min-w-0',
@@ -285,42 +317,78 @@ const userMenuItems = computed(() => {
           linkLabel: 'text-sm font-medium truncate',
           separatorIcon: 'size-5 text-muted',
         }"
-      />
+      >
+        <template #item-label="{ item, index }">
+          <UTooltip :text="item.label" :disabled="!truncatedCrumbs[index]" :content="{ side: 'bottom' }">
+            <span class="block truncate" @mouseenter="markCrumbTruncation(index, $event)">{{ item.label }}</span>
+          </UTooltip>
+        </template>
+
+        <template #ellipsis>
+          <!-- span-обёртка: подсказка и меню не делят один триггер -->
+          <UTooltip text="Показать весь путь" :content="{ side: 'bottom' }">
+            <span class="inline-flex">
+              <UDropdownMenu :items="hiddenBreadcrumbMenu" :content="{ align: 'start', sideOffset: 8 }">
+                <UButton
+                  type="button"
+                  color="neutral"
+                  variant="ghost"
+                  size="xs"
+                  square
+                  icon="i-lucide-ellipsis"
+                  aria-label="Показать весь путь"
+                />
+              </UDropdownMenu>
+            </span>
+          </UTooltip>
+        </template>
+      </UBreadcrumb>
     </template>
 
     <template #right>
       <div class="flex items-center gap-2 min-w-0">
+        <!-- Узкая шапка: только иконка, подпись — в подсказке -->
         <UDashboardSearchButton
           collapsed
-          :tooltip="{ text: 'Поиск' }"
+          :tooltip="{ content: { side: 'bottom' }, kbds: ['meta', 'K'] }"
           color="neutral"
           variant="outline"
           size="md"
-          square
-          class="inline-flex h-8 shrink-0 lg:hidden"
+          class="inline-flex h-8 shrink-0 @4xl:hidden"
+        />
+        <!-- Средняя: короткая подпись -->
+        <UDashboardSearchButton
+          label="Поиск…"
+          color="neutral"
+          variant="outline"
+          size="md"
+          class="hidden @4xl:inline-flex @6xl:hidden h-8 w-44 justify-start"
           :kbds="['meta', 'K']"
         />
+        <!-- Широкая: полная подпись -->
         <UDashboardSearchButton
           label="Искать сотрудника, памятку, документ..."
           color="neutral"
           variant="outline"
           size="md"
-          class="hidden lg:inline-flex h-8 min-w-0 w-[min(100%,340px)] max-w-[340px] xl:w-[340px] justify-start"
+          class="hidden @6xl:inline-flex h-8 min-w-0 w-[340px] justify-start"
           :kbds="['meta', 'K']"
           :ui="{
             label: 'truncate',
           }"
         />
 
-        <UButton
-          color="neutral"
-          variant="outline"
-          size="md"
-          square
-          class="h-8 shrink-0"
-          icon="i-lucide-bell"
-          aria-label="Уведомления"
-        />
+        <UTooltip text="Уведомления" :content="{ side: 'bottom' }">
+          <UButton
+            color="neutral"
+            variant="outline"
+            size="md"
+            square
+            class="h-8 shrink-0"
+            icon="i-lucide-bell"
+            aria-label="Уведомления"
+          />
+        </UTooltip>
 
         <UDropdownMenu
           v-model:open="userMenuOpen"
