@@ -1803,7 +1803,7 @@ func (h *CoursesHandler) MaterialOpen(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CoursesHandler) MaterialHeartbeat(w http.ResponseWriter, r *http.Request) {
-	h.post(w, r, func(ctx context.Context, user *auth.User, body map[string]any, _ *http.Request) (any, error) {
+	h.post(w, r, func(ctx context.Context, user *auth.User, body map[string]any, req *http.Request) (any, error) {
 		enrollmentID, err := tests.ToInt64Public(body["enrollmentId"])
 		materialID, err2 := tests.ToInt64Public(body["materialId"])
 		if err != nil || err2 != nil || enrollmentID <= 0 || materialID <= 0 {
@@ -1863,11 +1863,19 @@ func (h *CoursesHandler) MaterialHeartbeat(w http.ResponseWriter, r *http.Reques
 		if err := tx.Commit(ctx); err != nil {
 			return nil, courses.Err(http.StatusInternalServerError, "Ошибка heartbeat")
 		}
+		// Время темы только что выросло — если это был последний недостающий
+		// минимум, тему нужно завершить сейчас: иначе статус никто не пересмотрит
+		// и следующая тема останется закрытой.
+		topicCompleted := svc.CompleteTopicIfReady(ctx, enrollmentID, topicID)
+		if topicCompleted {
+			_, _ = svc.TryCompleteEnrollment(ctx, enrollmentID, req)
+		}
 		row, _ := scanOneMap(ctx, h.Pool, `SELECT active_seconds, status FROM public.course_material_progress WHERE enrollment_id=$1 AND material_id=$2`, enrollmentID, materialID)
 		return map[string]any{
 			"ignored": false, "addedSeconds": add, "sessionId": session["id"],
 			"activeSeconds": row["active_seconds"], "status": row["status"],
 			"minimumActiveSeconds": m["minimum_active_seconds"],
+			"topicCompleted": topicCompleted,
 		}, nil
 	})
 }

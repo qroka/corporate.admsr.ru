@@ -740,9 +740,10 @@ func (s *Service) NextAction(ctx context.Context, enrollmentID int64) map[string
 		return map[string]any{"type": "done", "label": "Курс завершён"}
 	case "failed":
 		return map[string]any{"type": "failed", "label": "Курс не сдан"}
-	case "overdue":
-		return map[string]any{"type": "overdue", "label": "Просрочен дедлайн"}
 	}
+	// "overdue" намеренно не обрывает расчёт: просроченный курс по-прежнему проходим
+	// (TryCompleteEnrollment статус не проверяет, AttemptStart пускает overdue),
+	// поэтому сотруднику нужен реальный следующий шаг, а не тупик.
 	versionID := tests.ToInt64Must(enr["course_version_id"])
 	_ = s.RecalculateLocks(ctx, enrollmentID)
 	assembled, _ := s.AssembleVersion(ctx, versionID, false)
@@ -806,6 +807,13 @@ func (s *Service) NextAction(ctx context.Context, enrollmentID int64) map[string
 		if !s.CheckTopicComplete(ctx, enrollmentID, tid) {
 			return map[string]any{"type": "topic", "topicId": tid, "label": "Завершите тему «" + fmt.Sprint(topic["title"]) + "»"}
 		}
+		// Условия темы выполнены, но статус не обновлён: так бывает, когда минимум
+		// времени темы набран уже после отметки последнего материала. Эндпоинта для
+		// ручного завершения темы нет, поэтому завершаем здесь и открываем следующую.
+		// Рекурсия ограничена числом тем: каждый проход переводит одну тему в completed.
+		if s.markTopicCompleted(ctx, enrollmentID, tid) {
+			return s.NextAction(ctx, enrollmentID)
+		}
 		return map[string]any{"type": "complete_topic", "topicId": tid, "label": "Отметить тему «" + fmt.Sprint(topic["title"]) + "» завершённой"}
 	}
 	if Bool(assembled["requireFinalTest"]) {
@@ -819,6 +827,30 @@ func (s *Service) NextAction(ctx context.Context, enrollmentID int64) map[string
 	return map[string]any{"type": "complete_course", "label": "Завершить курс"}
 }
 
+// markTopicCompleted переводит тему в completed и пересчитывает блокировки.
+// Возвращает true, только если статус действительно изменился — это и есть
+// гарантия, что рекурсия в NextAction не зациклится.
+func (s *Service) markTopicCompleted(ctx context.Context, enrollmentID, topicID int64) bool {
+	tag, err := s.Pool.Exec(ctx, `
+		UPDATE public.course_topic_progress
+		SET status = 'completed', completed_at = COALESCE(completed_at, now()), updated_at = now()
+		WHERE enrollment_id = $1 AND topic_id = $2 AND status <> 'completed'`, enrollmentID, topicID)
+	if err != nil || tag.RowsAffected() == 0 {
+		return false
+	}
+	_ = s.RecalculateLocks(ctx, enrollmentID)
+	return true
+}
+
+// CompleteTopicIfReady — то же, но с проверкой условий. Нужна там, где время
+// темы растёт (heartbeat), а статус иначе никто бы не пересмотрел.
+func (s *Service) CompleteTopicIfReady(ctx context.Context, enrollmentID, topicID int64) bool {
+	if !s.CheckTopicComplete(ctx, enrollmentID, topicID) {
+		return false
+	}
+	return s.markTopicCompleted(ctx, enrollmentID, topicID)
+}
+
 func (s *Service) EnrollmentProgress(ctx context.Context, enrollmentID int64) map[string]any {
 	enr, err := scanOne(ctx, s.Pool, `SELECT * FROM public.course_enrollments WHERE id = $1`, enrollmentID)
 	if err != nil || enr == nil {
@@ -827,6 +859,9 @@ func (s *Service) EnrollmentProgress(ctx context.Context, enrollmentID int64) ma
 			"nextAction": map[string]any{"type": "unknown", "label": "Запись не найдена"},
 		}
 	}
+	// NextAction может завершить «застрявшую» тему — считаем его до подсчёта,
+	// чтобы проценты и счётчик тем в этом же ответе уже учли изменение.
+	nextAction := s.NextAction(ctx, enrollmentID)
 	versionID := tests.ToInt64Must(enr["course_version_id"])
 	_ = s.EnsureTopicProgressRows(ctx, enrollmentID, versionID)
 	var totalReq, doneReq int
@@ -857,7 +892,7 @@ func (s *Service) EnrollmentProgress(ctx context.Context, enrollmentID int64) ma
 	}
 	return map[string]any{
 		"percent": percent, "topicsCompleted": doneReq, "topicsTotal": totalReq,
-		"nextAction": s.NextAction(ctx, enrollmentID),
+		"nextAction": nextAction,
 	}
 }
 
