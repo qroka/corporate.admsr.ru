@@ -8,6 +8,21 @@ export type CourseNextAction = {
   materialId?: number;
 };
 
+/**
+ * Шаг, по которому сотрудник реально может перейти. Остальные типы
+ * (`done`, `failed`, `locked`, `unknown`, `overdue` у старого API) — это
+ * состояния, а не действия: их подпись нельзя показывать как «Дальше: …»
+ * и нельзя вешать на кнопку.
+ */
+export function isActionableStep(action: CourseNextAction | null | undefined): boolean {
+  const type = String(action?.type ?? '');
+  const topicId = Number(action?.topicId || 0);
+  const linkId = Number(action?.courseTestLinkId || 0);
+  if (type === 'topic_test' || type === 'final_test') return linkId > 0;
+  if (type === 'material' || type === 'topic' || type === 'complete_topic') return topicId > 0;
+  return type === 'complete_course';
+}
+
 /** Куда вести после успешного шага (тест, тема). Неизвестный шаг — карта курса. */
 export async function followCourseNextAction(
   router: Router,

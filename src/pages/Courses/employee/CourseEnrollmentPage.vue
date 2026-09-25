@@ -1,9 +1,13 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
 import { useBreadcrumbCurrentLabel } from '../../../composables/usePortalNavigation';
+import CourseStatusBadge from '../components/CourseStatusBadge.vue';
+import { describeDeadline, formatDateTime } from '../courseDeadline';
+import { followCourseNextAction, isActionableStep } from '../followNextAction';
+import { plural } from '../courseDuration';
 
 const route = useRoute();
 const router = useRouter();
@@ -17,7 +21,28 @@ const loadError = ref<string | null>(null);
 const acting = ref(false);
 const data = ref<any>(null);
 
-const title = computed(() => data.value?.enrollment?.course?.title || data.value?.version?.title || 'Обучение');
+const enrollment = computed(() => data.value?.enrollment || null);
+const title = computed(() => enrollment.value?.course?.title || 'Обучение');
+const status = computed(() => String(enrollment.value?.status || ''));
+const progress = computed(() => enrollment.value?.progress || data.value?.progress || {});
+const percent = computed(() => Number(progress.value?.percent ?? 0));
+const topicsDone = computed(() => Number(progress.value?.topicsCompleted ?? 0));
+const topicsTotal = computed(() => Number(progress.value?.topicsTotal ?? 0));
+const next = computed(() => data.value?.nextAction || progress.value?.nextAction || null);
+const topics = computed<any[]>(() => data.value?.version?.topics || []);
+
+const isCompleted = computed(() => status.value === 'completed');
+/** Пройденный курс открывается на повтор — темы не блокируются. */
+const isReview = computed(() => isCompleted.value || status.value === 'failed');
+const notStarted = computed(() => status.value === 'not_started');
+
+const deadline = computed(() => describeDeadline(enrollment.value?.deadlineAt, isCompleted.value));
+const deadlineClass = computed(() => {
+  if (deadline.value?.tone === 'error') return 'text-error';
+  if (deadline.value?.tone === 'warning') return 'text-warning';
+  return 'text-muted';
+});
+const completedAtLabel = computed(() => formatDateTime(enrollment.value?.completedAt));
 
 watch(
   title,
@@ -30,101 +55,77 @@ watch(
 onUnmounted(() => {
   breadcrumbLabel.value = null;
 });
-const progress = computed(() => data.value?.enrollment?.progress || data.value?.progress || {});
-const percent = computed(() => progress.value?.percent ?? 0);
-const topicsDone = computed(() => progress.value?.topicsCompleted ?? 0);
-const topicsTotal = computed(() => progress.value?.topicsTotal ?? 0);
-const next = computed(() => data.value?.nextAction || progress.value?.nextAction);
-const topics = computed(() => data.value?.version?.topics || []);
-const enrollmentStatus = computed(() => String(data.value?.enrollment?.status || ''));
-const isReview = computed(() => ['completed', 'failed'].includes(enrollmentStatus.value));
-const completedAt = computed(() => data.value?.enrollment?.completedAt || null);
 
-const completedAtLabel = computed(() => {
-  const raw = completedAt.value;
-  if (!raw) return '';
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return '';
-  const date = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
-  const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-  return `${date}, ${time}`;
-});
-
-const continueLabel = computed(() => {
-  if (isReview.value) return 'Смотреть материалы';
-  if (data.value?.enrollment?.status === 'not_started') return 'Начать курс';
-  return next.value?.label || 'Продолжить';
-});
-
-const nextHint = computed(() => {
-  if (enrollmentStatus.value === 'completed' && completedAtLabel.value) {
-    return `Обучение завершено ${completedAtLabel.value}. Можно снова открыть темы.`;
-  }
-  if (isReview.value) return 'Курс завершён — можно снова открыть темы.';
-  if (data.value?.enrollment?.status === 'not_started') {
-    return 'Нажмите «Начать курс», чтобы открыть первую тему.';
-  }
-  const t = next.value?.type;
-  if (t === 'topic' || t === 'topic_material') return 'Следующий шаг — продолжить тему.';
-  if (t === 'topic_test') return 'Следующий шаг — тест по теме.';
-  if (t === 'final_test') return 'Следующий шаг — итоговый тест.';
-  if (t === 'done' || t === 'complete_course') return 'Курс почти завершён — откройте итоги.';
-  return next.value?.label || 'Продолжите с того места, где остановились.';
-});
-
-onMounted(async () => {
+async function load() {
   loading.value = true;
   loadError.value = null;
   try {
     data.value = await store.getEnrollment(enrollmentId.value);
   } catch (e: any) {
+    data.value = null;
     loadError.value = e?.message || 'Курс недоступен';
-    toast.add({ title: 'Курс недоступен', description: loadError.value, color: 'error', icon: 'i-lucide-alert-circle' });
   } finally {
     loading.value = false;
   }
+}
+
+onMounted(load);
+
+function topicTitleById(id: unknown) {
+  return topics.value.find((t) => Number(t.id) === Number(id))?.title || '';
+}
+
+/** Главная кнопка: подпись говорит, куда именно она ведёт. */
+const primary = computed<null | { label: string; icon: string }>(() => {
+  if (isReview.value) return null;
+  if (notStarted.value) return { label: 'Начать курс', icon: 'i-lucide-play' };
+  const a = next.value;
+  if (!isActionableStep(a)) return null;
+  switch (a.type) {
+    case 'topic_test':
+      return { label: a.label || 'Пройти тест темы', icon: 'i-lucide-clipboard-check' };
+    case 'final_test':
+      return { label: 'Пройти итоговый тест', icon: 'i-lucide-clipboard-check' };
+    case 'complete_course':
+      return { label: 'Завершить и посмотреть итоги', icon: 'i-lucide-award' };
+    default: {
+      const t = topicTitleById(a.topicId);
+      return { label: t ? `Продолжить: «${t}»` : 'Продолжить', icon: 'i-lucide-arrow-right' };
+    }
+  }
 });
 
-function topicStatus(t: any) {
-  return t.progress?.status || 'locked';
-}
-
-function isLocked(t: any) {
-  if (isReview.value) return false;
-  return topicStatus(t) === 'locked';
-}
-
-async function continueLearning() {
-  if (isReview.value) {
-    const first = topics.value[0];
-    if (first) openTopic(first);
-    return;
+const hint = computed(() => {
+  if (isCompleted.value) {
+    return completedAtLabel.value
+      ? `Обучение завершено ${completedAtLabel.value}. Материалы можно открыть снова.`
+      : 'Обучение завершено. Материалы можно открыть снова.';
   }
+  if (notStarted.value) return 'Нажмите «Начать курс» — откроется первая тема.';
+  const a = next.value;
+  if (a?.type === 'material') return 'Следующий шаг — изучить материал.';
+  if (a?.type === 'topic_test') return 'Следующий шаг — тест по теме.';
+  if (a?.type === 'topic') return 'Тема почти пройдена — в ней осталось провести немного времени.';
+  if (a?.type === 'final_test') return 'Все темы пройдены — остался итоговый тест.';
+  if (a?.type === 'complete_course') return 'Все шаги выполнены — осталось подвести итоги.';
+  if (a?.type === 'locked') return a.label || 'Следующая тема пока закрыта.';
+  return '';
+});
+
+async function onPrimary() {
   acting.value = true;
   try {
-    const status = data.value?.enrollment?.status;
-    if (status === 'not_started') {
+    let action = next.value;
+    if (notStarted.value) {
       await store.startCourse(enrollmentId.value);
       data.value = await store.getEnrollment(enrollmentId.value);
+      action = next.value;
     }
-    const action = data.value?.nextAction || (await store.nextAction(enrollmentId.value) as any)?.nextAction;
-    if (!action) return;
-    if (action.type === 'topic_test' || action.type === 'final_test') {
-      await router.push({
-        name: 'course-test',
-        params: {
-          enrollmentId: enrollmentId.value,
-          courseTestLinkId: action.courseTestLinkId,
-        },
-      });
-    } else if (action.topicId) {
-      await router.push({
-        name: 'course-topic',
-        params: { enrollmentId: enrollmentId.value, topicId: action.topicId },
-      });
-    } else if (action.type === 'done' || action.type === 'complete_course') {
-      await router.push({ name: 'course-result', params: { enrollmentId: enrollmentId.value } });
+    if (!isActionableStep(action)) {
+      toast.add({ title: 'Следующий шаг пока недоступен', description: action?.label, color: 'warning', icon: 'i-lucide-info' });
+      return;
     }
+    await followCourseNextAction(router, enrollmentId.value, action);
   } catch (e: any) {
     toast.add({ title: 'Не удалось продолжить', description: e?.message, color: 'error', icon: 'i-lucide-x' });
   } finally {
@@ -132,106 +133,171 @@ async function continueLearning() {
   }
 }
 
-function openTopic(t: any) {
-  if (isLocked(t)) return;
-  router.push({
-    name: 'course-topic',
-    params: { enrollmentId: enrollmentId.value, topicId: t.id },
-  });
+function topicStatus(t: any): string {
+  return t.progress?.status || 'locked';
+}
+
+function isLocked(t: any) {
+  return !isReview.value && topicStatus(t) === 'locked';
+}
+
+/** Статус словами — не только иконкой (правило доступности «не только цветом»). */
+function topicStatusText(t: any, idx: number) {
+  const s = topicStatus(t);
+  if (s === 'completed') return 'Пройдена';
+  if (isReview.value) return 'Доступна для просмотра';
+  if (s === 'in_progress') return 'В процессе';
+  if (s === 'available') return 'Доступна';
+  return idx > 0 ? `Откроется после темы ${idx}` : 'Пока закрыта';
+}
+
+function topicIcon(t: any) {
+  const s = topicStatus(t);
+  if (s === 'completed') return 'i-lucide-circle-check';
+  if (isLocked(t)) return 'i-lucide-lock';
+  if (s === 'in_progress') return 'i-lucide-circle-dot';
+  return 'i-lucide-circle';
+}
+
+function topicMeta(t: any) {
+  const n = Number(t.materialsCount ?? t.materials?.length ?? 0);
+  const parts = [`${n} ${plural(n, ['материал', 'материала', 'материалов'])}`];
+  if (t.topicTest || t.testLink) parts.push('тест');
+  return parts.join(' · ');
 }
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full max-w-3xl mx-auto min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
-    <div v-if="loading" class="flex flex-col gap-3 p-1">
-      <USkeleton class="h-10 w-2/3 rounded-lg" />
-      <USkeleton class="h-24 w-full rounded-xl" />
-    </div>
-
-    <template v-else-if="data">
-      <div class="flex flex-col gap-3 min-w-0 rounded-xl ring-1 ring-default bg-elevated/40 p-4">
-        <div class="flex flex-col gap-2 min-w-0">
-          <h1 class="text-2xl font-medium text-highlighted break-words">{{ title }}</h1>
-          <p v-if="data.version?.shortDescription" class="text-sm text-muted break-words whitespace-pre-wrap">
-            {{ data.version.shortDescription }}
-          </p>
-        </div>
-
-        <div class="flex flex-col gap-2">
-          <UProgress
-            :model-value="percent"
-            size="md"
-            color="primary"
-            :aria-label="`Завершено ${topicsDone} из ${topicsTotal} тем, ${percent} процентов`"
-          />
-          <p class="text-sm text-dimmed">
-            Завершено {{ topicsDone }} из {{ topicsTotal }} тем · {{ percent }}%
-          </p>
-          <p v-if="enrollmentStatus === 'completed' && completedAtLabel" class="text-sm text-muted">
-            Дата завершения: {{ completedAtLabel }}
-          </p>
-        </div>
-
-        <p class="text-sm text-muted">{{ nextHint }}</p>
-
-        <div class="flex flex-wrap gap-2">
-          <UButton
-            color="primary"
-            size="lg"
-            class="w-fit"
-            :loading="acting"
-            :icon="isReview ? 'i-lucide-book-open' : (data.enrollment?.status === 'not_started' ? 'i-lucide-play' : 'i-lucide-arrow-right')"
-            @click="continueLearning"
-          >
-            {{ continueLabel }}
-          </UButton>
-          <UButton
-            v-if="isReview"
-            color="neutral"
-            variant="soft"
-            size="lg"
-            icon="i-lucide-award"
-            :to="{ name: 'course-result', params: { enrollmentId } }"
-          >
-            Итоги
-          </UButton>
-        </div>
+  <UMain class="relative w-full h-full min-h-0">
+    <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-3xl mx-auto overflow-y-auto scrollbar-hide p-px pb-8">
+      <div v-if="loading" class="flex flex-col gap-4" aria-busy="true" aria-label="Загрузка курса">
+        <USkeleton class="h-16 w-2/3 rounded-lg" />
+        <USkeleton class="h-36 w-full rounded-panel" />
+        <USkeleton v-for="n in 3" :key="n" class="h-16 w-full rounded-panel" />
       </div>
 
-      <section class="flex flex-col gap-2 min-w-0 p-1">
-        <h2 class="text-lg font-medium">Темы</h2>
-        <ul class="flex flex-col gap-2 list-none p-0 m-0 min-w-0">
-          <li
-            v-for="(t, idx) in topics"
-            :key="t.id"
-            class="rounded-xl ring-1 ring-default p-4 flex items-center gap-3 min-w-0"
-            :class="isLocked(t) ? 'opacity-60' : 'cursor-pointer hover:bg-elevated/40'"
-            @click="openTopic(t)"
-          >
-            <span class="text-dimmed tabular-nums text-sm w-6 shrink-0">{{ idx + 1 }}</span>
-            <div class="flex-1 min-w-0">
-              <p class="font-medium break-words">{{ t.title }}</p>
-            </div>
-            <UIcon
-              :name="isLocked(t) ? 'i-lucide-lock' : (topicStatus(t) === 'completed' ? 'i-lucide-check-circle' : 'i-lucide-chevron-right')"
-              class="size-5 text-dimmed shrink-0"
-            />
-          </li>
-        </ul>
-      </section>
-    </template>
+      <UAlert
+        v-else-if="loadError || !enrollment"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-server"
+        title="Курс не загрузился"
+        :description="loadError || 'Не удалось открыть назначение.'"
+      >
+        <template #actions>
+          <UButton color="warning" icon="i-lucide-rotate-ccw" @click="load">Повторить</UButton>
+          <UButton color="neutral" variant="ghost" :to="{ name: 'courses' }">К моему обучению</UButton>
+        </template>
+      </UAlert>
 
-    <UAlert
-      v-else
-      color="error"
-      variant="subtle"
-      icon="i-lucide-alert-circle"
-      title="Курс не загрузился"
-      :description="loadError || 'Не удалось открыть запись на курс.'"
-    >
-      <template #actions>
-        <UButton color="neutral" variant="outline" :to="{ name: 'courses' }">К моему обучению</UButton>
+      <template v-else>
+        <UPageHeader headline="Обучение" :title="title" :description="data.version?.shortDescription || undefined">
+          <template #title>
+            <div class="flex items-center gap-2 flex-wrap min-w-0">
+              <span class="break-words">{{ title }}</span>
+              <CourseStatusBadge :status="status" />
+            </div>
+          </template>
+        </UPageHeader>
+
+        <UAlert
+          v-if="status === 'overdue'"
+          color="error"
+          variant="subtle"
+          icon="i-lucide-calendar-x"
+          title="Срок прохождения истёк"
+          :description="`${deadline?.label || 'Срок прошёл'}. Курс всё ещё можно пройти до конца — продолжайте с того места, где остановились.`"
+        />
+
+        <section
+          class="rounded-panel bg-elevated p-4 sm:p-5 flex flex-col gap-4 min-w-0"
+          aria-labelledby="enrollment-progress-title"
+        >
+          <h2 id="enrollment-progress-title" class="sr-only">Прогресс</h2>
+          <div class="flex flex-col gap-2">
+            <div class="flex items-baseline justify-between gap-3 flex-wrap">
+              <p class="text-sm text-highlighted">
+                Пройдено {{ topicsDone }} из {{ topicsTotal }}
+                {{ plural(topicsTotal, ['темы', 'тем', 'тем']) }}
+              </p>
+              <p class="text-2xl font-semibold text-highlighted tabular-nums">{{ percent }}%</p>
+            </div>
+            <UProgress
+              :model-value="percent"
+              size="md"
+              :color="status === 'overdue' ? 'error' : 'primary'"
+              :aria-label="`Пройдено ${percent} процентов`"
+            />
+            <p v-if="deadline" class="text-xs inline-flex items-center gap-1" :class="deadlineClass" :title="deadline.full">
+              <UIcon :name="deadline.icon" class="size-3.5 shrink-0" aria-hidden="true" />
+              {{ deadline.label }}
+            </p>
+          </div>
+
+          <p v-if="hint" class="text-sm text-muted">{{ hint }}</p>
+
+          <div class="flex flex-wrap gap-2">
+            <UButton
+              v-if="primary"
+              color="primary"
+              size="lg"
+              :icon="primary.icon"
+              :loading="acting"
+              @click="onPrimary"
+            >
+              {{ primary.label }}
+            </UButton>
+            <UButton
+              v-if="isCompleted"
+              color="primary"
+              size="lg"
+              icon="i-lucide-award"
+              :to="{ name: 'course-result', params: { enrollmentId } }"
+            >
+              Итоги и сертификат
+            </UButton>
+          </div>
+        </section>
+
+        <section class="flex flex-col gap-3 min-w-0" aria-labelledby="enrollment-topics-title">
+          <h2 id="enrollment-topics-title" class="text-lg font-bold leading-7 text-highlighted">Темы</h2>
+
+          <UEmpty
+            v-if="!topics.length"
+            variant="naked"
+            icon="i-lucide-list"
+            title="В курсе пока нет тем"
+            description="Автор ещё наполняет обучение. Загляните позже."
+            class="py-8"
+          />
+
+          <ol v-else class="flex flex-col gap-2 list-none p-0 m-0 min-w-0">
+            <li v-for="(t, idx) in topics" :key="t.id">
+              <component
+                :is="isLocked(t) ? 'div' : RouterLink"
+                :to="isLocked(t) ? undefined : { name: 'course-topic', params: { enrollmentId, topicId: t.id } }"
+                class="rounded-panel bg-elevated p-3 sm:px-4 flex items-center gap-3 min-w-0 transition-shadow"
+                :class="isLocked(t)
+                  ? 'opacity-70'
+                  : 'hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary'"
+                :aria-disabled="isLocked(t) || undefined"
+              >
+                <span class="text-xs text-dimmed tabular-nums shrink-0 w-5 text-right">{{ idx + 1 }}</span>
+                <div class="flex-1 min-w-0 flex flex-col gap-0.5">
+                  <p class="font-medium text-highlighted break-words">{{ t.title }}</p>
+                  <p class="text-xs text-muted">{{ topicStatusText(t, idx) }} · {{ topicMeta(t) }}</p>
+                </div>
+                <UIcon
+                  :name="topicIcon(t)"
+                  class="size-5 shrink-0"
+                  :class="topicStatus(t) === 'completed' ? 'text-success' : 'text-dimmed'"
+                  aria-hidden="true"
+                />
+              </component>
+            </li>
+          </ol>
+        </section>
       </template>
-    </UAlert>
+    </div>
   </UMain>
 </template>

@@ -1255,7 +1255,7 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
             color="primary"
             icon="i-lucide-graduation-cap"
             size="lg"
-            :to="{ name: 'courses', query: { tab: 'manage' } }"
+            :to="{ name: 'admin-courses' }"
           >
             Управление обучением
           </UButton>

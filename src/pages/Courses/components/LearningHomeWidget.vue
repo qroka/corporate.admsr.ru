@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useCoursesStore, type EnrollmentSummary } from '../../../composables/useCoursesStore';
+import { compareByAttention, describeDeadline } from '../courseDeadline';
 
 const emit = defineEmits<{ visible: [value: boolean] }>();
 
@@ -11,20 +12,18 @@ const loading = ref(true);
 const items = ref<EnrollmentSummary[]>([]);
 const loaded = ref(false);
 
+const ACTIVE_STATUSES = new Set(['not_started', 'in_progress', 'overdue']);
+
 onMounted(async () => {
   loading.value = true;
   try {
-    const groups = await store.loadMyCourses() as any;
-    const activeStatuses = new Set(['not_started', 'in_progress', 'overdue']);
-    if (groups?.overdue || groups?.active) {
-      items.value = [...(groups.overdue || []), ...(groups.active || [])]
-        .filter((e: EnrollmentSummary) => activeStatuses.has(e.status))
-        .slice(0, 3);
-    } else {
-      items.value = store.myEnrollments.value
-        .filter((e) => activeStatuses.has(e.status))
-        .slice(0, 3);
-    }
+    await store.loadMyCourses();
+    // Тот же порядок, что в «Моём обучении»: просрочка и ближайший срок — первыми.
+    items.value = store.myEnrollments.value
+      .filter((e) => ACTIVE_STATUSES.has(e.status))
+      .slice()
+      .sort(compareByAttention)
+      .slice(0, 3);
   } catch {
     items.value = [];
   } finally {
@@ -40,6 +39,17 @@ watch(showWidget, (v) => emit('visible', v), { immediate: true });
 
 function open(e: EnrollmentSummary) {
   router.push({ name: 'course-enrollment', params: { enrollmentId: String(e.id) } });
+}
+
+function deadlineOf(e: EnrollmentSummary) {
+  return describeDeadline(e.deadlineAt);
+}
+
+function deadlineClass(e: EnrollmentSummary) {
+  const tone = deadlineOf(e)?.tone;
+  if (tone === 'error') return 'text-error';
+  if (tone === 'warning') return 'text-warning';
+  return 'text-muted';
 }
 </script>
 
@@ -87,7 +97,7 @@ function open(e: EnrollmentSummary) {
     <template v-if="primary">
       <button
         type="button"
-        class="flex w-full flex-col gap-2 text-left rounded-lg p-2 -mx-2 hover:bg-elevated/60 transition-colors"
+        class="flex w-full flex-col gap-2 text-left rounded-lg p-2 -mx-2 hover:bg-accented/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         @click="open(primary)"
       >
         <div class="flex flex-col gap-1 min-w-0">
@@ -95,31 +105,37 @@ function open(e: EnrollmentSummary) {
             {{ primary.courseTitle }}
           </p>
           <p class="text-xs font-medium leading-4 text-muted">
-            Курс • {{ primary.progressPercent ?? 0 }}% завершено
+            {{ primary.progressPercent ?? 0 }}% пройдено
+            <template v-if="deadlineOf(primary)">
+              · <span :class="deadlineClass(primary)">{{ deadlineOf(primary)?.label }}</span>
+            </template>
           </p>
         </div>
         <UProgress
           :model-value="primary.progressPercent ?? 0"
           size="md"
-          color="primary"
+          :color="primary.status === 'overdue' ? 'error' : 'primary'"
           :ui="{ base: 'bg-accented' }"
-          :aria-label="`Завершено ${primary.topicsCompleted ?? 0} из ${primary.topicsTotal ?? 0} тем, ${primary.progressPercent ?? 0} процентов`"
+          :aria-label="`Пройдено ${primary.progressPercent ?? 0} процентов`"
         />
       </button>
 
       <ul v-if="items.length > 1" class="flex flex-col gap-2 list-none p-0 m-0 min-w-0">
-        <li
-          v-for="e in items.slice(1)"
-          :key="e.id"
-          class="rounded-lg bg-elevated/30 p-2.5 flex flex-col gap-1.5 cursor-pointer hover:bg-elevated/60 transition-colors min-w-0"
-          @click="open(e)"
-        >
-          <p class="font-medium text-highlighted text-xs min-w-0 break-words">{{ e.courseTitle }}</p>
-          <UProgress
-            :model-value="e.progressPercent ?? 0"
-            size="sm"
-            color="primary"
-          />
+        <li v-for="e in items.slice(1)" :key="e.id">
+          <button
+            type="button"
+            class="w-full text-left rounded-lg bg-default/40 p-2.5 flex flex-col gap-1.5 hover:bg-accented/40 transition-colors min-w-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            @click="open(e)"
+          >
+            <span class="font-medium text-highlighted text-xs min-w-0 break-words">{{ e.courseTitle }}</span>
+            <span v-if="deadlineOf(e)" class="text-xs" :class="deadlineClass(e)">{{ deadlineOf(e)?.label }}</span>
+            <UProgress
+              :model-value="e.progressPercent ?? 0"
+              size="sm"
+              :color="e.status === 'overdue' ? 'error' : 'primary'"
+              :aria-label="`${e.courseTitle}: пройдено ${e.progressPercent ?? 0} процентов`"
+            />
+          </button>
         </li>
       </ul>
     </template>

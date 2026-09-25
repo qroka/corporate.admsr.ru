@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
@@ -9,6 +9,8 @@ import {
 } from '../../../composables/usePortalNavigation';
 import { newsEditorHtmlClass } from '../../../composables/newsEditorHtmlClass';
 import CourseStatusBadge from '../components/CourseStatusBadge.vue';
+import { followCourseNextAction, isActionableStep } from '../followNextAction';
+import { formatSeconds } from '../courseDuration';
 
 const route = useRoute();
 const router = useRouter();
@@ -19,163 +21,266 @@ const breadcrumbByRoute = useBreadcrumbLabelsByRoute();
 
 const enrollmentId = computed(() => Number(route.params.enrollmentId));
 const topicId = computed(() => Number(route.params.topicId));
+
 const loading = ref(true);
-const data = ref<any>(null);
+const loadError = ref<string | null>(null);
+/**
+ * Два независимых источника. `context` — курс и список тем (из записи на курс),
+ * `topicData` — ответ темы. Раньше они жили в одном объекте, и обновление темы
+ * после отметки материала стирало список тем: пропадала кнопка «Дальше».
+ */
+const context = ref<{ courseTitle: string; topics: any[] } | null>(null);
+const topicData = ref<any>(null);
+const completingId = ref<number | null>(null);
+
 const activeMaterialId = ref<number | null>(null);
 const lastActivityAt = ref(Date.now());
+/** Засчитанные секунды из ответов heartbeat — показываем без перезагрузки темы. */
+const liveSeconds = ref<Record<number, number>>({});
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
-const courseTitle = computed(
-  () =>
-    data.value?.enrollment?.course?.title
-    || data.value?.course?.title
-    || data.value?.version?.title
-    || 'Обучение',
+const topic = computed(() => topicData.value?.topic || null);
+const materials = computed<any[]>(() => topic.value?.materials || []);
+const isReview = computed(() => Boolean(topicData.value?.reviewMode));
+const nextAction = computed(() => topicData.value?.nextAction || null);
+const topicsList = computed<any[]>(() => context.value?.topics || []);
+const courseTitle = computed(() => context.value?.courseTitle || 'Обучение');
+
+const topicIndex = computed(() => topicsList.value.findIndex((t) => Number(t.id) === topicId.value));
+const positionLabel = computed(() =>
+  topicIndex.value >= 0 ? `Тема ${topicIndex.value + 1} из ${topicsList.value.length}` : 'Обучение',
 );
 
-const topicTitle = computed(() => data.value?.topic?.title || 'Тема');
-
 watch(
-  [courseTitle, topicTitle],
-  ([course, topic]) => {
-    breadcrumbByRoute.value = {
-      ...breadcrumbByRoute.value,
-      'course-enrollment': course,
-    };
-    breadcrumbLabel.value = topic;
+  [courseTitle, () => topic.value?.title],
+  ([course, title]) => {
+    breadcrumbByRoute.value = { ...breadcrumbByRoute.value, 'course-enrollment': course };
+    breadcrumbLabel.value = title || 'Тема';
   },
   { immediate: true },
 );
 
-const materials = computed(() => data.value?.topic?.materials || data.value?.materials || []);
-const topicTest = computed(() => data.value?.topic?.topicTest || data.value?.topic?.testLink || data.value?.testLink);
-const isReview = computed(() => Boolean(data.value?.reviewMode));
-const nextAction = computed(() => data.value?.nextAction || null);
-const topicsList = computed(() => data.value?.topicsList || []);
+function matStatus(m: any): string {
+  return m.progress?.status || 'not_started';
+}
 
-const requiredMaterials = computed(() =>
-  materials.value.filter((m: any) => m.isRequired !== false),
-);
-const materialsDoneCount = computed(
-  () => requiredMaterials.value.filter((m: any) => matStatus(m) === 'completed').length,
-);
-const materialsTotalCount = computed(() => requiredMaterials.value.length || materials.value.length);
-const materialsProgressLabel = computed(() => {
-  if (!materials.value.length) return 'Нет материалов';
+function isDone(m: any) {
+  return matStatus(m) === 'completed';
+}
+
+function minSeconds(m: any) {
+  return Math.max(0, Number(m.minimumActiveSeconds || 0));
+}
+
+function activeSeconds(m: any) {
+  return Math.max(Number(liveSeconds.value[m.id] || 0), Number(m.progress?.activeSeconds || 0));
+}
+
+function timeMet(m: any) {
+  return minSeconds(m) === 0 || activeSeconds(m) >= minSeconds(m);
+}
+
+function isExternal(m: any) {
+  return m.type !== 'rich_text';
+}
+
+/** Строка про время — только у материалов с требованием по времени. */
+function timeLine(m: any) {
+  const min = minSeconds(m);
+  if (!min || isDone(m) || isReview.value) return '';
+  const got = activeSeconds(m);
+  if (got >= min) return 'Время набрано — можно отметить изученным';
+  return `Нужно ${formatSeconds(min)} · засчитано ${formatSeconds(got) || '0 с'}`;
+}
+
+function timePercent(m: any) {
+  const min = minSeconds(m);
+  return min ? Math.min(100, Math.round((activeSeconds(m) / min) * 100)) : 100;
+}
+
+function openLabel(m: any) {
+  if (m.type === 'rich_text') {
+    if (activeMaterialId.value === m.id) return 'Свернуть';
+    return isReview.value || isDone(m) ? 'Читать снова' : 'Читать';
+  }
+  return m.type === 'link' ? 'Открыть ссылку' : 'Открыть файл';
+}
+
+function openIcon(m: any) {
+  if (m.type === 'rich_text') return activeMaterialId.value === m.id ? 'i-lucide-chevron-up' : 'i-lucide-book-open';
+  return m.type === 'link' ? 'i-lucide-external-link' : 'i-lucide-file-down';
+}
+
+function typeIcon(m: any) {
+  if (m.type === 'rich_text') return 'i-lucide-file-text';
+  if (m.type === 'link') return 'i-lucide-link';
+  return 'i-lucide-paperclip';
+}
+
+const requiredMaterials = computed(() => materials.value.filter((m) => m.isRequired !== false));
+const requiredDone = computed(() => requiredMaterials.value.filter(isDone).length);
+const materialsLabel = computed(() => {
+  if (!materials.value.length) return '';
   if (!requiredMaterials.value.length) {
-    return `Изучено ${materials.value.filter((m: any) => matStatus(m) === 'completed').length} из ${materials.value.length}`;
+    return `Изучено ${materials.value.filter(isDone).length} из ${materials.value.length}`;
   }
-  return `Изучено ${materialsDoneCount.value} из ${materialsTotalCount.value} обязательных`;
+  return `Изучено ${requiredDone.value} из ${requiredMaterials.value.length} обязательных`;
 });
 
-const pendingMaterial = computed(() => {
-  if (isReview.value) return null;
-  return (
-    requiredMaterials.value.find((m: any) => matStatus(m) !== 'completed')
-    || materials.value.find((m: any) => matStatus(m) !== 'completed')
-    || null
-  );
-});
-
-function materialActionLabel(m: any) {
-  const st = matStatus(m);
-  if (isReview.value || st === 'completed') return 'Смотреть снова';
-  if (st === 'in_progress' || st === 'opened') return 'Продолжить';
-  return 'Открыть';
-}
-
-function materialHint(m: any) {
-  const st = matStatus(m);
-  if (st === 'completed') return 'Изучено';
-  if (st === 'in_progress' || st === 'opened') return 'Открыто — отметьте изученным';
-  if (m.isRequired === false) return 'Необязательный';
-  return 'Не открыт';
-}
-
-const allMaterialsDone = computed(() => {
-  const list = materials.value;
-  if (!list.length) return true;
-  return list.every((m: any) => m.isRequired === false || matStatus(m) === 'completed');
-});
-
-/** Тест темы ещё обязателен (материалы уже изучены). */
-const needsTopicTest = computed(() => {
-  if (isReview.value || !topicTest.value?.id) return false;
-  if (topicTest.value.isRequired === false) return false;
+/** Сервер всё ещё держит сотрудника на этой теме — значит, «дальше» пока нельзя. */
+const stuckHere = computed(() => {
   const a = nextAction.value;
-  if (a?.type === 'topic_test' && Number(a.courseTestLinkId) === Number(topicTest.value.id)) {
-    return true;
+  return !isReview.value && Number(a?.topicId || 0) === topicId.value && a?.type !== 'complete_topic';
+});
+
+/** Не хватает только времени темы: материалы и тест уже закрыты. */
+const topicTimeLeft = computed(() => {
+  if (!stuckHere.value || nextAction.value?.type !== 'topic') return 0;
+  const min = Number(topic.value?.minimumActiveSeconds || 0);
+  const got = Number(topic.value?.progress?.activeSeconds || 0);
+  return Math.max(0, min - got);
+});
+
+const forward = computed<null | { label: string; icon: string; run: () => void }>(() => {
+  if (isReview.value) {
+    const next = topicsList.value[topicIndex.value + 1];
+    if (!next) return null;
+    return {
+      label: `К теме «${next.title}»`,
+      icon: 'i-lucide-arrow-right',
+      run: () => router.push({ name: 'course-topic', params: { enrollmentId: enrollmentId.value, topicId: next.id } }),
+    };
   }
-  // если nextAction всё ещё на этой теме (материалы/тест) — тест не закрыт
-  if (a?.topicId != null && Number(a.topicId) === topicId.value) {
-    return a.type === 'topic_test' || a.type === 'complete_topic';
+  const a = nextAction.value;
+  if (!isActionableStep(a)) return null;
+  if (stuckHere.value && a.type !== 'topic_test') return null;
+  // complete_topic на этой же теме — сервер вот-вот её закроет; ссылка «на себя» бессмысленна.
+  if (a.type === 'complete_topic' && Number(a.topicId) === topicId.value) return null;
+  let label = a.label || 'Продолжить';
+  if (a.type === 'topic_test' && stuckHere.value) label = 'Пройти тест темы';
+  else if (a.type === 'final_test') label = 'К итоговому тесту';
+  else if (a.type === 'complete_course') label = 'К итогам';
+  else if (a.topicId) {
+    const t = topicsList.value.find((x) => Number(x.id) === Number(a.topicId));
+    if (t && a.type !== 'topic_test') label = `К теме «${t.title}»`;
   }
-  return false;
+  return {
+    label,
+    icon: a.type === 'topic_test' || a.type === 'final_test' ? 'i-lucide-clipboard-check' : 'i-lucide-arrow-right',
+    run: () => void followCourseNextAction(router, enrollmentId.value, a),
+  };
 });
 
-const nextTopic = computed(() => {
-  const fromApi = data.value?.nextTopic;
-  if (fromApi?.id) return fromApi;
-  const list = topicsList.value;
-  const idx = list.findIndex((t: any) => Number(t.id) === topicId.value);
-  if (idx < 0 || idx >= list.length - 1) return null;
-  const t = list[idx + 1];
-  return { id: Number(t.id), title: String(t.title || 'Следующая тема'), status: t.progress?.status || null };
-});
-
-const canGoNext = computed(() => {
-  if (!allMaterialsDone.value && !isReview.value) return false;
-  if (needsTopicTest.value) return false;
-  if (nextTopic.value?.id) return true;
-  if (isReview.value) return false;
-  const t = nextAction.value?.type;
-  return t === 'final_test' || t === 'complete_course' || t === 'done';
-});
-
-const nextLabel = computed(() => {
-  if (nextTopic.value?.id) return 'К следующей теме';
-  if (nextAction.value?.type === 'final_test') return 'К итоговому тесту';
-  if (nextAction.value?.type === 'done' || nextAction.value?.type === 'complete_course') {
-    return 'К результату';
+const footerNote = computed(() => {
+  if (isReview.value) return 'Повторный просмотр — прогресс уже засчитан.';
+  const a = nextAction.value;
+  if (stuckHere.value && a?.type === 'topic_test') return 'Материалы изучены — осталось пройти тест темы.';
+  if (topicTimeLeft.value > 0) {
+    return `В теме нужно провести ещё ${formatSeconds(topicTimeLeft.value)}. Откройте любой материал — время засчитывается, пока он открыт.`;
   }
-  return 'Далее';
+  if (stuckHere.value) return '';
+  if (a?.type === 'complete_course') return 'Все темы пройдены.';
+  return forward.value ? 'Тема пройдена.' : '';
 });
 
-const showTopicTest = computed(() => {
-  if (!topicTest.value?.id || isReview.value) return false;
-  // после материалов — основной следующий шаг, либо пока тест ещё нужен
-  return allMaterialsDone.value || needsTopicTest.value;
-});
+const showFooter = computed(() => !loading.value && !loadError.value && Boolean(forward.value || footerNote.value));
 
-const showStickyNext = computed(
-  () => !loading.value && data.value && (allMaterialsDone.value || isReview.value) && (showTopicTest.value || canGoNext.value),
-);
+async function loadAll() {
+  loading.value = true;
+  loadError.value = null;
+  activeMaterialId.value = null;
+  liveSeconds.value = {};
+  try {
+    const [t, enrollment] = await Promise.all([
+      store.getTopic(enrollmentId.value, topicId.value),
+      store.getEnrollment(enrollmentId.value).catch(() => null) as Promise<any>,
+    ]);
+    topicData.value = t;
+    context.value = {
+      courseTitle: enrollment?.enrollment?.course?.title || 'Обучение',
+      topics: enrollment?.version?.topics || [],
+    };
+  } catch (e: any) {
+    topicData.value = null;
+    loadError.value = e?.message || 'Тема недоступна';
+  } finally {
+    loading.value = false;
+  }
+}
+
+/** Обновляем только тему — контекст курса не трогаем. */
+async function refreshTopic() {
+  try {
+    topicData.value = await store.getTopic(enrollmentId.value, topicId.value);
+  } catch {
+    /* оставляем текущее состояние: действие уже прошло на сервере */
+  }
+}
 
 function onActivity() {
   lastActivityAt.value = Date.now();
 }
 
-function isPageActive() {
-  return document.visibilityState === 'visible' && document.hasFocus();
+/**
+ * Файл и ссылка открываются в другой вкладке, поэтому для них фокус портала
+ * не требуем — иначе время не засчитывалось вовсе. Текст читается здесь же:
+ * для него прежнее правило «вкладка активна и было действие за 30 с».
+ * От накрутки защищает сервер: паузы длиннее 90 с он не засчитывает.
+ */
+function shouldBeat(m: any) {
+  if (isExternal(m)) return true;
+  const focused = document.visibilityState === 'visible' && document.hasFocus();
+  return focused && Date.now() - lastActivityAt.value <= 30_000;
 }
 
 async function tickHeartbeat() {
-  if (!activeMaterialId.value || !isPageActive()) return;
-  // считаем активным, если было взаимодействие за последние 30с
-  if (Date.now() - lastActivityAt.value > 30_000) return;
+  const id = activeMaterialId.value;
+  if (!id || isReview.value) return;
+  const m = materials.value.find((x) => x.id === id);
+  if (!m || isDone(m) || !shouldBeat(m)) return;
   try {
-    await store.heartbeat({
-      enrollmentId: enrollmentId.value,
-      materialId: activeMaterialId.value,
-      seconds: 15,
-    });
+    const res = (await store.heartbeat({ enrollmentId: enrollmentId.value, materialId: id, seconds: 15 })) as any;
+    if (res?.activeSeconds != null) {
+      liveSeconds.value = { ...liveSeconds.value, [id]: Number(res.activeSeconds) };
+    }
+    if (res?.topicCompleted) await refreshTopic();
   } catch {
-    /* ignore transient */
+    /* сеть мигнула — следующий тик досчитает */
+  }
+}
+
+async function openMaterial(m: any) {
+  if (m.type === 'rich_text' && activeMaterialId.value === m.id) {
+    activeMaterialId.value = null;
+    return;
+  }
+  // Окно открываем сразу, до запроса: после await браузер может счесть его всплывающим.
+  const url = m.type === 'link' ? m.externalUrl : m.fileUrl;
+  if (isExternal(m) && url) window.open(url, '_blank', 'noopener');
+  activeMaterialId.value = m.id;
+  lastActivityAt.value = Date.now();
+  try {
+    await store.openMaterial(enrollmentId.value, m.id);
+  } catch (e: any) {
+    toast.add({ title: 'Не удалось открыть материал', description: e?.message, color: 'error', icon: 'i-lucide-x' });
+  }
+}
+
+async function completeMaterial(m: any) {
+  completingId.value = m.id;
+  try {
+    await store.completeMaterial(enrollmentId.value, m.id);
+    toast.add({ title: 'Материал изучен', color: 'success', icon: 'i-lucide-check' });
+    await refreshTopic();
+  } catch (e: any) {
+    toast.add({ title: 'Не удалось отметить', description: e?.message, color: 'error', icon: 'i-lucide-x' });
+  } finally {
+    completingId.value = null;
   }
 }
 
 onMounted(async () => {
-  await loadTopic();
+  await loadAll();
   window.addEventListener('mousemove', onActivity);
   window.addEventListener('keydown', onActivity);
   window.addEventListener('scroll', onActivity, true);
@@ -183,31 +288,8 @@ onMounted(async () => {
   heartbeatTimer = setInterval(() => void tickHeartbeat(), 15_000);
 });
 
-async function loadTopic() {
-  loading.value = true;
-  activeMaterialId.value = null;
-  try {
-    const [topicData, enrollment] = await Promise.all([
-      store.getTopic(enrollmentId.value, topicId.value),
-      store.getEnrollment(enrollmentId.value).catch(() => null),
-    ]);
-    data.value = {
-      ...topicData,
-      enrollment: enrollment?.enrollment || topicData?.enrollment || null,
-      course: enrollment?.enrollment?.course || enrollment?.course || topicData?.course || null,
-      version: enrollment?.version || topicData?.version || null,
-      topicsList: enrollment?.version?.topics || topicData?.topicsList || [],
-    };
-  } catch (e: any) {
-    data.value = null;
-    toast.add({ title: 'Тема недоступна', description: e?.message, color: 'error', icon: 'i-lucide-alert-circle' });
-  } finally {
-    loading.value = false;
-  }
-}
-
-watch(topicId, () => {
-  void loadTopic();
+watch(topicId, (id, prev) => {
+  if (id && id !== prev) void loadAll();
 });
 
 onUnmounted(() => {
@@ -221,211 +303,148 @@ onUnmounted(() => {
   delete next['course-enrollment'];
   breadcrumbByRoute.value = next;
 });
-
-async function openMaterial(m: any) {
-  try {
-    await store.openMaterial(enrollmentId.value, m.id);
-    activeMaterialId.value = m.id;
-    lastActivityAt.value = Date.now();
-    if (m.type === 'link' && m.externalUrl) {
-      window.open(m.externalUrl, '_blank', 'noopener');
-    } else if (m.fileUrl) {
-      window.open(m.fileUrl, '_blank', 'noopener');
-    }
-  } catch (e: any) {
-    toast.add({ title: 'Не удалось открыть', description: e?.message, color: 'error', icon: 'i-lucide-x' });
-  }
-}
-
-async function completeMaterial(m: any) {
-  try {
-    await store.completeMaterial(enrollmentId.value, m.id);
-    toast.add({ title: 'Материал отмечен', color: 'success', icon: 'i-lucide-check' });
-    data.value = await store.getTopic(enrollmentId.value, topicId.value);
-  } catch (e: any) {
-    toast.add({ title: 'Не удалось завершить', description: e?.message, color: 'error', icon: 'i-lucide-x' });
-  }
-}
-
-function matStatus(m: any) {
-  return m.progress?.status || 'not_started';
-}
-
-function goTest() {
-  if (!topicTest.value?.id) return;
-  router.push({
-    name: 'course-test',
-    params: {
-      enrollmentId: enrollmentId.value,
-      courseTestLinkId: topicTest.value.id,
-    },
-  });
-}
-
-function goNext() {
-  if (needsTopicTest.value && topicTest.value?.id) {
-    goTest();
-    return;
-  }
-  if (nextTopic.value?.id) {
-    router.push({
-      name: 'course-topic',
-      params: {
-        enrollmentId: enrollmentId.value,
-        topicId: nextTopic.value.id,
-      },
-    });
-    return;
-  }
-  const action = nextAction.value;
-  if (action?.type === 'final_test' && action.courseTestLinkId) {
-    router.push({
-      name: 'course-test',
-      params: {
-        enrollmentId: enrollmentId.value,
-        courseTestLinkId: action.courseTestLinkId,
-      },
-    });
-    return;
-  }
-  if (action?.type === 'done' || action?.type === 'complete_course') {
-    router.push({
-      name: 'course-result',
-      params: { enrollmentId: enrollmentId.value },
-    });
-  }
-}
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full max-w-3xl mx-auto min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
-    <div v-if="loading" class="flex flex-col gap-3 p-1">
-      <USkeleton v-for="n in 4" :key="n" class="h-16 w-full rounded-xl" />
-    </div>
+  <UMain class="relative w-full h-full min-h-0">
+    <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-3xl mx-auto overflow-y-auto scrollbar-hide p-px pb-8">
+      <div v-if="loading" class="flex flex-col gap-4" aria-busy="true" aria-label="Загрузка темы">
+        <USkeleton class="h-16 w-2/3 rounded-lg" />
+        <USkeleton v-for="n in 3" :key="n" class="h-28 w-full rounded-panel" />
+      </div>
 
-    <template v-else-if="data">
-      <div class="min-w-0 p-1 flex flex-col gap-4">
-      <h1 class="text-2xl font-medium text-highlighted break-words">
-        {{ data.topic?.title || 'Тема' }}
-      </h1>
-      <p v-if="data.topic?.description" class="text-sm text-muted break-words whitespace-pre-wrap">
-        {{ data.topic.description }}
-      </p>
       <UAlert
-        v-if="isReview"
-        color="neutral"
+        v-else-if="loadError || !topic"
+        color="warning"
         variant="subtle"
-        icon="i-lucide-book-open"
-        title="Повторный просмотр"
-        description="Можно снова открыть материалы. Прохождение и тесты уже завершены."
-      />
+        icon="i-lucide-server"
+        title="Тема недоступна"
+        :description="loadError || 'Не удалось открыть тему.'"
+      >
+        <template #actions>
+          <UButton color="warning" icon="i-lucide-rotate-ccw" @click="loadAll">Повторить</UButton>
+          <UButton color="neutral" variant="ghost" :to="{ name: 'course-enrollment', params: { enrollmentId } }">
+            К курсу
+          </UButton>
+        </template>
+      </UAlert>
 
-      <section class="flex flex-col gap-2 min-w-0">
-        <div class="flex items-end justify-between gap-2 flex-wrap">
-          <h2 class="text-lg font-medium">Материалы</h2>
-          <p v-if="materials.length" class="text-sm text-muted tabular-nums">
-            {{ materialsProgressLabel }}
-          </p>
-        </div>
-        <UProgress
-          v-if="materialsTotalCount > 0 && !isReview"
-          :model-value="materialsTotalCount ? Math.round((materialsDoneCount / materialsTotalCount) * 100) : 0"
-          size="sm"
-          color="primary"
-          :aria-label="materialsProgressLabel"
-        />
+      <template v-else>
+        <UPageHeader :headline="positionLabel" :title="topic.title" :description="topic.description || undefined" />
+
         <UAlert
-          v-if="!isReview && pendingMaterial && allMaterialsDone === false"
+          v-if="isReview"
           color="neutral"
           variant="subtle"
           icon="i-lucide-book-open"
-          title="Сначала изучите материалы"
-          :description="`Откройте «${pendingMaterial.title}» и нажмите «Отметить изученным».`"
+          title="Повторный просмотр"
+          description="Курс уже пройден. Материалы можно открыть снова — на результат это не влияет."
         />
-        <UEmpty
-          v-if="!materials.length"
-          icon="i-lucide-file"
-          title="Нет материалов"
-          class="py-8"
-        />
-        <ul v-else class="flex flex-col gap-2 list-none p-0 m-0 min-w-0">
-          <li
-            v-for="m in materials"
-            :key="m.id"
-            class="rounded-xl ring-1 ring-default p-4 flex flex-col gap-3 min-w-0"
-            :class="activeMaterialId === m.id ? 'ring-primary' : ''"
-          >
-            <div class="flex items-start justify-between gap-2 min-w-0">
-              <div class="min-w-0">
-                <p class="font-medium break-words">{{ m.title }}</p>
-                <p class="text-xs text-muted mt-1">{{ materialHint(m) }}</p>
-                <CourseStatusBadge :status="matStatus(m)" class="mt-1" />
+
+        <section class="flex flex-col gap-3 min-w-0" aria-labelledby="topic-materials-title">
+          <div class="flex items-end justify-between gap-2 flex-wrap">
+            <h2 id="topic-materials-title" class="text-lg font-bold leading-7 text-highlighted">Материалы</h2>
+            <p v-if="materialsLabel && !isReview" class="text-sm text-muted tabular-nums">{{ materialsLabel }}</p>
+          </div>
+          <UProgress
+            v-if="requiredMaterials.length && !isReview"
+            :model-value="Math.round((requiredDone / requiredMaterials.length) * 100)"
+            size="sm"
+            color="primary"
+            :aria-label="materialsLabel"
+          />
+
+          <UEmpty
+            v-if="!materials.length"
+            variant="naked"
+            icon="i-lucide-file"
+            title="В теме нет материалов"
+            description="Автор курса не добавил материалов — переходите к следующему шагу."
+            class="py-8"
+          />
+
+          <ul v-else class="flex flex-col gap-2 list-none p-0 m-0 min-w-0">
+            <li
+              v-for="m in materials"
+              :key="m.id"
+              class="rounded-panel bg-elevated p-4 flex flex-col gap-3 min-w-0"
+              :class="activeMaterialId === m.id ? 'ring-2 ring-inset ring-primary/40' : ''"
+            >
+              <div class="flex items-start gap-3 min-w-0">
+                <UIcon :name="typeIcon(m)" class="size-5 mt-0.5 shrink-0 text-muted" aria-hidden="true" />
+                <div class="flex-1 min-w-0 flex flex-col gap-1">
+                  <p class="font-medium text-highlighted break-words">{{ m.title }}</p>
+                  <p v-if="m.description" class="text-sm text-muted break-words">{{ m.description }}</p>
+                  <div class="flex items-center gap-x-2 gap-y-1 flex-wrap text-xs text-muted">
+                    <CourseStatusBadge :status="matStatus(m)" />
+                    <span v-if="m.isRequired === false">Необязательный</span>
+                    <span v-if="timeLine(m)" :class="timeMet(m) ? 'text-success' : ''">{{ timeLine(m) }}</span>
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <div
-              v-if="m.type === 'rich_text' && m.contentHtml && activeMaterialId === m.id"
-              :class="['rounded-lg bg-elevated/40 p-3 sm:p-4 text-default min-w-0 overflow-x-auto', newsEditorHtmlClass]"
-              v-html="m.contentHtml"
-            />
+              <UProgress
+                v-if="timeLine(m) && !timeMet(m)"
+                :model-value="timePercent(m)"
+                size="xs"
+                color="neutral"
+                :aria-label="timeLine(m)"
+              />
 
-            <div class="flex flex-wrap gap-2">
-              <UButton
-                color="primary"
-                variant="soft"
-                size="sm"
-                icon="i-lucide-book-open"
-                @click="openMaterial(m)"
+              <div
+                v-if="m.type === 'rich_text' && m.contentHtml && activeMaterialId === m.id"
+                :class="['rounded-lg bg-default p-3 sm:p-4 text-default min-w-0 overflow-x-auto', newsEditorHtmlClass]"
+                v-html="m.contentHtml"
+              />
+
+              <p
+                v-if="isExternal(m) && activeMaterialId === m.id && !isDone(m) && minSeconds(m) && !isReview"
+                class="text-xs text-muted"
               >
-                {{ materialActionLabel(m) }}
-              </UButton>
-              <UButton
-                v-if="!isReview && matStatus(m) !== 'completed'"
-                color="primary"
-                size="sm"
-                icon="i-lucide-check"
-                @click="completeMaterial(m)"
-              >
-                Отметить изученным
-              </UButton>
-            </div>
-          </li>
-        </ul>
-      </section>
+                Время засчитывается, пока материал открыт и эта вкладка не закрыта.
+              </p>
 
-      <div
-        v-if="showStickyNext"
-        class="sticky bottom-0 z-10 -mx-1 px-1 pt-3 pb-1 bg-default/95 backdrop-blur border-t border-default"
-      >
-        <p v-if="!isReview && allMaterialsDone" class="text-sm text-muted mb-2">
-          <template v-if="needsTopicTest">Материалы изучены — пройдите тест темы.</template>
-          <template v-else-if="nextTopic">Материалы изучены — можно к следующей теме.</template>
-          <template v-else>Материалы изучены.</template>
-        </p>
-        <div class="flex flex-wrap gap-2">
-          <UButton
-            v-if="showTopicTest"
-            color="primary"
-            size="lg"
-            class="w-fit"
-            icon="i-lucide-clipboard-check"
-            @click="goTest"
-          >
-            Пройти тест темы
-          </UButton>
-          <UButton
-            v-if="canGoNext"
-            color="primary"
-            size="lg"
-            class="w-fit"
-            trailing-icon="i-lucide-arrow-right"
-            @click="goNext"
-          >
-            {{ nextLabel }}
-          </UButton>
+              <div class="flex flex-wrap gap-2">
+                <UButton color="neutral" variant="soft" size="sm" :icon="openIcon(m)" @click="openMaterial(m)">
+                  {{ openLabel(m) }}
+                </UButton>
+                <UButton
+                  v-if="!isReview && !isDone(m)"
+                  color="primary"
+                  size="sm"
+                  icon="i-lucide-check"
+                  :loading="completingId === m.id"
+                  :disabled="!timeMet(m)"
+                  :title="timeMet(m) ? undefined : 'Сначала наберите нужное время изучения'"
+                  @click="completeMaterial(m)"
+                >
+                  Отметить изученным
+                </UButton>
+              </div>
+            </li>
+          </ul>
+        </section>
+
+        <div
+          v-if="showFooter"
+          class="sticky bottom-0 z-10 pt-3 pb-1 bg-default/95 backdrop-blur border-t border-default flex flex-col gap-2"
+        >
+          <p v-if="footerNote" class="text-sm text-muted">{{ footerNote }}</p>
+          <div class="flex flex-wrap gap-2">
+            <UButton v-if="forward" color="primary" size="lg" :trailing-icon="forward.icon" @click="forward.run()">
+              {{ forward.label }}
+            </UButton>
+            <UButton
+              color="neutral"
+              variant="ghost"
+              size="lg"
+              :to="{ name: 'course-enrollment', params: { enrollmentId } }"
+            >
+              К курсу
+            </UButton>
+          </div>
         </div>
-      </div>
-      </div>
-    </template>
+      </template>
+    </div>
   </UMain>
 </template>

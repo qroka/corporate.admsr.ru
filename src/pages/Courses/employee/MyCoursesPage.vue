@@ -1,193 +1,82 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useCoursesStore, type EnrollmentSummary } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
 import { useSectionAccess } from '../../../composables/useSectionAccess';
-import CourseStatusBadge from '../components/CourseStatusBadge.vue';
+import MyCourseCard from '../components/MyCourseCard.vue';
+import { compareByAttention } from '../courseDeadline';
 
 const route = useRoute();
 const router = useRouter();
 const store = useCoursesStore();
 const { toast } = useAppToast();
 
-const loadingMine = ref(true);
-const loadingManage = ref(false);
-const loadErrorMine = ref<string | null>(null);
-const loadErrorManage = ref<string | null>(null);
-
-const overdue = ref<EnrollmentSummary[]>([]);
-const inProgress = ref<EnrollmentSummary[]>([]);
-const fresh = ref<EnrollmentSummary[]>([]);
-const completed = ref<EnrollmentSummary[]>([]);
-
 const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
 ensureSectionAccess();
 const isCourseAdmin = computed(() => canEditSection('courses'));
 
-const tabItems = computed(() => {
-  const items = [{ label: 'Назначенные мне', value: 'mine' as const }];
-  if (isCourseAdmin.value) {
-    items.push({ label: 'Управление обучением', value: 'manage' as const });
-  }
-  return items;
-});
+const loading = ref(true);
+const loadError = ref<string | null>(null);
+const items = ref<EnrollmentSummary[]>([]);
+const showCompleted = ref(false);
 
-const tab = ref<'mine' | 'manage'>('mine');
-
-watch(
-  () => route.query.tab,
-  (q) => {
-    if (q === 'manage' && isCourseAdmin.value) tab.value = 'manage';
-    else if (q === 'mine') tab.value = 'mine';
-  },
-  { immediate: true },
+const active = computed(() =>
+  items.value
+    .filter((e) => e.status !== 'completed')
+    .slice()
+    .sort(compareByAttention),
 );
 
-watch(isCourseAdmin, (ok) => {
-  if (!ok && tab.value === 'manage') {
-    tab.value = 'mine';
-    if (route.query.tab === 'manage') {
-      void router.replace({ query: {} });
-    }
-  }
-});
+const completed = computed(() =>
+  items.value
+    .filter((e) => e.status === 'completed')
+    .slice()
+    .sort((a, b) => new Date(b.completedAt || 0).getTime() - new Date(a.completedAt || 0).getTime()),
+);
 
-watch(tab, async (t) => {
-  if (!isCourseAdmin.value && t === 'manage') {
-    tab.value = 'mine';
-    return;
-  }
-  const q = t === 'manage' ? 'manage' : undefined;
-  if ((route.query.tab || undefined) !== q) {
-    await router.replace({ query: q ? { tab: q } : {} });
-  }
-  if (t === 'manage' && isCourseAdmin.value) {
-    await ensureManageLoaded();
-  }
-});
+const overdueCount = computed(() => active.value.filter((e) => e.status === 'overdue').length);
+const isEmpty = computed(() => !items.value.length);
 
 async function loadMine() {
-  loadingMine.value = true;
-  loadErrorMine.value = null;
+  loading.value = true;
+  loadError.value = null;
   try {
-    const groups = (await store.loadMyCourses()) as any;
-    if (groups?.overdue || groups?.active) {
-      overdue.value = groups.overdue || [];
-      const active: EnrollmentSummary[] = groups.active || [];
-      inProgress.value = active.filter((e) => e.status === 'in_progress');
-      fresh.value = active.filter((e) => e.status === 'not_started');
-      completed.value = groups.completed || [];
-    } else {
-      const all = store.myEnrollments.value;
-      overdue.value = all.filter((e) => e.status === 'overdue');
-      inProgress.value = all.filter((e) => e.status === 'in_progress');
-      fresh.value = all.filter((e) => e.status === 'not_started');
-      completed.value = all.filter((e) => e.status === 'completed');
-    }
+    await store.loadMyCourses();
+    // Стор уже сводит все группы (active / overdue / failed / completed) в один список —
+    // берём его целиком, чтобы ни один статус не потерялся.
+    items.value = store.myEnrollments.value.slice();
   } catch (e: any) {
-    loadErrorMine.value = e?.message || 'Ошибка загрузки';
-    if (!isCourseAdmin.value) {
-      toast.add({
-        title: 'Не удалось загрузить обучение',
-        description: e?.message,
-        color: 'error',
-        icon: 'i-lucide-alert-circle',
-      });
-    }
-  } finally {
-    loadingMine.value = false;
-  }
-}
-
-async function ensureManageLoaded() {
-  if (!isCourseAdmin.value) return;
-  loadingManage.value = true;
-  loadErrorManage.value = null;
-  try {
-    await store.loadList();
-  } catch (e: any) {
-    loadErrorManage.value = e?.message || 'Ошибка загрузки';
+    loadError.value = e?.message || 'Ошибка загрузки';
     toast.add({
-      title: 'Не удалось загрузить список обучения',
+      title: 'Не удалось загрузить обучение',
       description: e?.message,
       color: 'error',
       icon: 'i-lucide-alert-circle',
     });
   } finally {
-    loadingManage.value = false;
+    loading.value = false;
   }
 }
 
 onMounted(async () => {
+  // Совместимость со старой ссылкой /courses?tab=manage
+  if (route.query.tab === 'manage' && isCourseAdmin.value) {
+    await router.replace({ name: 'admin-courses' });
+    return;
+  }
+  if (route.query.tab) {
+    await router.replace({ query: {} });
+  }
   await loadMine();
-  if (tab.value === 'manage' && isCourseAdmin.value) {
-    await ensureManageLoaded();
-  }
 });
-
-const emptyMine = computed(
-  () => !overdue.value.length && !inProgress.value.length && !fresh.value.length && !completed.value.length,
-);
-
-async function goCreateCourse() {
-  if (!isCourseAdmin.value) return;
-  await router.push({ name: 'admin-course-create' });
-}
-
-function openWorkspace(id: number) {
-  if (!isCourseAdmin.value) return;
-  router.push({ name: 'admin-course-workspace', params: { courseId: String(id) } });
-}
-
-const deleteOpen = ref(false);
-const deleteTarget = ref<{ id: number; title: string } | null>(null);
-const deleting = ref(false);
-
-function askDelete(c: { id: number; title: string }) {
-  deleteTarget.value = { id: c.id, title: c.title };
-  deleteOpen.value = true;
-}
-
-async function confirmDelete() {
-  if (!deleteTarget.value) return;
-  deleting.value = true;
-  try {
-    await store.deleteCourse(deleteTarget.value.id);
-    toast.add({ title: 'Обучение удалено', color: 'success', icon: 'i-lucide-check' });
-    deleteOpen.value = false;
-    deleteTarget.value = null;
-    await ensureManageLoaded();
-  } catch (e: any) {
-    toast.add({
-      title: 'Не удалось удалить',
-      description: e?.message,
-      color: 'error',
-      icon: 'i-lucide-x',
-    });
-  } finally {
-    deleting.value = false;
-  }
-}
 
 function open(e: EnrollmentSummary) {
   router.push({ name: 'course-enrollment', params: { enrollmentId: String(e.id) } });
 }
 
-function formatCompletedAt(iso: string) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const date = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
-  const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-  return `${date}, ${time}`;
-}
-
-function ctaLabel(e: EnrollmentSummary) {
-  if (e.status === 'not_started') return 'Начать';
-  if (e.status === 'completed') return 'Смотреть';
-  if (e.status === 'failed') return 'Смотреть';
-  if (e.status === 'overdue') return 'Открыть';
-  return e.nextAction?.label || 'Продолжить';
+function goManage() {
+  router.push({ name: 'admin-courses' });
 }
 </script>
 
@@ -197,281 +86,111 @@ function ctaLabel(e: EnrollmentSummary) {
       <UPageHeader
         headline="Обучение"
         title="Моё обучение"
-        description="Назначенные программы, прогресс прохождения и управление материалами"
+        description="Назначенные вам программы и прогресс прохождения"
       >
         <template #links>
           <UButton
             v-if="isCourseAdmin"
-            color="primary"
-            icon="i-lucide-plus"
-            label="Создать обучение"
-            @click="goCreateCourse"
+            color="neutral"
+            variant="soft"
+            icon="i-lucide-settings-2"
+            label="Управление обучением"
+            @click="goManage"
           />
         </template>
       </UPageHeader>
 
-      <UTabs
-        v-if="isCourseAdmin"
-        v-model="tab"
-        :items="tabItems"
-        variant="link"
-        color="primary"
-        size="md"
-        :content="false"
-        class="w-full border-b border-default"
-        :ui="{
-          list: 'w-full gap-1',
-          trigger: 'grow-0',
-        }"
-      />
-
-      <!-- Назначенные мне -->
-      <template v-if="tab === 'mine'">
-        <div v-if="loadingMine" class="flex flex-col gap-3">
-          <USkeleton v-for="n in 4" :key="n" class="h-20 w-full rounded-panel" />
-        </div>
-
-        <UAlert
-          v-else-if="loadErrorMine"
-          color="warning"
-          variant="subtle"
-          icon="i-lucide-server"
-          title="Не удалось загрузить назначения"
-          :description="loadErrorMine"
-        />
-
-        <UEmpty
-          v-else-if="emptyMine"
-          variant="naked"
-          icon="i-lucide-graduation-cap"
-          title="Вам пока ничего не назначено"
-          description="Когда HR направит курс, он появится здесь."
-          class="w-full py-12"
+      <!-- Загрузка: скелет повторяет форму реальной карточки -->
+      <div v-if="loading" class="flex flex-col gap-3" aria-busy="true" aria-label="Загрузка назначений">
+        <div
+          v-for="n in 3"
+          :key="n"
+          class="rounded-panel bg-elevated p-4 flex flex-col md:flex-row md:items-center gap-3"
         >
-          <template v-if="isCourseAdmin" #actions>
-            <UButton color="primary" variant="soft" @click="tab = 'manage'">
-              Перейти к управлению обучением
-            </UButton>
-          </template>
-        </UEmpty>
-
-        <div v-else class="flex flex-col gap-6">
-          <section v-if="overdue.length" class="flex flex-col gap-3">
-            <h2 class="text-sm font-semibold uppercase tracking-wide text-error">
-              Просроченные
-            </h2>
-            <UCard
-              v-for="e in overdue"
-              :key="e.id"
-              variant="soft"
-              class="w-full rounded-panel"
-              :ui="{
-                root: 'rounded-panel bg-error/5 ring-1 ring-inset ring-error/25 border-0 divide-y-0',
-                body: 'flex flex-col md:flex-row md:items-center gap-3 p-4 sm:p-4',
-              }"
-            >
-              <div class="flex-1 min-w-0 flex flex-col gap-1.5">
-                <div class="flex items-center gap-2 flex-wrap">
-                  <CourseStatusBadge :status="e.status" />
-                  <span class="font-medium text-highlighted break-words">{{ e.courseTitle }}</span>
-                </div>
-                <p class="text-xs text-muted">
-                  Завершено {{ e.topicsCompleted ?? 0 }} из {{ e.topicsTotal ?? 0 }} тем · {{ e.progressPercent ?? 0 }}%
-                </p>
-              </div>
-              <UButton color="primary" class="shrink-0" @click="open(e)">
-                {{ ctaLabel(e) }}
-              </UButton>
-            </UCard>
-          </section>
-
-          <section v-if="inProgress.length" class="flex flex-col gap-3">
-            <h2 class="text-sm font-semibold uppercase tracking-wide text-muted">
-              В процессе
-            </h2>
-            <UCard
-              v-for="e in inProgress"
-              :key="e.id"
-              variant="soft"
-              class="w-full rounded-panel"
-              :ui="{
-                root: 'rounded-panel bg-elevated ring-0 border-0 divide-y-0',
-                body: 'flex flex-col md:flex-row md:items-center gap-3 p-4 sm:p-4',
-              }"
-            >
-              <div class="flex-1 min-w-0 flex flex-col gap-2">
-                <div class="flex items-center gap-2 flex-wrap">
-                  <CourseStatusBadge :status="e.status" />
-                  <span class="font-medium text-highlighted break-words">{{ e.courseTitle }}</span>
-                </div>
-                <UProgress
-                  :model-value="e.progressPercent ?? 0"
-                  size="sm"
-                  color="primary"
-                  :aria-label="`Завершено ${e.topicsCompleted ?? 0} из ${e.topicsTotal ?? 0} тем, ${e.progressPercent ?? 0} процентов`"
-                />
-                <p class="text-xs text-muted">
-                  Завершено {{ e.topicsCompleted ?? 0 }} из {{ e.topicsTotal ?? 0 }} тем · {{ e.progressPercent ?? 0 }}%
-                </p>
-              </div>
-              <UButton color="primary" icon="i-lucide-play" class="shrink-0" @click="open(e)">
-                Продолжить
-              </UButton>
-            </UCard>
-          </section>
-
-          <section v-if="fresh.length" class="flex flex-col gap-3">
-            <h2 class="text-sm font-semibold uppercase tracking-wide text-muted">
-              Новые
-            </h2>
-            <UCard
-              v-for="e in fresh"
-              :key="e.id"
-              variant="soft"
-              class="w-full rounded-panel"
-              :ui="{
-                root: 'rounded-panel bg-elevated ring-0 border-0 divide-y-0',
-                body: 'flex flex-col md:flex-row md:items-center gap-3 p-4 sm:p-4',
-              }"
-            >
-              <div class="flex-1 min-w-0">
-                <span class="font-medium text-highlighted break-words block">{{ e.courseTitle }}</span>
-              </div>
-              <UButton color="primary" icon="i-lucide-play" class="shrink-0" @click="open(e)">
-                Начать
-              </UButton>
-            </UCard>
-          </section>
-
-          <section v-if="completed.length" class="flex flex-col gap-3">
-            <h2 class="text-sm font-semibold uppercase tracking-wide text-muted">
-              Завершённые
-            </h2>
-            <UCard
-              v-for="e in completed"
-              :key="e.id"
-              variant="soft"
-              class="w-full rounded-panel"
-              :ui="{
-                root: 'rounded-panel bg-elevated/60 ring-0 border-0 divide-y-0',
-                body: 'flex flex-col md:flex-row md:items-center gap-3 p-4 sm:p-4',
-              }"
-            >
-              <div class="flex-1 min-w-0 flex flex-col gap-1">
-                <div class="flex items-center gap-2 flex-wrap">
-                  <CourseStatusBadge status="completed" />
-                  <span class="font-medium text-highlighted break-words">{{ e.courseTitle }}</span>
-                </div>
-                <p v-if="e.completedAt" class="text-xs text-muted">
-                  Завершено {{ formatCompletedAt(e.completedAt) }}
-                </p>
-              </div>
-              <UButton color="neutral" variant="soft" class="shrink-0" @click="open(e)">
-                Смотреть
-              </UButton>
-            </UCard>
-          </section>
-        </div>
-      </template>
-
-      <!-- Управление обучением -->
-      <template v-else-if="tab === 'manage' && isCourseAdmin">
-        <div v-if="loadingManage" class="flex flex-col gap-3">
-          <USkeleton v-for="n in 4" :key="n" class="h-20 w-full rounded-panel" />
-        </div>
-
-        <UAlert
-          v-else-if="loadErrorManage"
-          color="warning"
-          variant="subtle"
-          icon="i-lucide-server"
-          title="API обучения недоступен"
-          :description="`${loadErrorManage}. Нужны файлы api/courses_*.php и миграция V4 на сервере.`"
-        />
-
-        <UEmpty
-          v-else-if="!store.courses.value.length"
-          variant="naked"
-          icon="i-lucide-library-big"
-          title="Обучения пока нет"
-          description="Создайте первое обучение и наполните его темами и материалами."
-          class="w-full py-12"
-        >
-          <template #actions>
-            <UButton color="primary" icon="i-lucide-plus" @click="goCreateCourse">
-              Создать обучение
-            </UButton>
-          </template>
-        </UEmpty>
-
-        <div v-else class="flex flex-col gap-3">
-          <UCard
-            v-for="c in store.courses.value"
-            :key="c.id"
-            variant="soft"
-            class="w-full rounded-panel"
-            :ui="{
-              root: 'rounded-panel bg-elevated ring-0 border-0 divide-y-0',
-              body: 'flex flex-col md:flex-row md:items-center gap-3 p-4 sm:p-4',
-            }"
-          >
-            <div class="flex-1 min-w-0 flex flex-col gap-1">
-              <div class="flex items-center gap-2 flex-wrap">
-                <CourseStatusBadge :status="c.status" />
-                <UBadge v-if="c.category" color="neutral" variant="subtle" size="sm">
-                  {{ c.category }}
-                </UBadge>
-                <span class="font-medium text-highlighted break-words">{{ c.title }}</span>
-              </div>
-              <p class="text-xs text-muted">
-                Тем: {{ c.topicsCount ?? 0 }}
-                <template v-if="c.updatedAt">
-                  · обновлён {{ new Date(c.updatedAt).toLocaleDateString('ru-RU') }}
-                </template>
-              </p>
+          <div class="flex-1 min-w-0 flex flex-col gap-2">
+            <USkeleton class="h-4 w-1/2 rounded" />
+            <div class="flex items-center gap-2">
+              <USkeleton class="h-5 w-20 rounded-full" />
+              <USkeleton class="h-3 w-40 rounded" />
             </div>
-            <div class="flex items-center gap-2 shrink-0">
-              <UButton
-                color="neutral"
-                variant="soft"
-                icon="i-lucide-pencil"
-                @click="openWorkspace(c.id)"
-              >
-                Редактировать
-              </UButton>
-              <UButton
-                color="error"
-                variant="ghost"
-                icon="i-lucide-trash-2"
-                @click="askDelete(c)"
-              >
-                Удалить
-              </UButton>
-            </div>
-          </UCard>
+            <USkeleton class="h-2 w-full rounded-full" />
+          </div>
+          <USkeleton class="h-8 w-28 rounded-md shrink-0" />
         </div>
-      </template>
-    </div>
+      </div>
 
-    <UModal
-      v-model:open="deleteOpen"
-      title="Удалить обучение?"
-      description="Обучение и его материалы будут удалены. Это действие нельзя отменить."
-    >
-      <template #body>
-        <p class="text-sm text-muted">
-          Обучение:
-          <span class="text-highlighted font-medium">{{ deleteTarget?.title || '—' }}</span>
-        </p>
-      </template>
-      <template #footer>
-        <div class="flex justify-end gap-2 w-full">
-          <UButton color="neutral" variant="ghost" @click="deleteOpen = false">Отмена</UButton>
-          <UButton color="error" icon="i-lucide-trash-2" :loading="deleting" @click="confirmDelete">
-            Удалить
+      <!-- Ошибка: с возможностью повторить, а не тупик -->
+      <UAlert
+        v-else-if="loadError"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-server"
+        title="Не удалось загрузить назначения"
+        :description="loadError"
+      >
+        <template #actions>
+          <UButton color="warning" variant="solid" icon="i-lucide-rotate-ccw" @click="loadMine">
+            Повторить
           </UButton>
-        </div>
-      </template>
-    </UModal>
+        </template>
+      </UAlert>
+
+      <!-- Назначений нет совсем -->
+      <UEmpty
+        v-else-if="isEmpty"
+        variant="naked"
+        icon="i-lucide-graduation-cap"
+        title="Вам пока ничего не назначено"
+        description="Когда HR направит курс, он появится здесь."
+        class="w-full py-12"
+      >
+        <template v-if="isCourseAdmin" #actions>
+          <UButton color="primary" variant="soft" icon="i-lucide-settings-2" @click="goManage">
+            Перейти к управлению обучением
+          </UButton>
+        </template>
+      </UEmpty>
+
+      <div v-else class="flex flex-col gap-6">
+        <!-- Нужно пройти -->
+        <section v-if="active.length" class="flex flex-col gap-3">
+          <div class="flex items-center gap-2 flex-wrap">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-muted">Нужно пройти</h2>
+            <UBadge color="neutral" variant="subtle" size="sm">{{ active.length }}</UBadge>
+            <UBadge v-if="overdueCount" color="error" variant="subtle" size="sm">
+              просрочено: {{ overdueCount }}
+            </UBadge>
+          </div>
+          <MyCourseCard v-for="e in active" :key="e.id" :enrollment="e" @open="open" />
+        </section>
+
+        <!-- Активного нет, но что-то пройдено -->
+        <UEmpty
+          v-else
+          variant="naked"
+          icon="i-lucide-check-circle-2"
+          title="Всё пройдено"
+          description="Новых назначений нет. Завершённые программы — ниже."
+          class="w-full py-10"
+        />
+
+        <!-- Завершённые: по умолчанию свёрнуты, чтобы не выдавливать активное -->
+        <section v-if="completed.length" class="flex flex-col gap-3">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            class="self-start -ml-2"
+            :icon="showCompleted ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+            :aria-expanded="showCompleted"
+            @click="showCompleted = !showCompleted"
+          >
+            {{ showCompleted ? 'Скрыть завершённые' : `Показать завершённые (${completed.length})` }}
+          </UButton>
+          <template v-if="showCompleted">
+            <MyCourseCard v-for="e in completed" :key="e.id" :enrollment="e" @open="open" />
+          </template>
+        </section>
+      </div>
+    </div>
   </UMain>
 </template>

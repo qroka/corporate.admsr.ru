@@ -27,6 +27,7 @@ const topicId = computed(() => {
 const isFinal = computed(() => !topicId.value || String(route.name || '').includes('final-test'));
 
 const loading = ref(true);
+const loadError = ref<string | null>(null);
 const saving = ref(false);
 const removing = ref(false);
 const removeOpen = ref(false);
@@ -75,8 +76,9 @@ function applyForm(src: any) {
   syncSettingsFromForm();
 }
 
-onMounted(async () => {
+async function load() {
   loading.value = true;
+  loadError.value = null;
   try {
     await store.loadCourse(courseId.value);
     const versionId = store.version.value?.id;
@@ -122,16 +124,13 @@ onMounted(async () => {
       }
     }
   } catch (e: any) {
-    toast.add({
-      title: 'Не удалось загрузить тест',
-      description: e?.message,
-      color: 'error',
-      icon: 'i-lucide-alert-circle',
-    });
+    loadError.value = e?.message || 'Не удалось загрузить тест';
   } finally {
     loading.value = false;
   }
-});
+}
+
+onMounted(load);
 
 async function onSave() {
   if (!isFinal.value && !linkId.value && !form.id) {
@@ -213,13 +212,33 @@ async function confirmRemove() {
       <USkeleton v-for="n in 4" :key="n" class="h-16 w-full rounded-xl" />
     </div>
 
+    <UAlert
+      v-else-if="loadError"
+      color="warning"
+      variant="subtle"
+      icon="i-lucide-server"
+      :title="isFinal ? 'Не удалось загрузить итоговый тест' : 'Не удалось загрузить тест темы'"
+      :description="loadError"
+    >
+      <template #actions>
+        <UButton color="warning" icon="i-lucide-rotate-ccw" @click="load">Повторить</UButton>
+        <UButton
+          color="neutral"
+          variant="ghost"
+          :to="{ name: 'admin-course-workspace', params: { courseId } }"
+        >
+          Вернуться к курсу
+        </UButton>
+      </template>
+    </UAlert>
+
     <template v-else>
       <UAlert
         v-if="guideMode && !isFinal"
         color="primary"
         variant="subtle"
         icon="i-lucide-list-ordered"
-        title="Шаг 3 из 3 — тест темы"
+        title="Шаг 4 из 4 — тест темы"
         description="Добавьте вопросы и сохраните. После этого откроется хаб курса с чеклистом готовности."
       />
       <CourseTestEditor

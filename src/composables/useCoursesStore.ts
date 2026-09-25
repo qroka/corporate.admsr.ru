@@ -10,6 +10,7 @@ export type CourseListItem = {
   currentVersionId?: number | null;
   versionNumber?: number | null;
   status?: string | null;
+  shortDescription?: string | null;
   topicsCount?: number;
   publishedAt?: string | null;
 };
@@ -107,6 +108,17 @@ const myEnrollments = ref<EnrollmentSummary[]>([]);
 const loading = ref(false);
 const error = ref<string | null>(null);
 
+/**
+ * Go-хендлер списка собирает часть полей через fmt.Sprint, поэтому NULL приезжает
+ * строкой "<nil>". Приводим такие значения к null, чтобы они не попали в интерфейс.
+ */
+function cleanText(value: unknown): string | null {
+  if (value == null) return null;
+  const s = String(value).trim();
+  if (!s || s === '<nil>' || s === 'null' || s === 'undefined') return null;
+  return s;
+}
+
 function unwrap<T>(res: ApiResult<T>, fallbackMsg: string): T {
   if (!res.success) throw new Error(res.message || fallbackMsg);
   return res.data as T;
@@ -142,12 +154,13 @@ export function useCoursesStore() {
       courses.value = raw.map((c: any) => ({
         id: Number(c.id),
         title: String(c.title ?? ''),
-        category: c.category ?? null,
+        category: cleanText(c.category),
         ownerId: c.ownerId,
         updatedAt: c.updatedAt,
         currentVersionId: c.currentVersionId ?? c.currentVersion?.id ?? null,
         versionNumber: c.versionNumber ?? c.currentVersion?.versionNumber ?? null,
-        status: c.status ?? c.currentVersion?.status ?? null,
+        status: cleanText(c.status ?? c.currentVersion?.status),
+        shortDescription: cleanText(c.shortDescription ?? c.currentVersion?.shortDescription),
         topicsCount: c.topicsCount,
         publishedAt: c.publishedAt ?? c.currentVersion?.publishedAt ?? null,
       }));

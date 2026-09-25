@@ -5,6 +5,7 @@ import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
 import { useBreadcrumbCurrentLabel } from '../../../composables/usePortalNavigation';
 import { openCourseCertificatePrint, downloadCourseCertificatePdf } from '../certificatePdf';
+import { formatDateTime } from '../courseDeadline';
 
 const route = useRoute();
 const store = useCoursesStore();
@@ -50,15 +51,7 @@ const finalScore = computed(() => {
 const completedAt = computed(
   () => completion.value?.completedAt || snapshot.value?.completedAt || null,
 );
-const completedAtLabel = computed(() => {
-  const raw = completedAt.value;
-  if (!raw) return '';
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return '';
-  const date = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
-  const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-  return `${date}, ${time}`;
-});
+const completedAtLabel = computed(() => formatDateTime(completedAt.value));
 const generateCertificate = computed(() => payload.value?.generateCertificate === true);
 const requireFinalTest = computed(() => payload.value?.requireFinalTest === true);
 
@@ -76,22 +69,21 @@ onUnmounted(() => {
   breadcrumbLabel.value = null;
 });
 
-onMounted(async () => {
+async function load() {
+  loading.value = true;
   loadError.value = null;
   try {
     payload.value = await store.loadResult(enrollmentId.value);
   } catch (e: any) {
+    // Ошибка остаётся на экране в UAlert — тост поверх дублировал бы её.
+    payload.value = null;
     loadError.value = e?.message || 'Результат недоступен';
-    toast.add({
-      title: 'Результат недоступен',
-      description: loadError.value,
-      color: 'error',
-      icon: 'i-lucide-alert-circle',
-    });
   } finally {
     loading.value = false;
   }
-});
+}
+
+onMounted(load);
 
 function certificatePayload() {
   return {
@@ -143,18 +135,20 @@ async function onPrintCertificate() {
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full max-w-2xl mx-auto min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
-    <h1 class="text-2xl font-medium text-highlighted break-words">{{ title }}</h1>
+  <UMain class="relative w-full h-full min-h-0">
+    <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-2xl mx-auto overflow-y-auto scrollbar-hide p-px pb-8">
+    <UPageHeader headline="Обучение" :title="title" :description="completion ? courseTitle : undefined" />
 
-    <div v-if="loading" class="flex flex-col gap-3 p-1">
-      <USkeleton v-for="n in 3" :key="n" class="h-16 w-full rounded-xl" />
+    <div v-if="loading" class="flex flex-col gap-4" aria-busy="true" aria-label="Загрузка итогов">
+      <USkeleton class="h-56 w-full rounded-panel" />
+      <USkeleton class="h-10 w-72 rounded-lg" />
     </div>
 
     <template v-else-if="completion">
-      <div class="min-w-0 p-1 flex flex-col gap-4">
+      <div class="min-w-0 flex flex-col gap-4">
         <div
           v-if="generateCertificate && passed"
-          class="rounded-xl ring-1 ring-primary/30 bg-elevated/40 p-6 flex flex-col gap-4 min-w-0"
+          class="rounded-panel ring-1 ring-inset ring-primary/30 bg-elevated p-6 flex flex-col gap-4 min-w-0"
         >
           <div class="flex flex-col gap-1">
             <p class="text-xs uppercase tracking-[0.2em] text-muted">Сертификат о прохождении</p>
@@ -193,7 +187,7 @@ async function onPrintCertificate() {
           </div>
         </div>
 
-        <div v-else class="rounded-xl ring-1 ring-default p-5 flex flex-col gap-3 min-w-0">
+        <div v-else class="rounded-panel bg-elevated p-5 flex flex-col gap-3 min-w-0">
           <p v-if="requireFinalTest && finalScore != null" class="text-3xl font-medium text-highlighted">
             {{ Math.round(finalScore) }}%
           </p>
@@ -227,15 +221,19 @@ async function onPrintCertificate() {
 
     <UAlert
       v-else
-      color="error"
+      color="warning"
       variant="subtle"
-      icon="i-lucide-alert-circle"
-      title="Результат недоступен"
-      :description="loadError || 'Не удалось загрузить итог прохождения.'"
+      icon="i-lucide-server"
+      title="Итоги пока недоступны"
+      :description="`${loadError || 'Не удалось загрузить итог прохождения.'} Если курс ещё не пройден до конца — вернитесь к нему.`"
     >
       <template #actions>
-        <UButton color="neutral" variant="outline" :to="{ name: 'courses' }">К моему обучению</UButton>
+        <UButton color="warning" icon="i-lucide-rotate-ccw" @click="load">Повторить</UButton>
+        <UButton color="neutral" variant="ghost" :to="{ name: 'course-enrollment', params: { enrollmentId } }">
+          К курсу
+        </UButton>
       </template>
     </UAlert>
+    </div>
   </UMain>
 </template>

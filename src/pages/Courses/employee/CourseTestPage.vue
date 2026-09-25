@@ -112,13 +112,8 @@ async function loadAttempt() {
       || 'Обучение';
     await beginAttempt();
   } catch (e: any) {
+    // Ошибка остаётся на экране в UAlert — тост поверх дублировал бы её.
     loadError.value = e?.message || 'Не удалось начать тест';
-    toast.add({
-      title: 'Не удалось начать тест',
-      description: loadError.value,
-      color: 'error',
-      icon: 'i-lucide-alert-circle',
-    });
   } finally {
     loading.value = false;
   }
@@ -208,18 +203,19 @@ async function onRetake() {
 
     <UAlert
       v-else-if="!ready"
-      color="error"
+      color="warning"
       variant="subtle"
-      icon="i-lucide-alert-circle"
+      icon="i-lucide-server"
       title="Тест недоступен"
       :description="loadError || 'Вернитесь к курсу и попробуйте снова.'"
-      :actions="[{
-        label: 'К курсу',
-        color: 'neutral',
-        variant: 'outline',
-        onClick: () => router.push({ name: 'course-enrollment', params: { enrollmentId: enrollmentId } }),
-      }]"
-    />
+    >
+      <template #actions>
+        <UButton color="warning" icon="i-lucide-rotate-ccw" @click="loadAttempt">Повторить</UButton>
+        <UButton color="neutral" variant="ghost" :to="{ name: 'course-enrollment', params: { enrollmentId } }">
+          К курсу
+        </UButton>
+      </template>
+    </UAlert>
 
     <TestRunner
       v-else

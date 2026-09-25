@@ -1,9 +1,11 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { z } from 'zod';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
 import { useAdminCoursePortalBreadcrumbs } from '../useAdminCoursePortalBreadcrumbs';
+import { activeTimeHint } from '../courseDuration';
 
 const route = useRoute();
 const router = useRouter();
@@ -20,16 +22,31 @@ const isEdit = computed(() => topicId.value != null && !Number.isNaN(topicId.val
 const guideMode = computed(() => String(route.query.guide || '') === '1');
 
 const loading = ref(true);
+const loadError = ref<string | null>(null);
 const saving = ref(false);
 const deleteOpen = ref(false);
 const deleteTarget = ref<{ id: number; title: string } | null>(null);
 const deleting = ref(false);
+
+const schema = z.object({
+  title: z.string().trim().min(1, 'Укажите название темы'),
+  description: z.string(),
+  minimumActiveSeconds: z
+    .number({ message: 'Введите число секунд' })
+    .int('Только целые секунды')
+    .min(0, 'Не может быть отрицательным')
+    .max(86400, 'Не больше суток'),
+});
+
 const form = reactive({
   title: '',
   description: '',
   isRequired: true,
   minimumActiveSeconds: 0,
 });
+
+/** Поле остаётся в секундах, как в API, но рядом показываем то же число по-человечески. */
+const minimumActiveHint = computed(() => activeTimeHint(form.minimumActiveSeconds, 'тему'));
 
 const materialTypeLabels: Record<string, string> = {
   rich_text: 'Текст',
@@ -40,9 +57,15 @@ const materialTypeLabels: Record<string, string> = {
   link: 'Ссылка',
 };
 
-const topicMaterials = computed(
-  () => store.topics.value.find((t) => t.id === topicId.value)?.materials || [],
-);
+const currentTopic = computed(() => store.topics.value.find((t) => t.id === topicId.value) || null);
+const topicMaterials = computed(() => currentTopic.value?.materials || []);
+/** Правим тему, которой нет в этой версии курса — форма бесполезна. */
+const topicMissing = computed(() => isEdit.value && !loading.value && !loadError.value && !currentTopic.value);
+
+const submitLabel = computed(() => {
+  if (isEdit.value) return 'Сохранить';
+  return guideMode.value ? 'Сохранить и добавить материал' : 'Создать тему';
+});
 
 function materialTypeLabel(type?: string | null) {
   if (!type) return 'Материал';
@@ -70,31 +93,28 @@ async function confirmDeleteMaterial() {
   }
 }
 
-onMounted(async () => {
+async function load() {
   loading.value = true;
+  loadError.value = null;
   try {
     await store.loadCourse(courseId.value);
-    if (isEdit.value) {
-      const t = store.topics.value.find((x) => x.id === topicId.value);
-      if (t) {
-        form.title = t.title;
-        form.description = t.description || '';
-        form.isRequired = t.isRequired !== false;
-        form.minimumActiveSeconds = t.minimumActiveSeconds ?? 0;
-      }
+    const t = currentTopic.value;
+    if (isEdit.value && t) {
+      form.title = t.title;
+      form.description = t.description || '';
+      form.isRequired = t.isRequired !== false;
+      form.minimumActiveSeconds = t.minimumActiveSeconds ?? 0;
     }
   } catch (e: any) {
-    toast.add({ title: 'Ошибка', description: e?.message, color: 'error', icon: 'i-lucide-alert-circle' });
+    loadError.value = e?.message || 'Не удалось загрузить курс';
   } finally {
     loading.value = false;
   }
-});
+}
 
-async function onSave() {
-  if (!form.title.trim()) {
-    toast.add({ title: 'Укажите название темы', color: 'warning', icon: 'i-lucide-alert-triangle' });
-    return;
-  }
+onMounted(load);
+
+async function onSubmit() {
   saving.value = true;
   try {
     if (isEdit.value && topicId.value) {
@@ -107,18 +127,20 @@ async function onSave() {
       });
       toast.add({ title: 'Тема сохранена', color: 'success', icon: 'i-lucide-check' });
     } else {
-      const res = await store.createTopic({
+      const versionId = store.version.value?.id;
+      if (!versionId) throw new Error('Версия курса не загружена — обновите страницу');
+      const res = (await store.createTopic({
         courseId: courseId.value,
-        versionId: store.version.value?.id,
+        versionId,
         title: form.title.trim(),
         description: form.description,
         isRequired: form.isRequired,
         minimumActiveSeconds: form.minimumActiveSeconds,
-      }) as any;
+      })) as any;
       const newId = res?.topic?.id ?? res?.id;
       toast.add({
         title: 'Тема создана',
-        description: guideMode.value ? 'Шаг 2: добавьте материал' : undefined,
+        description: guideMode.value ? 'Шаг 3 из 4: добавьте материал' : undefined,
         color: 'success',
         icon: 'i-lucide-check',
       });
@@ -148,117 +170,185 @@ async function onSave() {
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full max-w-3xl mx-auto min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
-    <div class="flex items-center justify-between gap-3 flex-wrap min-w-0">
-      <h1 class="text-2xl font-medium text-highlighted break-words">
-        {{ isEdit ? 'Редактирование темы' : 'Новая тема' }}
-      </h1>
-    </div>
+  <UMain class="relative w-full h-full min-h-0">
+    <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-3xl mx-auto overflow-y-auto scrollbar-hide p-px pb-8">
+      <UPageHeader
+        headline="Обучение"
+        :title="isEdit ? 'Редактирование темы' : 'Новая тема'"
+        :description="isEdit
+          ? 'Название, описание и материалы темы'
+          : 'Тема — это раздел курса, внутри которого лежат материалы'"
+      />
 
-    <UAlert
-      v-if="guideMode && !isEdit"
-      color="primary"
-      variant="subtle"
-      icon="i-lucide-list-ordered"
-      title="Шаг 1 из 3 — тема"
-      description="Укажите название. После сохранения сразу откроется добавление материала."
-    />
+      <UAlert
+        v-if="guideMode && !isEdit"
+        color="primary"
+        variant="subtle"
+        icon="i-lucide-list-ordered"
+        title="Шаг 2 из 4 — тема"
+        description="Укажите название. После сохранения сразу откроется добавление материала."
+      />
 
-    <div v-if="loading" class="flex flex-col gap-3 p-1">
-      <USkeleton v-for="n in 4" :key="n" class="h-12 w-full rounded-lg" />
-    </div>
+      <div v-if="loading" class="flex flex-col gap-4">
+        <USkeleton class="h-16 w-full rounded-lg" />
+        <USkeleton class="h-28 w-full rounded-lg" />
+        <USkeleton class="h-12 w-2/3 rounded-lg" />
+        <USkeleton class="h-16 w-full rounded-lg" />
+      </div>
 
-    <div v-else class="flex flex-col gap-4 min-w-0 p-1">
-      <UFormField label="Название" required>
-        <UInput v-model="form.title" size="lg" class="w-full" />
-      </UFormField>
-      <UFormField label="Описание">
-        <UTextarea v-model="form.description" :rows="4" class="w-full" />
-      </UFormField>
-      <UFormField label="Обязательная тема">
-        <USwitch v-model="form.isRequired" label="Нужна для завершения курса" />
-      </UFormField>
-      <UFormField label="Минимум активного времени (сек)">
-        <UInput v-model.number="form.minimumActiveSeconds" type="number" :min="0" size="lg" class="w-full" />
-      </UFormField>
+      <UAlert
+        v-else-if="loadError"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-server"
+        title="Не удалось загрузить курс"
+        :description="loadError"
+      >
+        <template #actions>
+          <UButton color="warning" icon="i-lucide-rotate-ccw" @click="load">Повторить</UButton>
+          <UButton color="neutral" variant="ghost" :to="{ name: 'admin-courses' }">К списку</UButton>
+        </template>
+      </UAlert>
 
-      <section v-if="isEdit" class="flex flex-col gap-2 pt-2 min-w-0">
-        <div class="flex items-center justify-between gap-3 flex-wrap">
-          <h2 class="text-lg font-medium">Материалы</h2>
-          <UButton
-            v-if="topicId"
-            color="primary"
-            variant="soft"
-            size="sm"
-            icon="i-lucide-plus"
-            :to="{ name: 'admin-course-material-create', params: { courseId, topicId } }"
-          >
-            Добавить материал
+      <UAlert
+        v-else-if="topicMissing"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-file-question"
+        title="Тема не найдена"
+        description="Возможно, её удалили или она относится к другой версии курса."
+      >
+        <template #actions>
+          <UButton color="neutral" variant="soft" :to="{ name: 'admin-course-workspace', params: { courseId } }">
+            Вернуться к курсу
           </UButton>
-        </div>
-        <ul
-          v-if="topicMaterials.length"
-          class="flex flex-col gap-2 list-none p-0 m-0 min-w-0"
-        >
-          <li
-            v-for="m in topicMaterials"
-            :key="m.id"
-            class="rounded-lg ring-1 ring-default p-3 flex items-center justify-between gap-2 min-w-0"
+        </template>
+      </UAlert>
+
+      <template v-else>
+        <UForm :schema="schema" :state="form" class="flex flex-col gap-4 min-w-0" @submit="onSubmit">
+          <UFormField label="Название" name="title" required>
+            <UInput
+              v-model="form.title"
+              size="lg"
+              class="w-full"
+              :autofocus="!isEdit"
+              placeholder="Например: Пожарная безопасность на рабочем месте"
+            />
+          </UFormField>
+
+          <UFormField label="Описание" name="description" hint="Необязательно">
+            <UTextarea
+              v-model="form.description"
+              :rows="4"
+              class="w-full"
+              placeholder="Что сотрудник узнает из этой темы"
+            />
+          </UFormField>
+
+          <UFormField label="Обязательная тема" name="isRequired">
+            <USwitch v-model="form.isRequired" label="Нужна для завершения курса" />
+          </UFormField>
+
+          <UFormField
+            label="Минимум активного времени"
+            name="minimumActiveSeconds"
+            hint="В секундах"
+            :description="minimumActiveHint"
           >
-            <div class="min-w-0">
-              <p class="font-medium break-words">{{ m.title }}</p>
-              <p class="text-xs text-dimmed">{{ materialTypeLabel(m.type) }}</p>
-            </div>
-            <div class="flex items-center gap-1 shrink-0">
-              <UButton
-                color="neutral"
-                variant="soft"
-                size="sm"
-                icon="i-lucide-pencil"
-                :to="{ name: 'admin-course-material-edit', params: { courseId, topicId, materialId: m.id } }"
-              >
-                Изменить
-              </UButton>
-              <UButton
-                color="error"
-                variant="ghost"
-                size="sm"
-                icon="i-lucide-trash-2"
-                square
-                aria-label="Удалить материал"
-                @click="askDeleteMaterial(m)"
-              />
-            </div>
-          </li>
-        </ul>
-        <UEmpty
-          v-else
-          icon="i-lucide-file"
-          title="Нет материалов"
-          description="Добавьте текст, файл или ссылку."
-          class="py-6"
-        >
-          <template #actions>
+            <UInput
+              v-model.number="form.minimumActiveSeconds"
+              type="number"
+              :min="0"
+              :step="30"
+              size="lg"
+              class="w-full"
+            />
+          </UFormField>
+
+          <div class="flex gap-2 pt-1">
+            <UButton type="submit" color="primary" size="lg" :loading="saving" icon="i-lucide-check">
+              {{ submitLabel }}
+            </UButton>
+            <UButton
+              color="neutral"
+              variant="ghost"
+              size="lg"
+              :to="{ name: 'admin-course-workspace', params: { courseId } }"
+            >
+              Назад
+            </UButton>
+          </div>
+        </UForm>
+
+        <section v-if="isEdit" class="flex flex-col gap-3 min-w-0 border-t border-accented pt-5">
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <h2 class="text-lg font-medium text-highlighted">Материалы</h2>
             <UButton
               v-if="topicId"
               color="primary"
+              variant="soft"
+              size="sm"
               icon="i-lucide-plus"
               :to="{ name: 'admin-course-material-create', params: { courseId, topicId } }"
             >
               Добавить материал
             </UButton>
-          </template>
-        </UEmpty>
-      </section>
+          </div>
 
-      <div class="flex gap-2">
-        <UButton color="primary" size="lg" :loading="saving" icon="i-lucide-check" @click="onSave">
-          Сохранить
-        </UButton>
-        <UButton color="neutral" variant="ghost" size="lg" :to="{ name: 'admin-course-workspace', params: { courseId } }">
-          Назад
-        </UButton>
-      </div>
+          <ul v-if="topicMaterials.length" class="flex flex-col gap-2 list-none p-0 m-0 min-w-0">
+            <li
+              v-for="m in topicMaterials"
+              :key="m.id"
+              class="rounded-lg ring-1 ring-accented p-3 flex items-center justify-between gap-2 min-w-0"
+            >
+              <div class="min-w-0">
+                <p class="font-medium break-words">{{ m.title }}</p>
+                <p class="text-xs text-dimmed">{{ materialTypeLabel(m.type) }}</p>
+              </div>
+              <div class="flex items-center gap-1 shrink-0">
+                <UButton
+                  color="neutral"
+                  variant="soft"
+                  size="sm"
+                  icon="i-lucide-pencil"
+                  :to="{ name: 'admin-course-material-edit', params: { courseId, topicId, materialId: m.id } }"
+                >
+                  Изменить
+                </UButton>
+                <UButton
+                  color="error"
+                  variant="ghost"
+                  size="sm"
+                  icon="i-lucide-trash-2"
+                  square
+                  aria-label="Удалить материал"
+                  @click="askDeleteMaterial(m)"
+                />
+              </div>
+            </li>
+          </ul>
+
+          <UEmpty
+            v-else
+            icon="i-lucide-file"
+            title="Нет материалов"
+            description="Добавьте текст, файл или ссылку — без материалов тему нельзя пройти."
+            class="py-6"
+          >
+            <template #actions>
+              <UButton
+                v-if="topicId"
+                color="primary"
+                icon="i-lucide-plus"
+                :to="{ name: 'admin-course-material-create', params: { courseId, topicId } }"
+              >
+                Добавить материал
+              </UButton>
+            </template>
+          </UEmpty>
+        </section>
+      </template>
     </div>
 
     <UModal
