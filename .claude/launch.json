@@ -12,6 +12,12 @@
         "127.0.0.1"
       ],
       "port": 5173
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd backend && set DB_HOST=127.0.0.1&& set DB_PORT=55432&& set DB_USER=devuser&& set DB_PASS=devpass&& bin\\api.exe"],
+      "port": 8080
     }
   ]
 }
