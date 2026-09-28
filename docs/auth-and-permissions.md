@@ -192,7 +192,7 @@ apiSessionFetch / apiSessionUpload получили 401
 | SEC-006 | `session_bootstrap` выдавал сессию по `id` из тела | личность только из текущей сессии |
 | SEC-007 | Права редактора форм определялись по заголовку `X-User-Id` | личность из сессии, признак редактора — `CanEditSection(..., "tests")` |
 | SEC-008 | Модуль тестов доверял `userId` из тела | `viewer()` только из сессии; `owner_id IS NULL` = доступ запрещён |
-| SEC-009 | `absence_journal` был полностью открыт | GET — `requireUser`, мутации — секция |
+| SEC-009 | `absence_journal` был полностью открыт | все методы — `requireUser`; мутации: редактор секции — любые, сотрудник — только свои (удаление — только своей активной). Уточнено 2026-09-28 |
 
 Регрессионные тесты: `backend/internal/handlers/auth_guards_test.go`,
 `session_bootstrap_test.go`.

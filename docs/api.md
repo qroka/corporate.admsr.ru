@@ -91,7 +91,7 @@ PHP-реализацию (или в 404, если PHP-файла нет).
 | `gallery.php`, `gallery_base.php` | публично | секция `gallery` |
 | `Upload/upload.php` | — | см. `gallery.go:519` (`Upload`) |
 | `birthdays.php` | авторизованный | секция `birthdays` |
-| `absence_journal.php` | `requireUser` | секция `absence_journal` |
+| `absence_journal.php` | `requireUser` | `requireUser` + секция `absence_journal` **или** своя запись (`DELETE` — своя активная) |
 | `users.php` | `requireAdmin` | `requireAdmin` |
 | `profile.php` | `requireUser` | владелец записи либо админ |
 | `feedback.php` | — | `requireUser` |

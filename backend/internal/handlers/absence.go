@@ -157,9 +157,12 @@ func (h *Absence) get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Absence) post(w http.ResponseWriter, r *http.Request) {
-	// SEC-009: создание записей журнала — только для редакторов раздела.
-	// Раньше POST был открыт: любой мог добавить запись об отсутствии любому сотруднику.
-	if _, ok := requireSection(w, r, h.Pool, h.Auth, "absence_journal"); !ok {
+	// SEC-009: раньше POST был открыт — любой мог добавить запись любому сотруднику.
+	// Теперь: только авторизованный; редактор раздела — за любого, остальные —
+	// только за себя (user_id == сессия, проверка ниже). Первая версия исправления
+	// пускала только редакторов и этим сломала «Мои отсутствия» у всех сотрудников.
+	actor, ok := requireUser(w, r, h.Auth)
+	if !ok {
 		return
 	}
 	var body map[string]any
@@ -193,13 +196,9 @@ func (h *Absence) post(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actor, _ := h.Auth.CurrentUser(r.Context(), r)
-	if actor != nil {
-		can := auth.CanEditSection(r.Context(), h.Pool, actor, "absence_journal")
-		if !can && actor.ID != userID {
-			absenceFail(w, http.StatusForbidden, "Недостаточно прав")
-			return
-		}
+	if !auth.CanEditSection(r.Context(), h.Pool, actor, "absence_journal") && actor.ID != userID {
+		absenceFail(w, http.StatusForbidden, "Отмечать можно только своё отсутствие")
+		return
 	}
 
 	var end *string
@@ -237,8 +236,10 @@ func (h *Absence) post(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Absence) put(w http.ResponseWriter, r *http.Request) {
-	// SEC-009: изменение записей — только для редакторов раздела.
-	if _, ok := requireSection(w, r, h.Pool, h.Auth, "absence_journal"); !ok {
+	// SEC-009: только авторизованный; редактор раздела — любую запись, остальные —
+	// только свою (так сотрудник завершает своё отсутствие в «Моих отсутствиях»).
+	actor, ok := requireUser(w, r, h.Auth)
+	if !ok {
 		return
 	}
 	id, ok := queryID(r)
@@ -256,14 +257,9 @@ func (h *Absence) put(w http.ResponseWriter, r *http.Request) {
 		absenceFail(w, http.StatusBadRequest, "Некорректный JSON")
 		return
 	}
-	actor, _ := h.Auth.CurrentUser(r.Context(), r)
-	if actor != nil {
-		uid, _ := existing["user_id"].(int64)
-		can := auth.CanEditSection(r.Context(), h.Pool, actor, "absence_journal")
-		if !can && actor.ID != uid {
-			absenceFail(w, http.StatusForbidden, "Недостаточно прав")
-			return
-		}
+	if owner, _ := existing["user_id"].(int64); !auth.CanEditSection(r.Context(), h.Pool, actor, "absence_journal") && actor.ID != owner {
+		absenceFail(w, http.StatusForbidden, "Изменять можно только свои записи")
+		return
 	}
 	sets := []string{}
 	args := []any{}
@@ -321,15 +317,33 @@ func (h *Absence) put(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Absence) del(w http.ResponseWriter, r *http.Request) {
-	// SEC-009: удаление записей — только для редакторов раздела.
-	// Раньше DELETE был открыт: любой мог удалить любую запись журнала.
-	if _, ok := requireSection(w, r, h.Pool, h.Auth, "absence_journal"); !ok {
+	// SEC-009: раньше DELETE был открыт — любой мог удалить любую запись журнала.
+	// Теперь: редактор раздела — любую; сотрудник — только свою **активную**
+	// (отметил по ошибке). Завершённые записи — история, её удаляет только редактор.
+	actor, ok := requireUser(w, r, h.Auth)
+	if !ok {
 		return
 	}
 	id, ok := queryID(r)
 	if !ok {
 		absenceFail(w, http.StatusBadRequest, "Не указан id")
 		return
+	}
+	if !auth.CanEditSection(r.Context(), h.Pool, actor, "absence_journal") {
+		existing, err := h.fetchOne(r.Context(), id)
+		if err != nil {
+			absenceFail(w, http.StatusNotFound, "Запись не найдена")
+			return
+		}
+		owner, _ := existing["user_id"].(int64)
+		if owner != actor.ID {
+			absenceFail(w, http.StatusForbidden, "Удалять можно только свои записи")
+			return
+		}
+		if existing["status"] != "active" {
+			absenceFail(w, http.StatusForbidden, "Завершённую запись может удалить только ответственный за журнал")
+			return
+		}
 	}
 	var deleted int64
 	err := h.Pool.QueryRow(r.Context(), `DELETE FROM public.absence_journal WHERE id=$1 RETURNING id`, id).Scan(&deleted)

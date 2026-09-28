@@ -127,7 +127,8 @@
 | Backend | `backend/internal/handlers/absence.go` |
 
 Эндпоинт: `absence_journal.php`. GET — любой авторизованный (`requireUser`),
-POST/PUT/DELETE — секция `absence_journal` (закрыто в рамках SEC-009).
+POST/PUT/DELETE — редактор секции `absence_journal` за любого; обычный сотрудник — только
+свои записи (`DELETE` — только свою активную). См. SEC-009 в `docs/PROJECT_AUDIT.md`.
 
 Мутации идут через `apiSessionFetch` (Bearer), а контролы правки гейтятся
 `canEditSection('absence_journal')`.
