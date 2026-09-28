@@ -85,6 +85,19 @@ const homeServices = computed<HomeService[]>(() => {
   ];
 });
 
+// Плиток бывает от 1 до 5 (до 4 сервисов + «Все сервисы») — колонок столько же,
+// чтобы ряд занимал всю ширину. Классы полные: Tailwind не видит собранные строки.
+const SERVICES_GRID_COLS: Record<number, string> = {
+  1: 'sm:grid-cols-1 lg:grid-cols-1',
+  2: 'sm:grid-cols-2 lg:grid-cols-2',
+  3: 'sm:grid-cols-3 lg:grid-cols-3',
+  4: 'sm:grid-cols-2 lg:grid-cols-4',
+  5: 'sm:grid-cols-3 lg:grid-cols-5',
+};
+const servicesGridClass = computed(
+  () => SERVICES_GRID_COLS[homeServices.value.length] ?? 'sm:grid-cols-3 lg:grid-cols-5',
+);
+
 type NewsFeedItem = {
   id: string;
   likes: number;
@@ -410,7 +423,7 @@ onUnmounted(() => {
           </UTooltip>
         </div>
 
-        <div class="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div class="grid w-full grid-cols-2 gap-3" :class="servicesGridClass">
           <UPageCard
             v-for="svc in homeServices"
             :key="svc.id"
