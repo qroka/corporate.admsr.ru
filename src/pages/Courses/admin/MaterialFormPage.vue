@@ -8,7 +8,10 @@ import { newsEditorExtensions, newsEditorEmojiMenuItems } from '../../../composa
 import { newsEditorHandlers } from '../../../composables/newsEditorHandlers';
 import { newsEditorSlideoverUi } from '../../../composables/newsEditorSlideoverUi';
 import { useAdminCoursePortalBreadcrumbs } from '../useAdminCoursePortalBreadcrumbs';
-import { activeTimeHint } from '../courseDuration';
+import { activeTimeHint, minutesToSeconds, secondsToMinutes } from '../courseDuration';
+
+/** Поле ввода — на всю высоту рамки, иначе клик ниже первой строки не ставит курсор. */
+const materialEditorUi = { ...newsEditorSlideoverUi, base: `${newsEditorSlideoverUi.base} min-h-44` };
 
 const route = useRoute();
 const router = useRouter();
@@ -76,6 +79,13 @@ const materialMissing = computed(
 );
 
 const minimumActiveHint = computed(() => activeTimeHint(form.minimumActiveSeconds, 'материал'));
+/** Поле ввода — в минутах, в форме и API остаются секунды. */
+const minimumActiveMinutes = computed({
+  get: () => secondsToMinutes(form.minimumActiveSeconds),
+  set: (v: unknown) => {
+    form.minimumActiveSeconds = minutesToSeconds(v);
+  },
+});
 
 const submitLabel = computed(() => {
   if (isEdit.value) return 'Сохранить';
@@ -119,7 +129,7 @@ function validate(state: typeof form) {
 
   const secs = Number(state.minimumActiveSeconds);
   if (!Number.isInteger(secs) || secs < 0) {
-    errors.push({ name: 'minimumActiveSeconds', message: 'Целое число секунд, не меньше нуля' });
+    errors.push({ name: 'minimumActiveSeconds', message: 'Введите число минут, не меньше нуля' });
   } else if (secs > 86400) {
     errors.push({ name: 'minimumActiveSeconds', message: 'Не больше суток' });
   }
@@ -220,7 +230,7 @@ async function onSubmit() {
 
 <template>
   <UMain class="relative w-full h-full min-h-0">
-    <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-3xl mx-auto overflow-y-auto scrollbar-hide p-px pb-8">
+    <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-3xl mx-auto overflow-y-auto scrollbar-hide p-px pb-8 *:shrink-0">
       <UPageHeader
         headline="Обучение"
         :title="isEdit ? 'Редактирование материала' : 'Новый материал'"
@@ -312,7 +322,7 @@ async function onSubmit() {
             content-type="html"
             :extensions="newsEditorExtensions"
             :handlers="newsEditorHandlers"
-            :ui="newsEditorSlideoverUi"
+            :ui="materialEditorUi"
             placeholder="Текст материала…"
             class="w-full min-h-56 rounded-lg border border-accented overflow-hidden"
           >
@@ -357,14 +367,14 @@ async function onSubmit() {
         <UFormField
           label="Минимум активного времени"
           name="minimumActiveSeconds"
-          hint="В секундах"
+          hint="В минутах"
           :description="minimumActiveHint"
         >
           <UInput
-            v-model.number="form.minimumActiveSeconds"
+            v-model.number="minimumActiveMinutes"
             type="number"
             :min="0"
-            :step="30"
+            step="any"
             size="lg"
             class="w-full"
           />

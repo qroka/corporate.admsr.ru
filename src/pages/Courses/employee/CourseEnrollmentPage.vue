@@ -172,7 +172,7 @@ function topicMeta(t: any) {
 
 <template>
   <UMain class="relative w-full h-full min-h-0">
-    <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-3xl mx-auto overflow-y-auto scrollbar-hide p-px pb-8">
+    <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-3xl mx-auto overflow-y-auto scrollbar-hide p-px pb-8 *:shrink-0">
       <div v-if="loading" class="flex flex-col gap-4" aria-busy="true" aria-label="Загрузка курса">
         <USkeleton class="h-16 w-2/3 rounded-lg" />
         <USkeleton class="h-36 w-full rounded-panel" />
@@ -254,10 +254,10 @@ function topicMeta(t: any) {
               v-if="isCompleted"
               color="primary"
               size="lg"
-              icon="i-lucide-award"
+              :icon="data.version?.generateCertificate ? 'i-lucide-award' : 'i-lucide-flag'"
               :to="{ name: 'course-result', params: { enrollmentId } }"
             >
-              Итоги и сертификат
+              {{ data.version?.generateCertificate ? 'Итоги и сертификат' : 'Итоги' }}
             </UButton>
           </div>
         </section>

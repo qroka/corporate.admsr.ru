@@ -205,7 +205,7 @@ ADR-027.
 ```html
 <UMain class="relative w-full h-full min-h-0">
   <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-[1600px] mx-auto
-              overflow-y-auto scrollbar-hide p-px pb-8">
+              overflow-y-auto scrollbar-hide p-px pb-8 *:shrink-0">
     <UPageHeader headline="…" title="…" description="…" />
     <!-- содержимое -->
   </div>
@@ -222,6 +222,7 @@ ADR-027.
 | `gap-6` | вертикальный ритм секций |
 | `p-px` | 1px, чтобы не обрезались кольца фокуса и `ring-*` у крайних элементов |
 | `pb-8` | воздух внизу (основная панель задаёт `pb-0`) |
+| `*:shrink-0` | дети колонки не сжимаются. Без него блок с `overflow-hidden` (`UAlert`, `UCard`) при контенте выше экрана сжимается и обрезает свой текст. С 2026-09-28 — в страницах «Обучения»; в остальных — IMP-36 |
 
 `<UMain>` использован примерно в 32 файлах. **[ПОДТВЕРЖДЕНО]**
 

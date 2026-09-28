@@ -136,7 +136,7 @@ async function onPrintCertificate() {
 
 <template>
   <UMain class="relative w-full h-full min-h-0">
-    <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-2xl mx-auto overflow-y-auto scrollbar-hide p-px pb-8">
+    <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-2xl mx-auto overflow-y-auto scrollbar-hide p-px pb-8 *:shrink-0">
     <UPageHeader headline="Обучение" :title="title" :description="completion ? courseTitle : undefined" />
 
     <div v-if="loading" class="flex flex-col gap-4" aria-busy="true" aria-label="Загрузка итогов">

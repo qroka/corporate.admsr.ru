@@ -312,7 +312,7 @@ function scaleNumbers(q: Question): number[] {
     </template>
     <template #footer>
       <div class="flex gap-3 justify-end w-full">
-        <UButton color="neutral" variant="outline" @click="correctOpen = false">Выйти</UButton>
+        <UButton color="neutral" variant="outline" @click="correctOpen = false">Отмена</UButton>
         <UButton color="success" icon="i-lucide-check" @click="saveCorrect">Сохранить</UButton>
       </div>
     </template>

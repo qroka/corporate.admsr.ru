@@ -37,6 +37,11 @@ const activeMaterialId = ref<number | null>(null);
 const lastActivityAt = ref(Date.now());
 /** Засчитанные секунды из ответов heartbeat — показываем без перезагрузки темы. */
 const liveSeconds = ref<Record<number, number>>({});
+/** Секунды темы, засчитанные heartbeat'ом после последней загрузки темы. */
+const liveTopicSeconds = ref(0);
+watch(topicData, () => {
+  liveTopicSeconds.value = 0;
+});
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
 const topic = computed(() => topicData.value?.topic || null);
@@ -137,7 +142,7 @@ const stuckHere = computed(() => {
 const topicTimeLeft = computed(() => {
   if (!stuckHere.value || nextAction.value?.type !== 'topic') return 0;
   const min = Number(topic.value?.minimumActiveSeconds || 0);
-  const got = Number(topic.value?.progress?.activeSeconds || 0);
+  const got = Number(topic.value?.progress?.activeSeconds || 0) + liveTopicSeconds.value;
   return Math.max(0, min - got);
 });
 
@@ -237,13 +242,19 @@ async function tickHeartbeat() {
   const id = activeMaterialId.value;
   if (!id || isReview.value) return;
   const m = materials.value.find((x) => x.id === id);
-  if (!m || isDone(m) || !shouldBeat(m)) return;
+  // Изученный материал тоже считает время, пока не набран минимум темы —
+  // иначе тема с минимумом больше суммы материалов застревала навсегда.
+  if (!m || (isDone(m) && topicTimeLeft.value <= 0) || !shouldBeat(m)) return;
   try {
     const res = (await store.heartbeat({ enrollmentId: enrollmentId.value, materialId: id })) as any;
     if (res?.activeSeconds != null) {
       liveSeconds.value = { ...liveSeconds.value, [id]: Number(res.activeSeconds) };
     }
-    if (res?.topicCompleted) await refreshTopic();
+    liveTopicSeconds.value += Number(res?.addedSeconds || 0);
+    if (res?.topicCompleted) {
+      toast.add({ title: 'Тема пройдена', color: 'success', icon: 'i-lucide-check' });
+      await refreshTopic();
+    }
   } catch {
     /* сеть мигнула — следующий тик досчитает */
   }
@@ -307,7 +318,7 @@ onUnmounted(() => {
 
 <template>
   <UMain class="relative w-full h-full min-h-0">
-    <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-3xl mx-auto overflow-y-auto scrollbar-hide p-px pb-8">
+    <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-3xl mx-auto overflow-y-auto scrollbar-hide p-px pb-8 *:shrink-0">
       <div v-if="loading" class="flex flex-col gap-4" aria-busy="true" aria-label="Загрузка темы">
         <USkeleton class="h-16 w-2/3 rounded-lg" />
         <USkeleton v-for="n in 3" :key="n" class="h-28 w-full rounded-panel" />
