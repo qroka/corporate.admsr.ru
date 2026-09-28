@@ -119,7 +119,7 @@ const STORAGE_KEY = 'ui-theme-selection:v1';
 
 export const DEFAULT_THEME: UiThemeSelection = {
   primary: 'emerald',
-  neutral: 'zinc',
+  neutral: 'slate',
   font: 'inter',
   radius: 'md',
 };

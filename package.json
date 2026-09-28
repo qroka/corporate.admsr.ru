@@ -9,7 +9,6 @@
     "build": "vite build",
     "preview": "vite preview",
     "images:webp": "node scripts/generate-events-webp.mjs",
-    "gallery:json": "node scripts/build-gallery-json.mjs",
     "formdata:excel": "node scripts/formdata-to-excel.mjs",
     "test:courses": "php scripts/test_courses.php",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -18,7 +17,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@heroicons/vue": "^2.2.0",
     "@nuxt/ui": "^4.8.0",
     "@tiptap/extension-emoji": "^3.22.1",
     "@tiptap/extension-text-align": "^3.22.1",

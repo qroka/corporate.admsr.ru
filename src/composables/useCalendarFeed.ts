@@ -38,40 +38,35 @@ const RSVP_STORAGE_KEY = 'events-rsvp:v1';
 
 export const CALENDAR_SOURCE_META: Record<
   CalendarSource,
-  { label: string; icon: string; chipClass: string; barClass: string; softClass: string }
+  { label: string; icon: string; barClass: string; softClass: string }
 > = {
   event: {
     label: 'Мероприятия',
     icon: 'i-lucide-calendar',
-    chipClass: 'bg-emerald-500/15 text-emerald-400 ring-1 ring-inset ring-emerald-500/25',
     barClass: 'bg-emerald-500',
     softClass: 'border-emerald-500/30 bg-emerald-500/10',
   },
   meeting: {
     label: 'Встречи',
     icon: 'i-lucide-users',
-    chipClass: 'bg-info/15 text-info ring-1 ring-inset ring-info/25',
     barClass: 'bg-info',
     softClass: 'border-info/30 bg-info/5',
   },
   birthday: {
     label: 'Дни рождения',
     icon: 'i-lucide-cake',
-    chipClass: 'bg-violet-500/15 text-violet-400 ring-1 ring-inset ring-violet-500/25',
     barClass: 'bg-violet-500',
     softClass: 'border-violet-500/30 bg-violet-500/5',
   },
   learning: {
     label: 'Обучение',
     icon: 'i-lucide-graduation-cap',
-    chipClass: 'bg-warning/15 text-warning ring-1 ring-inset ring-warning/25',
     barClass: 'bg-warning',
     softClass: 'border-warning/30 bg-warning/5',
   },
   personal: {
     label: 'Личное',
     icon: 'i-lucide-circle',
-    chipClass: 'bg-muted/40 text-toned ring-1 ring-inset ring-default',
     barClass: 'bg-muted',
     softClass: 'border-default bg-elevated/40',
   },
