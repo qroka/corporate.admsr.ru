@@ -6,7 +6,8 @@ import { useOfoData, type OfoStat } from '../../composables/useOfoData';
 import AdminOfoPanel from '../../components/AdminOfoPanel.vue';
 import UserWorkFields from '../../components/UserWorkFields.vue';
 import { avatarUrlFromFilename, PROFILE_AVATAR_FILENAMES } from '../../constants/profileAvatars';
-import { userFullName } from '../../utils/userName';
+import { userAvatarSrc, userFullName } from '../../utils/userName';
+import { plural } from '../Courses/courseDuration';
 import { useOfoTree } from '../../composables/useOfoTree';
 import { useGroupsData } from '../../composables/useGroupsData';
 import { useUsersData, type AdminUserRow } from '../../composables/useUsersData';
@@ -17,6 +18,7 @@ import { COURSE_CATEGORY_ITEMS } from '../Courses/courseCategories';
 const { toast, adminUserSaved, adminOfoNotSaved } = useAppToast();
 
 const UBadge = resolveComponent('UBadge');
+const UAvatar = resolveComponent('UAvatar');
 const UButton = resolveComponent('UButton');
 const UDropdownMenu = resolveComponent('UDropdownMenu');
 
@@ -35,6 +37,7 @@ const {
   error: usersError,
   users,
   ensureLoaded: ensureUsersLoaded,
+  reload: reloadUsers,
   refresh: refreshUsers,
 } = useUsersData();
 
@@ -615,11 +618,12 @@ function countUsersForOfo(ofoId: string, title: string): number {
 }
 
 const userSearchQuery = ref('');
-const filterStatus = ref('');
-const filterOfo = ref('');
+// '_all' / '_none', а не '': пустое значение пункта Reka UI не принимает.
+const filterStatus = ref('_all');
+const filterOfo = ref('_all');
 
 const statusFilterItems = [
-  { value: '', label: 'Все статусы' },
+  { value: '_all', label: 'Все статусы' },
   { value: 'Активен', label: 'Активен' },
   { value: 'Заблокирован', label: 'Заблокирован' },
 ];
@@ -651,25 +655,32 @@ function ofoBadgeClass(id: string): string {
   return '!text-default !bg-elevated';
 }
 
+function isUnsetOfo(o: string) {
+  return !o || o === '-1' || o === '0';
+}
+
 const ofoFilterItems = computed(() => {
-  const uniq = [...new Set(users.value.map((u) => u.ofo))].sort((a, b) => a.localeCompare(b, 'ru'));
+  const set = new Set(users.value.map((u) => (isUnsetOfo(u.ofo) ? '_none' : u.ofo)));
+  const items = [...set]
+    .filter((o) => o !== '_none')
+    .map((o) => ({ value: o, label: ofoTitleById.value[o] || `ОФО #${o}` }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'ru'));
   return [
-    { value: '', label: 'Все ОФО' },
-    ...uniq.map((o) => {
-      if (!o || o === '-1' || o === '0') return { value: o, label: 'Без ОФО' };
-      const title = ofoTitleById.value[o];
-      return { value: o, label: title ? title : `ОФО #${o}` };
-    }),
+    { value: '_all', label: 'Все ОФО' },
+    ...items,
+    ...(set.has('_none') ? [{ value: '_none', label: 'Без ОФО' }] : []),
   ];
 });
 
 const filteredUsers = computed(() => {
   let list = users.value;
 
-  if (filterStatus.value) {
+  if (filterStatus.value !== '_all') {
     list = list.filter((u) => u.status === filterStatus.value);
   }
-  if (filterOfo.value) {
+  if (filterOfo.value === '_none') {
+    list = list.filter((u) => isUnsetOfo(u.ofo));
+  } else if (filterOfo.value !== '_all') {
     list = list.filter((u) => u.ofo === filterOfo.value);
   }
 
@@ -779,10 +790,14 @@ onUnmounted(() => {
   usersScrollCleanup = null;
 });
 
+const hasUserFilters = computed(
+  () => Boolean(userSearchQuery.value.trim()) || filterStatus.value !== '_all' || filterOfo.value !== '_all',
+);
+
 function resetUserFilters() {
   userSearchQuery.value = '';
-  filterStatus.value = '';
-  filterOfo.value = '';
+  filterStatus.value = '_all';
+  filterOfo.value = '_all';
 }
 
 async function toggleUserStatus(user: AdminUserRow) {
@@ -1033,18 +1048,21 @@ function timeLeftLabel(lastActivity: string | undefined, now: number): string | 
 }
 
 const userColumns: TableColumn<AdminUserRow>[] = [
-  { accessorKey: 'id', header: 'ID' },
   {
-    accessorKey: 'status',
-    header: 'Статус',
+    accessorKey: 'fullName',
+    header: 'ФИО',
+    // Столбца «Статус» нет — заблокированных отмечаем прямо у имени.
     cell: ({ row }) => {
-      const s = row.getValue('status') as string;
-      const color = s === 'Активен' ? 'success' : 'error';
-      return h(UBadge, { variant: 'subtle', color }, () => s);
+      const name = row.getValue('fullName') as string;
+      return h('div', { class: 'flex items-center gap-3 min-w-0' }, [
+        h(UAvatar, { src: userAvatarSrc(row.original), alt: name, size: 'md', class: 'shrink-0' }),
+        h('span', { class: 'truncate' }, name),
+        row.original.status === 'Активен'
+          ? null
+          : h(UBadge, { variant: 'subtle', color: 'error', size: 'sm', class: 'shrink-0' }, () => 'Заблокирован'),
+      ]);
     },
   },
-  { accessorKey: 'login', header: 'Логин' },
-  { accessorKey: 'fullName', header: 'ФИО' },
   { accessorKey: 'role', header: 'Должность' },
   {
     accessorKey: 'access_groups',
@@ -1263,9 +1281,25 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
 </script>
 
 <template>
-  <UMain class="flex flex-col w-full h-full min-h-0 gap-6">
+  <UMain class="relative w-full h-full min-h-0">
+    <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-[1600px] mx-auto overflow-y-auto scrollbar-hide p-px pb-8 *:shrink-0">
+      <UPageHeader
+        headline="Администрирование"
+        title="Дэшборд администратора"
+        description="Сотрудники, группы доступа и структура ОФО"
+      >
+        <template v-if="isAdmin" #links>
+          <UButton
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-graduation-cap"
+            :to="{ name: 'admin-courses' }"
+          >
+            Управление обучением
+          </UButton>
+        </template>
+      </UPageHeader>
 
-    <UContainer class="flex-1 min-h-0 overflow-y-auto sm:p-px max-w-full w-full md:p-px lg:p-px xl:p-px scrollbar-hide mx-0">
       <UAlert
         v-if="!isAdmin"
         color="error"
@@ -1275,82 +1309,119 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
         description="Эта страница доступна только администраторам."
       />
 
-      <div v-else class="flex flex-col gap-4">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <p class="text-sm text-dimmed">Пользователи, ОФО и служебные настройки</p>
-          <UButton
-            v-if="isAdmin"
-            color="primary"
-            icon="i-lucide-graduation-cap"
-            size="lg"
-            :to="{ name: 'admin-courses' }"
-          >
-            Управление обучением
-          </UButton>
-        </div>
+      <template v-else>
+        <UTabs
+          v-model="tab"
+          :items="tabItems"
+          variant="link"
+          color="primary"
+          size="md"
+          :content="false"
+          class="w-full border-b border-default"
+          :ui="{ list: 'w-full gap-1', trigger: 'grow-0' }"
+        />
 
-        <UTabs v-model="tab" :items="tabItems" size="xl" />
-
-        <div v-if="tab === 'users'" class="flex flex-col gap-4 overflow-visible">
-
-          <div class="flex flex-col gap-4 p-0 sm:p-0 md:p-0 lg:p-0 xl:p-0 overflow-visible">
-            <UContainer class="flex flex-col w-full gap-3 sm:flex-row sm:flex-wrap sm:items-end p-0 sm:p-0 md:p-0 lg:p-0 xl:p-0 max-w-full mx-0 overflow-visible">
-              <UInput
-                v-model="userSearchQuery"
-                icon="i-lucide-search"
-                size="xl"
-                color="neutral"
-                variant="outline"
-                placeholder="Поиск по ID, ФИО, ОФО, дате…"
-                class="w-full sm:flex-1 sm:min-w-[240px]"
-              />
-              <USelectMenu
-                v-model="filterStatus"
-                :items="statusFilterItems"
-                size="xl"
-                color="neutral"
-                placeholder="Статус"
-                class="w-full sm:w-52"
-                :content="{ align: 'start', sideOffset: 8 }"
-              />
-              <USelectMenu
-                v-model="filterOfo"
-                :items="ofoFilterItems"
-                size="xl"
-                color="neutral"
-                placeholder="ОФО"
-                class="w-full sm:w-52"
-                :content="{ align: 'start', sideOffset: 8 }"
-              />
-              <UButton
-                color="neutral"
-                variant="outline"
-                size="xl"
-                icon="i-lucide-rotate-ccw"
-                class="w-full sm:w-auto justify-center"
-                @click="resetUserFilters"
-              >
-                Сбросить
-              </UButton>
-            </UContainer>
-
-            <p
-              v-if="filteredUsers.length !== users.length || userSearchQuery.trim() || filterStatus || filterOfo"
-              class="text-sm text-muted -mt-2"
+        <div v-if="tab === 'users'" class="flex flex-col gap-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-3">
+            <UInput
+              v-model="userSearchQuery"
+              icon="i-lucide-search"
+              size="lg"
+              color="neutral"
+              placeholder="Поиск по ФИО, логину, ОФО, должности…"
+              class="w-full sm:col-span-2 lg:col-span-1"
+            />
+            <USelectMenu
+              v-model="filterStatus"
+              :items="statusFilterItems"
+              value-key="value"
+              label-key="label"
+              size="lg"
+              color="neutral"
+              placeholder="Все статусы"
+              :search-input="false"
+              class="w-full"
+              :content="{ align: 'start', sideOffset: 8 }"
+            />
+            <USelectMenu
+              v-model="filterOfo"
+              :items="ofoFilterItems"
+              value-key="value"
+              label-key="label"
+              size="lg"
+              color="neutral"
+              placeholder="Все ОФО"
+              :search-input="{ placeholder: 'Найти ОФО…' }"
+              class="w-full"
+              :content="{ align: 'start', sideOffset: 8 }"
+            />
+            <UButton
+              v-if="hasUserFilters"
+              color="neutral"
+              variant="ghost"
+              size="lg"
+              icon="i-lucide-x"
+              class="justify-center"
+              @click="resetUserFilters"
             >
-              Найдено: {{ filteredUsers.length }} из {{ users.length }} · показано: {{ usersVisible.length }}
+              Сбросить
+            </UButton>
+          </div>
+
+          <UAlert
+            v-if="usersError && !usersLoading"
+            color="warning"
+            variant="subtle"
+            icon="i-lucide-server"
+            title="Не удалось загрузить сотрудников"
+            :description="usersError"
+          >
+            <template #actions>
+              <UButton color="warning" icon="i-lucide-rotate-ccw" @click="reloadUsers">Повторить</UButton>
+            </template>
+          </UAlert>
+
+          <div
+            v-else-if="usersLoading"
+            class="rounded-panel border border-default divide-y divide-default"
+            aria-busy="true"
+            aria-label="Загрузка сотрудников"
+          >
+            <div v-for="n in 6" :key="n" class="flex items-center gap-4 px-4 py-3">
+              <USkeleton class="h-4 w-56 rounded" />
+              <USkeleton class="h-4 w-40 rounded hidden sm:block" />
+              <USkeleton class="h-5 w-32 rounded-full hidden md:block" />
+              <USkeleton class="h-5 w-20 rounded-full ml-auto" />
+            </div>
+          </div>
+
+          <UEmpty
+            v-else-if="!filteredUsers.length"
+            variant="naked"
+            icon="i-lucide-user-search"
+            :title="users.length ? 'Никого не нашли' : 'Сотрудников пока нет'"
+            :description="users.length ? 'Измените запрос или сбросьте фильтры.' : 'Сотрудники появятся после первого входа в портал.'"
+            class="py-12"
+          >
+            <template v-if="users.length" #actions>
+              <UButton color="neutral" variant="outline" icon="i-lucide-x" @click="resetUserFilters">
+                Сбросить фильтры
+              </UButton>
+            </template>
+          </UEmpty>
+
+          <template v-else>
+            <p v-if="hasUserFilters" class="text-sm text-muted">
+              Найдено {{ filteredUsers.length }} из {{ users.length }}
             </p>
 
             <UScrollArea
               ref="usersScrollAreaRef"
-              class="max-h-[min(70vh,720px)] w-full min-h-0 rounded-lg border border-default"
+              class="max-h-[min(70vh,720px)] w-full min-h-0 rounded-panel border border-default"
               orientation="vertical"
               :ui="{ root: 'overflow-auto' }"
             >
-              <div v-if="usersLoading" class="flex items-center justify-center py-16 text-muted text-sm">
-                Загрузка пользователей…
-              </div>
-              <div v-else class="min-w-0 pb-1">
+              <div class="min-w-0 pb-1">
                 <UTable
                   :columns="userColumns"
                   :data="usersVisible"
@@ -1365,67 +1436,79 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
                 </div>
               </div>
             </UScrollArea>
-          </div>
+          </template>
         </div>
 
         <div v-else-if="tab === 'groups'" class="flex flex-col gap-4">
-          <div class="flex items-center justify-between gap-3 mb-2">
-            <UButton color="neutral" variant="outline" size="lg" icon="i-lucide-plus" @click="openCreateGroup">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <p class="text-sm text-muted">
+              Группа выдаёт участникам права на разделы портала и категории обучения.
+            </p>
+            <UButton v-if="groups.length" color="primary" icon="i-lucide-plus" @click="openCreateGroup">
               Создать группу
             </UButton>
           </div>
 
           <UAlert
             v-if="groupsError"
-            color="error"
+            color="warning"
             variant="subtle"
-            icon="i-lucide-alert-circle"
-            :title="groupsError"
-          />
+            icon="i-lucide-server"
+            title="Не удалось загрузить группы"
+            :description="groupsError"
+          >
+            <template #actions>
+              <UButton color="warning" icon="i-lucide-rotate-ccw" @click="loadGroups">Повторить</UButton>
+            </template>
+          </UAlert>
 
-          <div v-else-if="groupsLoading" class="text-sm text-muted py-4 px-2">
-            Загрузка групп...
+          <div
+            v-else-if="groupsLoading && !groups.length"
+            class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3"
+            aria-busy="true"
+            aria-label="Загрузка групп"
+          >
+            <div v-for="n in 3" :key="n" class="rounded-panel bg-elevated p-4 flex flex-col gap-2">
+              <USkeleton class="h-4 w-1/2 rounded" />
+              <USkeleton class="h-3 w-24 rounded" />
+              <USkeleton class="h-3 w-3/4 rounded" />
+            </div>
           </div>
 
           <UEmpty
             v-else-if="!groups.length"
+            variant="naked"
             icon="i-lucide-users"
             title="Групп пока нет"
-            description="Создайте группу и выдайте права на разделы."
-            class="py-10"
-          />
+            description="Создайте группу и выдайте участникам права на разделы."
+            class="py-12"
+          >
+            <template #actions>
+              <UButton color="primary" icon="i-lucide-plus" @click="openCreateGroup">
+                Создать группу
+              </UButton>
+            </template>
+          </UEmpty>
 
           <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            <UCard
+            <button
               v-for="g in groups"
               :key="g.id"
-              class="w-full cursor-pointer hover:ring-1 hover:ring-primary/40"
+              type="button"
+              class="rounded-panel bg-elevated p-4 text-left flex items-start justify-between gap-3 transition-colors hover:ring-1 hover:ring-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               @click="openEditGroup(g.id)"
             >
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <div class="font-medium text-highlighted truncate">{{ g.name }}</div>
-                  <div class="text-sm text-muted">{{ g.memberCount }} участников</div>
-                  <p class="text-xs text-dimmed mt-1 line-clamp-2">{{ groupPermissionsLabel(g.permissions, g.courseCategories) }}</p>
-                </div>
-                <UTooltip text="Редактировать">
-                  <UButton
-                    color="neutral"
-                    variant="ghost"
-                    size="sm"
-                    icon="i-lucide-pencil"
-                    square
-                    aria-label="Редактировать"
-                    @click.stop="openEditGroup(g.id)" />
-                </UTooltip>
+              <div class="min-w-0">
+                <div class="font-medium text-highlighted truncate">{{ g.name }}</div>
+                <div class="text-sm text-muted">{{ g.memberCount }} {{ plural(g.memberCount, ['участник', 'участника', 'участников']) }}</div>
+                <p class="text-xs text-dimmed mt-1 line-clamp-2">{{ groupPermissionsLabel(g.permissions, g.courseCategories) }}</p>
               </div>
-            </UCard>
+              <UIcon name="i-lucide-chevron-right" class="size-4 text-dimmed shrink-0 mt-0.5" aria-hidden="true" />
+            </button>
           </div>
         </div>
 
-        <div v-else class="flex flex-col gap-4">
-          <AdminOfoPanel />
-        </div>
+        <AdminOfoPanel v-else @open-user="openEdit" />
 
         <div v-if="false" class="flex flex-col gap-4">
 
@@ -1573,8 +1656,8 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
             </div>
           </div>
         </div>
-      </div>
-    </UContainer>
+      </template>
+    </div>
 
     <USlideover v-model:open="ofoEditOpen" side="right" title="Редактирование ОФО" description="">
       <template #body>

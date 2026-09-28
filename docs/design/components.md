@@ -34,7 +34,7 @@
 | `UserWorkFields.vue` | Место работы: ОФО (`OfoSelect`) + должность из справочника ОФО. `v-model:ofo-id`, `v-model:role` (строка, как `user_info.role`). Должность не из справочника не стирается — показывается с пометкой. При смене ОФО должность сбрасывается | `ProfilePage`, `OnboardingPage`, `Admin/AdminDashboardPage` (форма пользователя) |
 | `OfoSelect.vue` | Выбор одного подразделения ОФО | формы, `TestLinkPage` |
 | `OfoMultiSelect.vue` | Выбор нескольких подразделений | `TestsBlankPage`, адресация форм |
-| `AdminOfoPanel.vue` | Панель управления ОФО в админке | `AdminDashboardPage` |
+| `AdminOfoPanel.vue` | Дерево ОФО в админке. Клик по подразделению — `USlideover` с путём, счётчиками, сотрудниками (переключатель «С вложенными»), вложенными подразделениями и должностями. Событие `open-user` — открыть карточку сотрудника | `AdminDashboardPage` |
 
 ### Рабочий стол
 

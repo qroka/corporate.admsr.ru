@@ -1,9 +1,29 @@
 <script setup lang="ts">
-import { computed, reactive } from 'vue';
-import { useOfoTree, type OfoUnit } from '../composables/useOfoTree';
+import { computed, reactive, ref, watch } from 'vue';
+import { useOfoTree, type OfoPosition, type OfoUnit } from '../composables/useOfoTree';
+import { useUsersData, type AdminUserRow } from '../composables/useUsersData';
+import { userAvatarSrc } from '../utils/userName';
+import { plural } from '../pages/Courses/courseDuration';
 
-const { categories, units, loading, error, ensureLoaded, rootUnitsOf, childrenOf, hasChildren, unitById, pathLabel } = useOfoTree();
+const emit = defineEmits<{ (e: 'open-user', user: AdminUserRow): void }>();
+
+const {
+  categories,
+  units,
+  loading,
+  error,
+  ensureLoaded,
+  reload,
+  rootUnitsOf,
+  childrenOf,
+  hasChildren,
+  unitById,
+  pathLabel,
+  fetchPositions,
+} = useOfoTree();
 ensureLoaded();
+
+const { users, loading: usersLoading, ensureLoaded: ensureUsersLoaded } = useUsersData();
 
 const query = reactive({ q: '' });
 const expanded = reactive<Set<number>>(new Set());
@@ -62,6 +82,74 @@ function expandAll() {
 function collapseAll() {
   expanded.clear();
 }
+
+// ── Карточка подразделения ────────────────────────────────────────────────────
+const detailOpen = ref(false);
+const selectedId = ref<number | null>(null);
+const withNested = ref(false);
+const positions = ref<OfoPosition[]>([]);
+const positionsLoading = ref(false);
+let positionsSeq = 0;
+
+const selected = computed(() => (selectedId.value != null ? unitById.value.get(selectedId.value) ?? null : null));
+const selectedParentPath = computed(() => (selected.value ? parentLabel(selected.value) : ''));
+const selectedChildren = computed(() => (selected.value ? childrenOf(selected.value.id) : []));
+
+function subtreeIds(unitId: number): Set<number> {
+  const ids = new Set<number>([unitId]);
+  const walk = (id: number) => {
+    for (const ch of childrenOf(id)) {
+      ids.add(ch.id);
+      walk(ch.id);
+    }
+  };
+  walk(unitId);
+  return ids;
+}
+
+const members = computed(() => {
+  const u = selected.value;
+  if (!u) return [];
+  const ids = withNested.value ? subtreeIds(u.id) : new Set([u.id]);
+  return users.value
+    .filter((user) => ids.has(Number(user.ofo)))
+    .sort((a, b) => a.fullName.localeCompare(b.fullName, 'ru'));
+});
+
+async function loadPositions(unit: OfoUnit) {
+  const seq = ++positionsSeq;
+  positions.value = [];
+  positionsLoading.value = true;
+  try {
+    const list = await fetchPositions(unit.unit_number);
+    if (seq === positionsSeq) positions.value = list;
+  } catch {
+    if (seq === positionsSeq) positions.value = [];
+  } finally {
+    if (seq === positionsSeq) positionsLoading.value = false;
+  }
+}
+
+function openUnit(unit: OfoUnit) {
+  selectedId.value = unit.id;
+  withNested.value = false;
+  detailOpen.value = true;
+  ensureUsersLoaded();
+  void loadPositions(unit);
+}
+
+/** Карточка сотрудника — отдельная панель; эту закрываем, чтобы не спорить слоями. */
+function openUser(user: AdminUserRow) {
+  detailOpen.value = false;
+  emit('open-user', user);
+}
+
+// Переход во вложенное подразделение внутри той же панели.
+watch(selectedId, (id, prev) => {
+  if (id == null || prev == null || id === prev) return;
+  const u = unitById.value.get(id);
+  if (u) void loadPositions(u);
+});
 </script>
 
 <template>
@@ -77,26 +165,57 @@ function collapseAll() {
         class="w-full sm:flex-1"
       />
       <div class="flex items-center gap-2">
-        <UButton color="neutral" variant="outline" size="md" icon="i-lucide-unfold-more" @click="expandAll">Развернуть</UButton>
-        <UButton color="neutral" variant="outline" size="md" icon="i-lucide-unfold-less" @click="collapseAll">Свернуть</UButton>
+        <UButton color="neutral" variant="outline" icon="i-lucide-unfold-vertical" @click="expandAll">Развернуть</UButton>
+        <UButton color="neutral" variant="outline" icon="i-lucide-fold-vertical" @click="collapseAll">Свернуть</UButton>
       </div>
     </div>
 
-    <p class="text-xs text-muted px-1">
-      Категорий: {{ totals.categories }} · подразделений: {{ totals.units }}
+    <p class="text-sm text-muted">
+      Категорий: {{ totals.categories }} · подразделений: {{ totals.units }}. Нажмите на подразделение, чтобы увидеть сотрудников.
     </p>
 
-    <div v-if="loading" class="text-sm text-muted py-4 px-2">Загрузка структуры…</div>
-    <div v-else-if="error" class="text-sm text-error py-4 px-2">{{ error }}</div>
+    <div
+      v-if="loading && !units.length"
+      class="rounded-panel border border-default p-2 flex flex-col gap-1"
+      aria-busy="true"
+      aria-label="Загрузка структуры ОФО"
+    >
+      <div v-for="n in 6" :key="n" class="flex items-center justify-between gap-3 px-2 py-2">
+        <USkeleton class="h-4 rounded" :class="n % 2 ? 'w-64' : 'w-48'" />
+        <USkeleton class="h-5 w-16 rounded-full" />
+      </div>
+    </div>
 
-    <div v-else class="flex flex-col gap-1 rounded-xl ring-1 ring-default p-2 max-h-[60vh] overflow-y-auto scrollbar-hide">
+    <UAlert
+      v-else-if="error"
+      color="warning"
+      variant="subtle"
+      icon="i-lucide-server"
+      title="Не удалось загрузить структуру ОФО"
+      :description="error"
+    >
+      <template #actions>
+        <UButton color="warning" icon="i-lucide-rotate-ccw" @click="reload">Повторить</UButton>
+      </template>
+    </UAlert>
+
+    <div v-else class="flex flex-col gap-0.5 rounded-panel border border-default p-2 max-h-[60vh] overflow-y-auto scrollbar-hide">
       <!-- Поиск -->
       <template v-if="isSearching">
-        <p v-if="!matches.length" class="text-sm text-muted px-2 py-2">Ничего не найдено</p>
-        <div
+        <UEmpty
+          v-if="!matches.length"
+          variant="naked"
+          icon="i-lucide-search-x"
+          title="Ничего не найдено"
+          description="Проверьте название или очистите поиск."
+          class="py-8"
+        />
+        <button
           v-for="u in matches"
           :key="`m-${u.id}`"
-          class="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 hover:bg-elevated"
+          type="button"
+          class="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-left hover:bg-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          @click="openUnit(u)"
         >
           <div class="min-w-0">
             <div class="text-sm text-default truncate">{{ u.name }}</div>
@@ -104,9 +223,9 @@ function collapseAll() {
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
             <UBadge v-if="hasChildren(u.id)" color="primary" variant="subtle" size="sm">{{ subtreeUserCount(u) }} всего</UBadge>
-            <UBadge color="info" variant="subtle" size="sm">{{ u.user_count ?? 0 }} польз.</UBadge>
+            <UBadge color="neutral" variant="subtle" size="sm">{{ u.user_count ?? 0 }} сотр.</UBadge>
           </div>
-        </div>
+        </button>
       </template>
 
       <!-- Дерево -->
@@ -118,30 +237,151 @@ function collapseAll() {
           <template v-for="row in flatten(cat.id)" :key="row.unit.id">
             <div
               v-if="isVisible(row.unit)"
-              class="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 hover:bg-elevated"
-              :style="{ paddingLeft: `${8 + row.depth * 18}px` }"
+              class="flex items-center gap-1 rounded-lg hover:bg-elevated"
+              :style="{ paddingLeft: `${row.depth * 18}px` }"
             >
+              <UTooltip v-if="hasChildren(row.unit.id)" :text="expanded.has(row.unit.id) ? 'Свернуть' : 'Развернуть'">
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="xs"
+                  square
+                  :icon="expanded.has(row.unit.id) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+                  :aria-label="`${expanded.has(row.unit.id) ? 'Свернуть' : 'Развернуть'}: ${row.unit.name}`"
+                  :aria-expanded="expanded.has(row.unit.id)"
+                  @click="toggle(row.unit.id)"
+                />
+              </UTooltip>
+              <span v-else class="inline-block size-6 shrink-0" aria-hidden="true" />
               <button
                 type="button"
-                class="flex items-center gap-1.5 min-w-0 text-left"
-                @click="hasChildren(row.unit.id) && toggle(row.unit.id)"
+                class="flex flex-1 min-w-0 items-center justify-between gap-3 rounded-md px-1.5 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                @click="openUnit(row.unit)"
               >
-                <UIcon
-                  v-if="hasChildren(row.unit.id)"
-                  :name="expanded.has(row.unit.id) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
-                  class="size-4 shrink-0 text-muted"
-                />
-                <span v-else class="inline-block size-4 shrink-0" aria-hidden="true" />
                 <span class="text-sm text-default truncate">{{ row.unit.name }}</span>
+                <span class="flex items-center gap-1.5 shrink-0">
+                  <UBadge v-if="hasChildren(row.unit.id)" color="primary" variant="subtle" size="sm">{{ subtreeUserCount(row.unit) }} всего</UBadge>
+                  <UBadge color="neutral" variant="subtle" size="sm">{{ row.unit.user_count ?? 0 }} сотр.</UBadge>
+                </span>
               </button>
-              <div class="flex items-center gap-1.5 shrink-0">
-                <UBadge v-if="hasChildren(row.unit.id)" color="primary" variant="subtle" size="sm">{{ subtreeUserCount(row.unit) }} всего</UBadge>
-                <UBadge color="info" variant="subtle" size="sm">{{ row.unit.user_count ?? 0 }} польз.</UBadge>
-              </div>
             </div>
           </template>
         </template>
       </template>
     </div>
+
+    <USlideover
+      v-model:open="detailOpen"
+      side="right"
+      :title="selected?.name || 'Подразделение'"
+      :description="selectedParentPath || undefined"
+    >
+      <template #body>
+        <div v-if="selected" class="flex flex-col gap-6">
+          <div class="grid gap-3" :class="selectedChildren.length ? 'grid-cols-3' : 'grid-cols-2'">
+            <div class="rounded-panel bg-elevated p-3">
+              <div class="text-2xl font-semibold text-highlighted tabular-nums">{{ selected.user_count ?? 0 }}</div>
+              <div class="text-xs text-muted">{{ plural(selected.user_count ?? 0, ['сотрудник', 'сотрудника', 'сотрудников']) }}</div>
+            </div>
+            <div v-if="selectedChildren.length" class="rounded-panel bg-elevated p-3">
+              <div class="text-2xl font-semibold text-highlighted tabular-nums">{{ subtreeUserCount(selected) }}</div>
+              <div class="text-xs text-muted">с вложенными</div>
+            </div>
+            <div class="rounded-panel bg-elevated p-3">
+              <div class="text-2xl font-semibold text-highlighted tabular-nums">{{ selected.position_count ?? positions.length }}</div>
+              <div class="text-xs text-muted">{{ plural(selected.position_count ?? positions.length, ['должность', 'должности', 'должностей']) }}</div>
+            </div>
+          </div>
+
+          <section class="flex flex-col gap-3" aria-labelledby="ofo-members-title">
+            <div class="flex items-center justify-between gap-3">
+              <h3 id="ofo-members-title" class="text-base font-semibold text-highlighted">Сотрудники</h3>
+              <USwitch v-if="selectedChildren.length" v-model="withNested" label="С вложенными" size="sm" />
+            </div>
+
+            <div v-if="usersLoading && !users.length" class="flex flex-col gap-2" aria-busy="true" aria-label="Загрузка сотрудников">
+              <div v-for="n in 3" :key="n" class="flex items-center gap-3 p-2">
+                <USkeleton class="size-9 rounded-full" />
+                <div class="flex-1 flex flex-col gap-1.5">
+                  <USkeleton class="h-3.5 w-1/2 rounded" />
+                  <USkeleton class="h-3 w-1/3 rounded" />
+                </div>
+              </div>
+            </div>
+
+            <UEmpty
+              v-else-if="!members.length"
+              variant="naked"
+              icon="i-lucide-user-x"
+              title="Сотрудников нет"
+              :description="selectedChildren.length && !withNested
+                ? 'В самом подразделении никого нет — включите «С вложенными».'
+                : 'Сотрудник попадает сюда, когда в профиле выбрано это ОФО.'"
+              class="py-6"
+            />
+
+            <ul v-else class="flex flex-col gap-1">
+              <li v-for="m in members" :key="m.id">
+                <button
+                  type="button"
+                  class="w-full flex items-center gap-3 rounded-lg p-2 text-left hover:bg-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  @click="openUser(m)"
+                >
+                  <UAvatar :src="userAvatarSrc(m)" :alt="m.fullName" size="md" class="shrink-0" />
+                  <span class="flex-1 min-w-0">
+                    <span class="block text-sm font-medium text-highlighted truncate">{{ m.fullName }}</span>
+                    <span class="block text-xs text-muted truncate">
+                      {{ m.role || 'Должность не указана' }}<template v-if="withNested && Number(m.ofo) !== selected.id"> · {{ unitById.get(Number(m.ofo))?.name }}</template>
+                    </span>
+                  </span>
+                  <UBadge v-if="m.status !== 'Активен'" color="error" variant="subtle" size="sm" class="shrink-0">Заблокирован</UBadge>
+                  <UIcon name="i-lucide-chevron-right" class="size-4 text-dimmed shrink-0" aria-hidden="true" />
+                </button>
+              </li>
+            </ul>
+          </section>
+
+          <section v-if="selectedChildren.length" class="flex flex-col gap-3" aria-labelledby="ofo-children-title">
+            <h3 id="ofo-children-title" class="text-base font-semibold text-highlighted">Вложенные подразделения</h3>
+            <ul class="flex flex-col gap-1">
+              <li v-for="ch in selectedChildren" :key="ch.id">
+                <button
+                  type="button"
+                  class="w-full flex items-center justify-between gap-3 rounded-lg p-2 text-left hover:bg-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  @click="selectedId = ch.id"
+                >
+                  <span class="text-sm text-default truncate">{{ ch.name }}</span>
+                  <span class="flex items-center gap-1.5 shrink-0">
+                    <UBadge color="neutral" variant="subtle" size="sm">{{ subtreeUserCount(ch) }} сотр.</UBadge>
+                    <UIcon name="i-lucide-chevron-right" class="size-4 text-dimmed" aria-hidden="true" />
+                  </span>
+                </button>
+              </li>
+            </ul>
+          </section>
+
+          <section class="flex flex-col gap-3" aria-labelledby="ofo-positions-title">
+            <h3 id="ofo-positions-title" class="text-base font-semibold text-highlighted">Должности</h3>
+            <div v-if="positionsLoading" class="flex flex-wrap gap-2" aria-busy="true" aria-label="Загрузка должностей">
+              <USkeleton v-for="n in 3" :key="n" class="h-6 w-32 rounded-md" />
+            </div>
+            <p v-else-if="!positions.length" class="text-sm text-muted">
+              В справочнике для этого подразделения должностей нет.
+            </p>
+            <div v-else class="flex flex-wrap gap-2">
+              <UBadge
+                v-for="p in positions"
+                :key="p.id"
+                :color="p.is_head ? 'primary' : 'neutral'"
+                variant="subtle"
+                :icon="p.is_head ? 'i-lucide-crown' : undefined"
+              >
+                {{ p.name }}
+              </UBadge>
+            </div>
+          </section>
+        </div>
+      </template>
+    </USlideover>
   </div>
 </template>
