@@ -2,8 +2,12 @@ package handlers
 
 import (
 	"context"
+	"errors"
+	"log"
 	"net/http"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"corporate.admsr.ru/backend/internal/httpx"
 )
@@ -11,6 +15,16 @@ import (
 // NewsReactionKeys — допустимые реакции в порядке показа. Дублируется во фронте:
 // src/composables/useNewsReactions.ts (NEWS_REACTIONS) — менять парами.
 var NewsReactionKeys = []string{"like", "love", "haha", "wow", "sad", "fire", "clap", "party"}
+
+// reactionsTableMissing — на сервере не применена V11 (deploy.sh пропускает
+// миграции без PGPASSWORD / psql). Отвечаем понятно, а не безликим 500.
+func reactionsTableMissing(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "42P01" // undefined_table
+	}
+	return strings.Contains(err.Error(), "news_reactions") && strings.Contains(err.Error(), "does not exist")
+}
 
 func isNewsReaction(key string) bool {
 	for _, k := range NewsReactionKeys {
@@ -52,7 +66,10 @@ func (h *News) reactionSummaries(ctx context.Context, ids []int64, viewer int64,
 			FROM public.news_reactions
 			WHERE news_id = ANY($1)
 			GROUP BY news_id, reaction`, ids, viewer)
-		if err == nil {
+		if err != nil {
+			// Ленту не роняем: без таблицы новости читаются, просто без реакций.
+			log.Printf("news reactions: summary query failed: %v", err)
+		} else {
 			for rows.Next() {
 				var newsID, count int64
 				var key string
@@ -148,6 +165,11 @@ func (h *News) react(w http.ResponseWriter, r *http.Request, newsID int64, react
 			WHERE news_id = $1 AND user_id = $2 AND reaction = $3`, newsID, user.ID, reaction)
 	}
 	if err != nil {
+		log.Printf("news reactions: save news=%d user=%d reaction=%s: %v", newsID, user.ID, reaction, err)
+		if reactionsTableMissing(err) {
+			httpx.Fail(w, http.StatusServiceUnavailable, "Реакции ещё не включены на сервере: нужна миграция V11__news_reactions.sql")
+			return
+		}
 		httpx.Fail(w, http.StatusInternalServerError, "Не удалось сохранить реакцию")
 		return
 	}
@@ -175,6 +197,11 @@ func (h *News) reactors(w http.ResponseWriter, r *http.Request, newsID int64, re
 		ORDER BY nr.created_at DESC
 		LIMIT 50`, newsID, reaction)
 	if err != nil {
+		log.Printf("news reactions: reactors news=%d reaction=%s: %v", newsID, reaction, err)
+		if reactionsTableMissing(err) {
+			httpx.Fail(w, http.StatusServiceUnavailable, "Реакции ещё не включены на сервере: нужна миграция V11__news_reactions.sql")
+			return
+		}
 		httpx.Fail(w, http.StatusInternalServerError, "Ошибка подключения к БД")
 		return
 	}
