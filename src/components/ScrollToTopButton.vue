@@ -39,7 +39,7 @@ function scrollToTop() {
       label="Наверх"
       color="primary"
       size="lg"
-      class="fixed bottom-4 right-4 z-10 rounded-full shadow-lg"
+      class="fixed bottom-4 right-4 z-50 rounded-full shadow-lg"
       @click="scrollToTop"
     />
   </Transition>
