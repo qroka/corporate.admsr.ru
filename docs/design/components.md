@@ -30,7 +30,7 @@
 | Компонент | Назначение | Где используется |
 |-----------|------------|------------------|
 | `SectionInDevelopment.vue` | Полноэкранная заглушка «Раздел в разработке». Пропсы `title`, `description` | `PersonnelReservePage`, `DevelopmentMotivationDepartmentPage` |
-| `ScrollToTopButton.vue` | Плавающая кнопка «Наверх» для страниц, скроллящих свой контейнер. Проп `target` — элемент-скроллер, `threshold` (по умолчанию 600 px). Родитель — `relative` (`UMain`). Учитывает `prefers-reduced-motion` | `News/NewsPage`, `Events/EventsPage`, `Gallery/GalleryPage`, `Gallery/GalleryAlbumPage`, `AbsenceJournalPage` |
+| `ScrollToTopButton.vue` | Плавающая кнопка «Наверх» для страниц, скроллящих свой контейнер. Primary-кнопка с подписью, закреплена в правом нижнем углу окна (`fixed`: `UMain` ограничен 1600 px, внутри него кнопка ложилась на контент). Проп `target` — элемент-скроллер, `threshold` (по умолчанию 600 px). Учитывает `prefers-reduced-motion` | `HomePage`, `News/NewsPage`, `Events/EventsPage`, `Gallery/GalleryPage`, `Gallery/GalleryAlbumPage`, `AbsenceJournalPage` |
 | `OfoSelect.vue` | Выбор одного подразделения ОФО | формы, `TestLinkPage` |
 | `OfoMultiSelect.vue` | Выбор нескольких подразделений | `TestsBlankPage`, адресация форм |
 | `AdminOfoPanel.vue` | Панель управления ОФО в админке | `AdminDashboardPage` |

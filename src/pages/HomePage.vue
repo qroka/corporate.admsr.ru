@@ -690,5 +690,7 @@ onUnmounted(() => {
         </div>
       </template>
     </USlideover>
+
+    <ScrollToTopButton :target="homeScrollEl" />
   </UMain>
 </template>

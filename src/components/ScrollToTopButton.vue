@@ -2,7 +2,8 @@
 /**
  * Плавающая кнопка «Наверх» для страниц, которые скроллят свой контейнер
  * (корень приложения — h-dvh overflow-hidden, документ не скроллится).
- * Родитель должен быть `relative` — обычно это `UMain`.
+ * Закреплена в углу окна, а не внутри UMain: UMain ограничен max-w-[1600px]
+ * и на широком экране кнопка оказывалась поверх карточек.
  */
 import { computed } from 'vue';
 import { useMediaQuery, useScroll } from '@vueuse/core';
@@ -32,18 +33,14 @@ function scrollToTop() {
     leave-active-class="transition duration-150 motion-reduce:transition-none"
     leave-to-class="opacity-0 translate-y-2"
   >
-    <div v-if="visible" class="absolute bottom-6 right-6 z-10">
-      <UTooltip text="Наверх">
-        <UButton
-          icon="i-lucide-arrow-up"
-          color="neutral"
-          variant="outline"
-          size="xl"
-          class="rounded-full bg-default shadow-lg"
-          aria-label="Наверх"
-          @click="scrollToTop"
-        />
-      </UTooltip>
-    </div>
+    <UButton
+      v-if="visible"
+      icon="i-lucide-arrow-up"
+      label="Наверх"
+      color="primary"
+      size="lg"
+      class="fixed bottom-4 right-4 z-10 rounded-full shadow-lg"
+      @click="scrollToTop"
+    />
   </Transition>
 </template>
