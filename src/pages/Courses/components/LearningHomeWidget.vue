@@ -82,15 +82,16 @@ function deadlineClass(e: EnrollmentSummary) {
             />
           </UTooltip>
         </div>
-        <UButton
-          to="/courses"
-          color="neutral"
-          variant="ghost"
-          size="xs"
-          icon="i-lucide-arrow-up-right"
-          square
-          aria-label="Открыть обучение"
-        />
+        <UTooltip text="Открыть обучение">
+          <UButton
+            to="/courses"
+            color="neutral"
+            variant="ghost"
+            size="xs"
+            icon="i-lucide-arrow-up-right"
+            square
+            aria-label="Открыть обучение" />
+        </UTooltip>
       </div>
     </template>
 

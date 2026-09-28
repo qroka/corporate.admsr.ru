@@ -319,17 +319,34 @@ const headerMenu = computed(() => {
             >
               Назначить
             </UButton>
-            <UDropdownMenu v-if="headerMenu.length" :items="headerMenu">
-              <UButton
-                type="button"
-                color="neutral"
-                variant="ghost"
-                icon="i-lucide-ellipsis"
-                aria-label="Ещё действия с курсом"
-              />
-            </UDropdownMenu>
+            <UTooltip v-if="headerMenu.length" text="Ещё действия с курсом">
+              <span class="inline-flex">
+                <UDropdownMenu :items="headerMenu">
+                  <UButton
+                    type="button"
+                    color="neutral"
+                    variant="ghost"
+                    icon="i-lucide-ellipsis"
+                    aria-label="Ещё действия с курсом"
+                  />
+                </UDropdownMenu>
+              </span>
+            </UTooltip>
           </template>
         </UPageHeader>
+
+        <!--
+          Опубликованная версия редактируется на месте (VersionEditable: draft и
+          published) — новой версии не создаётся, правки сразу видят проходящие курс.
+        -->
+        <UAlert
+          v-if="isPublished"
+          color="info"
+          variant="subtle"
+          icon="i-lucide-info"
+          title="Курс опубликован"
+          description="Изменения тем, материалов и тестов сразу увидят сотрудники, которые его проходят. Новая версия при этом не создаётся."
+        />
 
         <div
           class="grid grid-cols-1 gap-4 items-start"
@@ -393,19 +410,19 @@ const headerMenu = computed(() => {
                 <li
                   class="rounded-panel bg-elevated p-3 sm:px-4 flex items-center gap-2 sm:gap-3 min-w-0 transition-shadow hover:shadow-md"
                 >
-                  <UButton
-                    v-if="isEditable"
-                    type="button"
-                    color="neutral"
-                    variant="ghost"
-                    size="xs"
-                    square
-                    icon="i-lucide-grip-vertical"
-                    class="topic-drag-handle shrink-0 cursor-grab active:cursor-grabbing"
-                    :disabled="ordering"
-                    title="Перетащите, чтобы изменить порядок"
-                    :aria-label="`Перетащить тему ${t.title}`"
-                  />
+                  <UTooltip v-if="isEditable" text="Перетащите, чтобы изменить порядок">
+                    <UButton
+                      type="button"
+                      color="neutral"
+                      variant="ghost"
+                      size="xs"
+                      square
+                      icon="i-lucide-grip-vertical"
+                      class="topic-drag-handle shrink-0 cursor-grab active:cursor-grabbing"
+                      :disabled="ordering"
+                      :aria-label="`Перетащить тему ${t.title}`"
+                    />
+                  </UTooltip>
                   <span class="text-xs text-dimmed tabular-nums shrink-0 w-5 text-right">{{ idx + 1 }}</span>
 
                   <div class="flex-1 min-w-0 flex flex-col gap-0.5">
@@ -432,16 +449,20 @@ const headerMenu = computed(() => {
                     >
                       Открыть
                     </UButton>
-                    <UDropdownMenu v-if="isEditable" :items="topicMenu(t, idx)">
-                      <UButton
-                        type="button"
-                        color="neutral"
-                        variant="ghost"
-                        size="sm"
-                        icon="i-lucide-ellipsis"
-                        :aria-label="`Ещё действия с темой ${t.title}`"
-                      />
-                    </UDropdownMenu>
+                    <UTooltip v-if="isEditable" text="Ещё действия с темой">
+                      <span class="inline-flex">
+                        <UDropdownMenu :items="topicMenu(t, idx)">
+                          <UButton
+                            type="button"
+                            color="neutral"
+                            variant="ghost"
+                            size="sm"
+                            icon="i-lucide-ellipsis"
+                            :aria-label="`Ещё действия с темой ${t.title}`"
+                          />
+                        </UDropdownMenu>
+                      </span>
+                    </UTooltip>
                   </div>
                 </li>
                 </template>
@@ -480,15 +501,16 @@ const headerMenu = computed(() => {
                   >
                     {{ version?.finalTest ? 'Открыть' : 'Создать' }}
                   </UButton>
-                  <UButton
-                    v-if="isEditable && version?.finalTest"
-                    color="error"
-                    variant="ghost"
-                    size="sm"
-                    icon="i-lucide-unlink"
-                    aria-label="Убрать итоговый тест"
-                    @click="askRemoveFinalTest"
-                  />
+                  <UTooltip v-if="isEditable && version?.finalTest" text="Убрать итоговый тест">
+                    <UButton
+                     
+                      color="error"
+                      variant="ghost"
+                      size="sm"
+                      icon="i-lucide-unlink"
+                      aria-label="Убрать итоговый тест"
+                      @click="askRemoveFinalTest" />
+                  </UTooltip>
                 </div>
               </div>
             </section>

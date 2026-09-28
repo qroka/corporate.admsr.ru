@@ -5,7 +5,7 @@ import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
 import { useBreadcrumbCurrentLabel } from '../../../composables/usePortalNavigation';
 import CourseStatusBadge from '../components/CourseStatusBadge.vue';
-import { describeDeadline, formatDateTime } from '../courseDeadline';
+import { describeDeadline, formatDateTime, notStartedYet } from '../courseDeadline';
 import { followCourseNextAction, isActionableStep } from '../followNextAction';
 import { plural } from '../courseDuration';
 
@@ -35,6 +35,8 @@ const isCompleted = computed(() => status.value === 'completed');
 /** Пройденный курс открывается на повтор — темы не блокируются. */
 const isReview = computed(() => isCompleted.value || status.value === 'failed');
 const notStarted = computed(() => status.value === 'not_started');
+/** Дата начала в будущем: сервер ответит 409 «Курс ещё не начался», кнопку не показываем. */
+const opensLater = computed(() => notStarted.value && notStartedYet(enrollment.value?.startsAt));
 
 const deadline = computed(() => describeDeadline(enrollment.value?.deadlineAt, isCompleted.value));
 const deadlineClass = computed(() => {
@@ -77,7 +79,7 @@ function topicTitleById(id: unknown) {
 
 /** Главная кнопка: подпись говорит, куда именно она ведёт. */
 const primary = computed<null | { label: string; icon: string }>(() => {
-  if (isReview.value) return null;
+  if (isReview.value || opensLater.value) return null;
   if (notStarted.value) return { label: 'Начать курс', icon: 'i-lucide-play' };
   const a = next.value;
   if (!isActionableStep(a)) return null;
@@ -101,6 +103,7 @@ const hint = computed(() => {
       ? `Обучение завершено ${completedAtLabel.value}. Материалы можно открыть снова.`
       : 'Обучение завершено. Материалы можно открыть снова.';
   }
+  if (opensLater.value) return `Курс откроется ${formatDateTime(enrollment.value?.startsAt)}. До этого момента начать его нельзя.`;
   if (notStarted.value) return 'Нажмите «Начать курс» — откроется первая тема.';
   const a = next.value;
   if (a?.type === 'material') return 'Следующий шаг — изучить материал.';

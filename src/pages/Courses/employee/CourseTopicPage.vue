@@ -239,7 +239,7 @@ async function tickHeartbeat() {
   const m = materials.value.find((x) => x.id === id);
   if (!m || isDone(m) || !shouldBeat(m)) return;
   try {
-    const res = (await store.heartbeat({ enrollmentId: enrollmentId.value, materialId: id, seconds: 15 })) as any;
+    const res = (await store.heartbeat({ enrollmentId: enrollmentId.value, materialId: id })) as any;
     if (res?.activeSeconds != null) {
       liveSeconds.value = { ...liveSeconds.value, [id]: Number(res.activeSeconds) };
     }

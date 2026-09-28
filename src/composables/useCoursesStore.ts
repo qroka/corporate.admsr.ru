@@ -95,6 +95,8 @@ export type EnrollmentSummary = {
   progressPercent?: number;
   topicsCompleted?: number;
   topicsTotal?: number;
+  /** Раньше этой даты сервер не даёт начать курс (409 «Курс ещё не начался»). */
+  startsAt?: string | null;
   deadlineAt?: string | null;
   lastActivityAt?: string | null;
   completedAt?: string | null;
@@ -109,8 +111,9 @@ const loading = ref(false);
 const error = ref<string | null>(null);
 
 /**
- * Go-хендлер списка собирает часть полей через fmt.Sprint, поэтому NULL приезжает
- * строкой "<nil>". Приводим такие значения к null, чтобы они не попали в интерфейс.
+ * Раньше Go-хендлер списка собирал часть полей через fmt.Sprint, и NULL приезжал
+ * строкой "<nil>" (IMP-17). В Go это исправлено (`textOrNil`), но страховка остаётся:
+ * пока на сервере не обновлён бинарник, старый ответ не должен попасть в интерфейс.
  */
 function cleanText(value: unknown): string | null {
   if (value == null) return null;
@@ -403,6 +406,7 @@ export function useCoursesStore() {
           progressPercent: prog?.percent ?? enr?.progressPercent ?? 0,
           topicsCompleted: prog?.topicsCompleted ?? enr?.topicsCompleted ?? 0,
           topicsTotal: prog?.topicsTotal ?? enr?.topicsTotal ?? 0,
+          startsAt: enr?.startsAt ?? null,
           deadlineAt: enr?.deadlineAt ?? null,
           lastActivityAt: enr?.lastActivityAt ?? null,
           completedAt: enr?.completedAt ?? null,

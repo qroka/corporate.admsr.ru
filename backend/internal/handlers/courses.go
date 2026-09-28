@@ -139,7 +139,9 @@ func (h *CoursesHandler) List(w http.ResponseWriter, r *http.Request) {
 			args[i] = c
 		}
 		q := fmt.Sprintf(`
-			SELECT c.*, v.status AS ver_status, v.short_description, v.published_at, v.version_number
+			SELECT c.*, v.status AS ver_status, v.short_description, v.published_at, v.version_number,
+			       (SELECT COUNT(*) FROM public.course_topics t
+			         WHERE t.course_version_id = c.current_version_id AND t.deleted_at IS NULL) AS topics_count
 			FROM public.course_courses c
 			LEFT JOIN public.course_versions v ON v.id = c.current_version_id
 			WHERE c.deleted_at IS NULL AND c.category IN (%s)
@@ -156,10 +158,13 @@ func (h *CoursesHandler) List(w http.ResponseWriter, r *http.Request) {
 				return nil, err
 			}
 			course := courses.MapCourseRow(row)
+			// Настоящее число тем текущей версии — раньше фронт выводил «Тем: 0»
+			// из несуществующего поля (IMP-16).
+			course["topicsCount"] = coursesToInt(row["topics_count"])
 			if row["current_version_id"] != nil {
 				course["currentVersion"] = map[string]any{
 					"id": row["current_version_id"], "versionNumber": coursesToInt(row["version_number"]),
-					"status": fmt.Sprint(row["ver_status"]), "shortDescription": fmt.Sprint(row["short_description"]),
+					"status": textOrNil(row["ver_status"]), "shortDescription": textOrNil(row["short_description"]),
 					"publishedAt": row["published_at"],
 				}
 			}
@@ -320,6 +325,19 @@ func strPtrVal(v any) *string {
 		return &empty
 	}
 	return &s
+}
+
+// textOrNil — строка из nullable-колонки для JSON. В отличие от fmt.Sprint,
+// не превращает NULL в "<nil>", а отдаёт null (IMP-17).
+func textOrNil(v any) any {
+	if v == nil {
+		return nil
+	}
+	s := strings.TrimSpace(fmt.Sprint(v))
+	if s == "" || s == "<nil>" {
+		return nil
+	}
+	return s
 }
 
 func coursesToInt(v any) int {
@@ -1728,7 +1746,7 @@ func (h *CoursesHandler) TopicGet(w http.ResponseWriter, r *http.Request) {
 		}
 		return map[string]any{
 			"topic": topicData, "nextAction": svc.NextAction(ctx, enrollmentID),
-			"nextTopic": nil, "reviewMode": isReview, "enrollmentStatus": enr["status"],
+			"reviewMode": isReview, "enrollmentStatus": enr["status"],
 		}, nil
 	})
 }

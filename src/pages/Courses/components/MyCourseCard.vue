@@ -5,7 +5,7 @@
  */
 import { computed } from 'vue';
 import type { EnrollmentSummary } from '../../../composables/useCoursesStore';
-import { describeDeadline, formatDateTime } from '../courseDeadline';
+import { describeDeadline, formatDateTime, notStartedYet } from '../courseDeadline';
 import { isActionableStep } from '../followNextAction';
 import CourseStatusBadge from './CourseStatusBadge.vue';
 
@@ -43,8 +43,13 @@ const nextStep = computed(() => {
   return label ? `Дальше: ${label}` : '';
 });
 
+/** Дата начала ещё не наступила: «Начать» вернуло бы ошибку сервера — показываем, когда откроется. */
+const opensLater = computed(() => status.value === 'not_started' && notStartedYet(props.enrollment.startsAt));
+const opensLabel = computed(() => (opensLater.value ? `Откроется ${formatDateTime(props.enrollment.startsAt)}` : ''));
+
 const cta = computed(() => {
   if (isCompleted.value) return { label: 'Смотреть', icon: 'i-lucide-eye', color: 'neutral' as const, variant: 'soft' as const };
+  if (opensLater.value) return { label: 'Подробнее', icon: 'i-lucide-calendar-clock', color: 'neutral' as const, variant: 'soft' as const };
   if (status.value === 'failed') return { label: 'Открыть', icon: 'i-lucide-arrow-right', color: 'primary' as const, variant: 'solid' as const };
   if (!started.value) return { label: 'Начать', icon: 'i-lucide-play', color: 'primary' as const, variant: 'solid' as const };
   return { label: 'Продолжить', icon: 'i-lucide-play', color: 'primary' as const, variant: 'solid' as const };
@@ -78,8 +83,12 @@ const ariaLabel = computed(() => `Открыть обучение «${props.enro
 
       <div class="flex items-center gap-x-2 gap-y-1 flex-wrap text-xs text-muted">
         <CourseStatusBadge :status="status" />
+        <span v-if="opensLabel" class="inline-flex items-center gap-1 text-info">
+          <UIcon name="i-lucide-calendar-clock" class="size-3.5 shrink-0" aria-hidden="true" />
+          {{ opensLabel }}
+        </span>
         <span v-if="deadline" class="inline-flex items-center gap-1" :class="deadlineClass" :title="deadline.full">
-          <UIcon :name="deadline.icon" class="size-3.5 shrink-0" />
+          <UIcon :name="deadline.icon" class="size-3.5 shrink-0" aria-hidden="true" />
           {{ deadline.label }}
         </span>
         <span v-if="deadline && topicsTotal > 0" aria-hidden="true">·</span>

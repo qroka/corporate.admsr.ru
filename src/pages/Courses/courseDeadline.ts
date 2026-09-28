@@ -111,3 +111,10 @@ export function compareByAttention(a: RankedEnrollment, b: RankedEnrollment) {
   if (byDeadline !== 0) return byDeadline;
   return a.courseTitle.localeCompare(b.courseTitle, 'ru');
 }
+
+/** Курс назначен с датой начала в будущем — начать его пока нельзя. */
+export function notStartedYet(startsAt?: string | null): boolean {
+  if (!startsAt) return false;
+  const t = new Date(startsAt).getTime();
+  return !Number.isNaN(t) && t > Date.now();
+}

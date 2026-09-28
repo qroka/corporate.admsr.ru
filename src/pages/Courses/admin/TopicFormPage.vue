@@ -316,15 +316,16 @@ async function onSubmit() {
                 >
                   Изменить
                 </UButton>
-                <UButton
-                  color="error"
-                  variant="ghost"
-                  size="sm"
-                  icon="i-lucide-trash-2"
-                  square
-                  aria-label="Удалить материал"
-                  @click="askDeleteMaterial(m)"
-                />
+                <UTooltip text="Удалить материал">
+                  <UButton
+                    color="error"
+                    variant="ghost"
+                    size="sm"
+                    icon="i-lucide-trash-2"
+                    square
+                    aria-label="Удалить материал"
+                    @click="askDeleteMaterial(m)" />
+                </UTooltip>
               </div>
             </li>
           </ul>

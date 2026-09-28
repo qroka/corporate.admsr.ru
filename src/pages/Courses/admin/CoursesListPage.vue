@@ -5,6 +5,12 @@ import { useRouter } from 'vue-router';
 import { useCoursesStore, type CourseListItem } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
 import CourseStatusBadge from '../components/CourseStatusBadge.vue';
+import { plural } from '../courseDuration';
+
+/** Число тем приходит с сервера с 2026-09-25 (IMP-16); у старого ответа поля нет — не показываем. */
+function topicsLabel(n: number) {
+  return n === 0 ? 'нет тем' : `${n} ${plural(n, ['тема', 'темы', 'тем'])}`;
+}
 
 const router = useRouter();
 const store = useCoursesStore();
@@ -199,6 +205,10 @@ function formatDate(iso?: string) {
                 <span v-if="c.category">{{ c.category }}</span>
                 <span v-if="c.category && c.versionNumber" aria-hidden="true">·</span>
                 <span v-if="c.versionNumber">версия {{ c.versionNumber }}</span>
+                <template v-if="typeof c.topicsCount === 'number'">
+                  <span aria-hidden="true">·</span>
+                  <span :class="c.topicsCount === 0 ? 'text-warning' : ''">{{ topicsLabel(c.topicsCount) }}</span>
+                </template>
                 <span v-if="c.updatedAt" aria-hidden="true">·</span>
                 <span v-if="c.updatedAt">обновлён {{ formatDate(c.updatedAt) }}</span>
               </div>
@@ -207,15 +217,19 @@ function formatDate(iso?: string) {
               <UButton color="neutral" variant="soft" icon="i-lucide-pencil" @click="openWorkspace(c.id)">
                 Открыть
               </UButton>
-              <UDropdownMenu :items="rowMenu(c)">
-                <UButton
-                  type="button"
-                  color="neutral"
-                  variant="ghost"
-                  icon="i-lucide-ellipsis"
-                  :aria-label="`Ещё действия: ${c.title}`"
-                />
-              </UDropdownMenu>
+              <UTooltip text="Ещё действия">
+                <span class="inline-flex">
+                  <UDropdownMenu :items="rowMenu(c)">
+                    <UButton
+                      type="button"
+                      color="neutral"
+                      variant="ghost"
+                      icon="i-lucide-ellipsis"
+                      :aria-label="`Ещё действия: ${c.title}`"
+                    />
+                  </UDropdownMenu>
+                </span>
+              </UTooltip>
             </div>
           </div>
 

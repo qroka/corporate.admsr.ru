@@ -23,7 +23,11 @@ const {
 
 const courseId = computed(() => Number(route.params.courseId));
 const loading = ref(true);
+/** Раньше ошибка загрузки давала пустой список и надпись «Пока нет участников». */
+const loadError = ref<string | null>(null);
 const summary = ref<Record<string, number | null>>({});
+/** Сколько строк запрашиваем за раз; остальное — через поиск/фильтр или выгрузку. */
+const PAGE_LIMIT = 200;
 const rows = ref<any[]>([]);
 const selectedId = ref<number | null>(
   route.query.enrollmentId ? Number(route.query.enrollmentId) : null,
@@ -217,6 +221,7 @@ async function exportResults() {
       'Прогресс %',
       'Итоговый балл',
       'Назначен',
+      'Срок',
       'Завершён',
     ];
     const sheetData = [
@@ -228,6 +233,7 @@ async function exportResults() {
         r.progressPercent ?? 0,
         r.finalScore ?? '',
         formatDate(r.assignedAt),
+        formatDate(r.deadlineAt),
         formatDate(r.completedAt),
       ]),
     ];
@@ -239,6 +245,7 @@ async function exportResults() {
       { wch: 14 },
       { wch: 12 },
       { wch: 14 },
+      { wch: 18 },
       { wch: 18 },
       { wch: 18 },
     ];
@@ -263,6 +270,7 @@ async function exportResults() {
 
 async function load() {
   loading.value = true;
+  loadError.value = null;
   try {
     await store.loadCourse(courseId.value);
     const data = (await store.loadResults({
@@ -271,11 +279,12 @@ async function load() {
       q: searchQuery.value.trim() || undefined,
       ofoId: ofoFilter.value !== '_all' ? Number(ofoFilter.value) : undefined,
       status: statusFilter.value !== '_all' ? statusFilter.value : undefined,
-      limit: 200,
+      limit: PAGE_LIMIT,
     })) as any;
     const agg = data?.aggregates || data?.summary || data?.stats || {};
     summary.value = {
       total: agg.total,
+      not_started: agg.notStarted ?? agg.not_started,
       completed: agg.completed,
       in_progress: agg.inProgress ?? agg.in_progress,
       overdue: agg.overdue,
@@ -287,11 +296,30 @@ async function load() {
       participant.value = null;
     }
   } catch (e: any) {
-    toast.add({ title: 'Не удалось загрузить отчёт', description: e?.message, color: 'error', icon: 'i-lucide-alert-circle' });
+    rows.value = [];
+    loadError.value = e?.message || 'Не удалось загрузить отчёт';
   } finally {
     loading.value = false;
   }
 }
+
+/** Всего по фильтру больше, чем пришло строк, — говорим об этом, а не обрезаем молча. */
+const truncated = computed(() => Number(summary.value.total ?? 0) > rows.value.length);
+
+/** Карточки сводки: у каждой — число и доля от всех назначенных по текущему фильтру. */
+const summaryCards = computed(() => {
+  const total = Number(summary.value.total ?? rows.value.length);
+  const card = (key: string, label: string, tone = '') => {
+    const n = Number(summary.value[key] ?? 0);
+    return { key, label, n, of: total, tone: n > 0 ? tone : '' };
+  };
+  return [
+    card('not_started', 'Не начали'),
+    card('in_progress', 'В процессе'),
+    card('overdue', 'Просрочили', 'text-error'),
+    card('completed', 'Завершили', 'text-success'),
+  ];
+});
 
 onMounted(async () => {
   await ensureOfo();
@@ -383,23 +411,28 @@ async function confirmReset() {
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full min-w-0 h-full min-h-0 gap-4 overflow-x-hidden">
-    <div class="flex items-center justify-between gap-3 flex-wrap min-w-0">
-      <h1 class="text-2xl font-medium text-highlighted">Результаты курса</h1>
-      <UButton
-        color="neutral"
-        variant="outline"
-        size="lg"
-        icon="i-lucide-download"
-        :loading="exporting"
-        :disabled="loading"
-        @click="exportResults"
-      >
-        Выгрузить
-      </UButton>
-    </div>
+  <UMain class="relative w-full h-full min-h-0">
+    <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-[1600px] mx-auto overflow-y-auto scrollbar-hide p-px pb-8">
+    <UPageHeader
+      headline="Обучение"
+      title="Результаты"
+      :description="store.current.value?.title || undefined"
+    >
+      <template #links>
+        <UButton
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-download"
+          :loading="exporting"
+          :disabled="loading || Boolean(loadError)"
+          @click="exportResults"
+        >
+          Выгрузить в Excel
+        </UButton>
+      </template>
+    </UPageHeader>
 
-    <div class="min-w-0 w-full p-1 flex flex-col gap-4 flex-1">
+    <div class="min-w-0 w-full flex flex-col gap-4 flex-1">
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <UInput
           v-model="searchQuery"
@@ -434,32 +467,47 @@ async function confirmReset() {
         />
       </div>
 
-      <div v-if="loading" class="flex flex-col gap-3">
-        <USkeleton class="h-24 w-full rounded-xl" />
-        <USkeleton class="h-64 w-full rounded-xl" />
+      <div v-if="loading" class="flex flex-col gap-3" aria-busy="true" aria-label="Загрузка отчёта">
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <USkeleton v-for="n in 5" :key="n" class="h-20 w-full rounded-panel" />
+        </div>
+        <USkeleton v-for="n in 4" :key="`r${n}`" class="h-16 w-full rounded-panel" />
       </div>
 
+      <UAlert
+        v-else-if="loadError"
+        color="warning"
+        variant="subtle"
+        icon="i-lucide-server"
+        title="Не удалось загрузить отчёт"
+        :description="loadError"
+      >
+        <template #actions>
+          <UButton color="warning" icon="i-lucide-rotate-ccw" @click="load">Повторить</UButton>
+        </template>
+      </UAlert>
+
       <template v-else>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div class="rounded-xl ring-1 ring-default p-3 min-w-0">
-            <p class="text-xs text-dimmed">Всего</p>
-            <p class="text-xl font-medium">{{ summary.total ?? rows.length }}</p>
+        <!-- Сводка с долей от всех назначенных: «ложных 100%» не бывает -->
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div v-for="c in summaryCards" :key="c.key" class="rounded-panel bg-elevated p-3 min-w-0">
+            <p class="text-xs text-muted">{{ c.label }}</p>
+            <p class="text-xl font-semibold tabular-nums" :class="c.tone || 'text-highlighted'">
+              {{ c.n }}<span class="text-sm font-normal text-muted"> из {{ c.of }}</span>
+            </p>
           </div>
-          <div class="rounded-xl ring-1 ring-default p-3 min-w-0">
-            <p class="text-xs text-dimmed">Завершили</p>
-            <p class="text-xl font-medium">{{ summary.completed ?? 0 }}</p>
-          </div>
-          <div class="rounded-xl ring-1 ring-default p-3 min-w-0">
-            <p class="text-xs text-dimmed">В процессе</p>
-            <p class="text-xl font-medium">{{ summary.in_progress ?? summary.inProgress ?? 0 }}</p>
-          </div>
-          <div class="rounded-xl ring-1 ring-default p-3 min-w-0">
-            <p class="text-xs text-dimmed">Средний балл</p>
-            <p class="text-xl font-medium">
-              {{ summary.avg_score != null ? Number(summary.avg_score).toFixed(0) : (summary.avgScore != null ? Number(summary.avgScore).toFixed(0) : '—') }}
+          <div class="rounded-panel bg-elevated p-3 min-w-0">
+            <p class="text-xs text-muted">Средний балл</p>
+            <p class="text-xl font-semibold tabular-nums text-highlighted">
+              {{ summary.avg_score != null ? Math.round(Number(summary.avg_score)) : '—' }}
             </p>
           </div>
         </div>
+
+        <p v-if="truncated && rows.length" class="text-sm text-muted -mt-1">
+          Показаны последние {{ rows.length }} из {{ summary.total }}. Уточните поиск или фильтры —
+          либо выгрузите всех в Excel.
+        </p>
 
         <UEmpty
           v-if="!rows.length"
@@ -482,36 +530,47 @@ async function confirmReset() {
             <li
               v-for="row in rows"
               :key="row.id"
-              class="rounded-xl ring-1 ring-default p-3 flex items-center gap-3 cursor-pointer hover:bg-elevated/50 min-w-0"
-              :class="selectedId === row.id ? 'ring-primary' : ''"
-              @click="openDetail(row.id)"
+              class="rounded-panel ring-1 ring-inset ring-default flex items-center gap-1 pe-2 min-w-0 transition-colors hover:bg-elevated/50"
+              :class="selectedId === row.id ? 'ring-primary bg-elevated/50' : ''"
             >
-              <div class="flex-1 min-w-0">
-                <p class="font-medium break-words">{{ row.fio }}</p>
-                <p v-if="row.ofoName" class="text-xs text-muted break-words mt-0.5">{{ row.ofoName }}</p>
-                <div class="flex items-center gap-2 mt-1 flex-wrap">
-                  <CourseStatusBadge :status="row.status" />
-                  <span class="text-xs text-dimmed">{{ row.progressPercent ?? 0 }}%</span>
-                </div>
-              </div>
-              <span class="text-sm text-dimmed tabular-nums shrink-0">
-                {{ row.finalScore == null ? '—' : row.finalScore }}
-              </span>
-              <UDropdownMenu
-                :items="rowMenuItems(row)"
-                :content="{ align: 'end' }"
-                @click.stop
+              <button
+                type="button"
+                class="flex-1 min-w-0 flex items-center gap-3 p-3 text-left rounded-panel focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                :aria-pressed="selectedId === row.id"
+                @click="openDetail(row.id)"
               >
-                <UButton
-                  icon="i-lucide-ellipsis-vertical"
-                  color="neutral"
-                  variant="ghost"
-                  square
-                  size="sm"
-                  aria-label="Действия"
-                  @click.stop
-                />
-              </UDropdownMenu>
+                <span class="flex-1 min-w-0 flex flex-col">
+                  <span class="font-medium text-highlighted break-words">{{ row.fio }}</span>
+                  <span v-if="row.ofoName" class="text-xs text-muted break-words mt-0.5">{{ row.ofoName }}</span>
+                  <span class="flex items-center gap-2 mt-1 flex-wrap">
+                    <CourseStatusBadge :status="row.status" />
+                    <span class="text-xs text-muted tabular-nums">{{ row.progressPercent ?? 0 }}%</span>
+                    <span v-if="row.deadlineAt" class="text-xs text-muted">до {{ formatDate(row.deadlineAt).slice(0, 10) }}</span>
+                  </span>
+                </span>
+                <span class="text-sm text-muted tabular-nums shrink-0" :title="row.finalScore == null ? 'Итогового балла нет' : 'Итоговый балл'">
+                  {{ row.finalScore == null ? '—' : row.finalScore }}
+                </span>
+              </button>
+              <UTooltip text="Действия">
+                <span class="inline-flex">
+                  <UDropdownMenu
+                    :items="rowMenuItems(row)"
+                    :content="{ align: 'end' }"
+                    @click.stop
+                  >
+                    <UButton
+                      icon="i-lucide-ellipsis-vertical"
+                      color="neutral"
+                      variant="ghost"
+                      square
+                      size="sm"
+                      aria-label="Действия"
+                      @click.stop
+                    />
+                  </UDropdownMenu>
+                </span>
+              </UTooltip>
             </li>
           </ul>
 
@@ -519,28 +578,33 @@ async function confirmReset() {
             <div class="flex items-center justify-between gap-2">
               <h2 class="text-lg font-medium">Участник</h2>
               <div class="flex items-center gap-1">
-                <UDropdownMenu
-                  v-if="detail"
-                  :items="rowMenuItems({ id: selectedId, fio: detail.fio })"
-                  :content="{ align: 'end' }"
-                >
+                <UTooltip v-if="detail" text="Действия">
+                  <span class="inline-flex">
+                    <UDropdownMenu
+                     
+                      :items="rowMenuItems({ id: selectedId, fio: detail.fio })"
+                      :content="{ align: 'end' }"
+                    >
+                      <UButton
+                        icon="i-lucide-ellipsis-vertical"
+                        color="neutral"
+                        variant="ghost"
+                        square
+                        size="sm"
+                        aria-label="Действия"
+                      />
+                    </UDropdownMenu>
+                  </span>
+                </UTooltip>
+                <UTooltip text="Закрыть карточку">
                   <UButton
-                    icon="i-lucide-ellipsis-vertical"
                     color="neutral"
                     variant="ghost"
-                    square
                     size="sm"
-                    aria-label="Действия"
-                  />
-                </UDropdownMenu>
-                <UButton
-                  color="neutral"
-                  variant="ghost"
-                  size="sm"
-                  icon="i-lucide-x"
-                  aria-label="Закрыть карточку"
-                  @click="selectedId = null; participant = null"
-                />
+                    icon="i-lucide-x"
+                    aria-label="Закрыть карточку"
+                    @click="selectedId = null; participant = null" />
+                </UTooltip>
               </div>
             </div>
             <USkeleton v-if="detailLoading" class="h-40 w-full rounded-lg" />
@@ -573,19 +637,22 @@ async function confirmReset() {
                   class="py-4"
                 />
                 <ul v-else class="flex flex-col gap-2 list-none m-0 p-0">
-                  <li
-                    v-for="t in detail.tests"
-                    :key="t.courseTestLinkId"
-                    class="rounded-lg ring-1 ring-default p-3 flex flex-col gap-1.5 min-w-0"
-                    :class="t.attemptId ? 'cursor-pointer hover:bg-elevated/50' : ''"
-                    @click="t.attemptId ? openTestAnswers(t) : undefined"
-                  >
-                    <div class="flex items-start justify-between gap-2">
-                      <div class="min-w-0">
-                        <p class="text-sm font-medium break-words">{{ t.title }}</p>
-                        <p class="text-xs text-dimmed break-words">{{ testKindLabel(t) }}</p>
-                      </div>
-                      <div class="flex items-center gap-1 shrink-0">
+                  <li v-for="t in detail.tests" :key="t.courseTestLinkId">
+                    <!-- С попыткой — кнопка (доступна с клавиатуры), без попытки — просто карточка -->
+                    <component
+                      :is="t.attemptId ? 'button' : 'div'"
+                      :type="t.attemptId ? 'button' : undefined"
+                      class="w-full text-left rounded-lg ring-1 ring-inset ring-default p-3 flex flex-col gap-1.5 min-w-0"
+                      :class="t.attemptId ? 'hover:bg-elevated/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary' : ''"
+                      :aria-label="t.attemptId ? `Ответы: ${t.title}` : undefined"
+                      @click="t.attemptId ? openTestAnswers(t) : undefined"
+                    >
+                    <span class="flex items-start justify-between gap-2">
+                      <span class="block min-w-0">
+                        <span class="block text-sm font-medium text-highlighted break-words">{{ t.title }}</span>
+                        <span class="block text-xs text-muted break-words">{{ testKindLabel(t) }}</span>
+                      </span>
+                      <span class="flex items-center gap-1 shrink-0">
                         <UBadge :color="testResultColor(t)" variant="subtle">
                           {{ testResultLabel(t) }}
                         </UBadge>
@@ -595,13 +662,14 @@ async function confirmReset() {
                           class="size-4 text-dimmed"
                           aria-hidden="true"
                         />
-                      </div>
-                    </div>
-                    <div class="flex items-center gap-3 text-xs text-muted flex-wrap">
+                      </span>
+                    </span>
+                    <span class="flex items-center gap-3 text-xs text-muted flex-wrap">
                       <span v-if="t.score != null" class="tabular-nums">Балл: {{ t.score }}</span>
                       <span v-if="t.attemptsCount" class="tabular-nums">Попыток: {{ t.attemptsCount }}</span>
                       <span v-else>Попыток не было</span>
-                    </div>
+                    </span>
+                    </component>
                   </li>
                 </ul>
               </div>
@@ -628,6 +696,8 @@ async function confirmReset() {
       </template>
     </div>
 
+    </div>
+
     <UModal
       v-model:open="answersOpen"
       :title="`Ответы — ${answersTitle}`"
@@ -636,7 +706,10 @@ async function confirmReset() {
     >
       <template #body>
         <div class="max-h-[70vh] overflow-y-auto px-1 py-1 flex flex-col gap-3">
-          <div v-if="answersLoading" class="py-8 text-center text-muted text-sm">Загрузка…</div>
+          <div v-if="answersLoading" class="flex flex-col gap-3" aria-busy="true" aria-label="Загрузка ответов">
+            <USkeleton class="h-6 w-40 rounded-lg" />
+            <USkeleton v-for="n in 3" :key="n" class="h-20 w-full rounded-xl" />
+          </div>
           <div v-else-if="answersError" class="py-8 text-center text-error text-sm">{{ answersError }}</div>
           <template v-else-if="answersData">
             <div class="flex items-center gap-2 flex-wrap">
@@ -667,19 +740,21 @@ async function confirmReset() {
               :key="i"
               class="rounded-xl ring-1 p-3 flex flex-col gap-1"
               :class="a.isCorrect === false
-                ? 'ring-red-500/40 bg-red-500/5'
-                : (a.isCorrect === true ? 'ring-green-500/40 bg-green-500/5' : 'ring-default')"
+                ? 'ring-error/40 bg-error/5'
+                : (a.isCorrect === true ? 'ring-success/40 bg-success/5' : 'ring-default')"
             >
               <div class="flex items-center gap-2">
                 <UIcon
                   v-if="a.isCorrect === true"
                   name="i-lucide-check-circle-2"
                   class="size-4 text-success shrink-0"
+                  aria-hidden="true"
                 />
                 <UIcon
                   v-else-if="a.isCorrect === false"
                   name="i-lucide-x-circle"
                   class="size-4 text-error shrink-0"
+                  aria-hidden="true"
                 />
                 <span class="text-sm text-highlighted">{{ i + 1 }}. {{ a.title || 'Без названия' }}</span>
               </div>
