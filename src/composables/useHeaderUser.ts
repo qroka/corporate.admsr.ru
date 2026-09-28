@@ -1,4 +1,6 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { defaultAvatarUrl } from './useOnboarding';
+import { userShortName } from '../utils/userName';
 
 type DbProfile = {
   id: number;
@@ -14,8 +16,6 @@ type DbProfile = {
 };
 
 const DEFAULT_NAME = '';
-const DEFAULT_SUBTITLE = 'Инженер';
-const DEFAULT_AVATAR = `/img/FullPic/avatars/${encodeURIComponent('Alien.png')}`;
 
 function safeParseAuthUser(): { id?: number } | null {
   if (typeof window === 'undefined') return null;
@@ -46,25 +46,18 @@ export function useHeaderUser() {
   });
 
   const headerName = computed(() => {
-    const p = profile.value;
-    const surname = String(p?.surname ?? '').trim();
-    const firstname = String(p?.firstname ?? '').trim();
-    const base = [surname, firstname].filter(Boolean).join(' ').trim();
-    return base || DEFAULT_NAME;
+    return userShortName(profile.value) || DEFAULT_NAME;
   });
 
   const subtitle = computed(() => {
-    const p = profile.value;
-    const s =
-      String(p?.role ?? '').trim() ||
-      String(p?.user_group ?? '').trim() ||
-      DEFAULT_SUBTITLE;
-    return s;
+    // Только должность, как в профиле. Раньше при пустой должности
+    // показывались «user»/«admin» или выдуманное «Инженер».
+    return String(profile.value?.role ?? '').trim();
   });
 
   const avatarSrc = computed(() => {
     const p = profile.value;
-    return normalizeAvatarSrc(p?.avatar_url) || DEFAULT_AVATAR;
+    return normalizeAvatarSrc(p?.avatar_url) || defaultAvatarUrl();
   });
 
   const canToggleAdminRole = computed(() => {

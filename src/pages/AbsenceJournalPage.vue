@@ -8,6 +8,8 @@ import { useAppToast } from '../composables/useAppToast';
 import { apiSessionFetch } from '../composables/useAuthSession';
 import { toCalendarDate, parseLocalDateTime, roundDateToMinuteStep } from '../utils/date';
 import { slideoverPopoverContent, slideoverSelectContent } from '../composables/slideoverFieldUi';
+import { useOfoTree } from '../composables/useOfoTree';
+import { userFullName } from '../utils/userName';
 
 type JsonRow = Record<string, unknown>;
 
@@ -135,7 +137,15 @@ const loading = ref(true);
 const error = ref<string | null>(null);
 
 const currentUser = ref<CurrentUser | null>(null);
-const ofoTitleById = ref<Record<string, string>>({});
+
+// Подразделения — из того же дерева ofo_unit, что в профиле и админке.
+// Раньше подписи брались из легаси-таблицы ofo (/api/ofo.php) и расходились.
+const { units: ofoUnits, ensureLoaded: ensureOfoTree } = useOfoTree();
+const ofoTitleById = computed<Record<string, string>>(() => {
+  const m: Record<string, string> = {};
+  for (const u of ofoUnits.value) m[String(u.id)] = u.name;
+  return m;
+});
 
 const startAbsenceAt = ref(toLocalDateTimeInputValue(nowRounded()));
 const startDateValue = shallowRef<ReturnType<typeof toCalendarDate>>(null);
@@ -244,11 +254,12 @@ const reasonPresets = [
   'Совещание',
 ] as const;
 
-// У пользователя должно быть заполнено ОФО (числовой id), иначе бэкенд вернёт «ofo обязателен»
+// Сервер берёт ФИО, ОФО и должность из профиля и без них запись не создаст.
 const hasOfo = computed(() => {
   const v = (currentUser.value?.ofoId ?? '').trim();
   return /^[0-9]+$/.test(v) && Number(v) > 0;
 });
+const hasRole = computed(() => Boolean(currentUser.value?.role.trim()));
 
 const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
 ensureSectionAccess();
@@ -324,6 +335,7 @@ const canStartAbsence = computed(() =>
   && Boolean(startReason.value.trim())
   && Boolean(currentUser.value)
   && hasOfo.value
+  && hasRole.value
   && !activeRecord.value,
 );
 
@@ -353,34 +365,26 @@ async function load() {
   loading.value = true;
   error.value = null;
   try {
-    // Текущий пользователь из localStorage (устанавливается при авторизации)
+    // id — из снимка входа; ФИО, ОФО и должность — из профиля на сервере:
+    // снимок устаревает, как только сотрудник правит профиль.
     const storedUser = JSON.parse(localStorage.getItem('auth-user') ?? 'null');
     if (!storedUser?.id) throw new Error('Пользователь не авторизован');
 
-    const user: CurrentUser = {
-      id:    String(storedUser.id),
-      fio:   asText(storedUser.fio),
-      ofoId: String(storedUser.ofo ?? storedUser.ofo_id ?? ''),
-      role:  String(storedUser.role ?? ''),
-    };
-    currentUser.value = user;
-
-    // Параллельно грузим ОФО-справочник и записи журнала
-    const [ofoRes] = await Promise.all([
-      fetch('/api/ofo.php', { cache: 'force-cache' }),
+    const [profileRes] = await Promise.all([
+      fetch(`/api/profile.php?id=${encodeURIComponent(String(storedUser.id))}`),
+      ensureOfoTree(),
     ]);
-
-    if (!ofoRes.ok)     throw new Error(`Не удалось загрузить ОФО (${ofoRes.status})`);
-
-    const ofoRaw     = await ofoRes.json();
-
-    // Строим карту ОФО id → название
-    const ofoMap: Record<string, string> = {};
-    for (const row of (ofoRaw.data || [])) {
-      const id = asText(row.id);
-      if (id) ofoMap[id] = asText(row.title) || '—';
+    const profileJson = await profileRes.json().catch(() => null);
+    if (!profileRes.ok || !profileJson?.success) {
+      throw new Error(profileJson?.message || `Не удалось загрузить профиль (${profileRes.status})`);
     }
-    ofoTitleById.value = ofoMap;
+    const p = profileJson.data ?? {};
+    currentUser.value = {
+      id:    String(storedUser.id),
+      fio:   userFullName(p),
+      ofoId: String(p.ofo ?? '').trim(),
+      role:  asText(p.role),
+    };
 
     await resetAndLoadMy();
 
@@ -671,8 +675,14 @@ async function startAbsence() {
     return;
   }
 
-  if (!hasOfo.value) {
-    toast.add({ title: 'Не указано подразделение (ОФО)', description: 'Обратитесь к администратору — в вашем профиле не заполнено ОФО.', color: 'error', icon: 'i-lucide-alert-circle' });
+  if (!hasOfo.value || !hasRole.value) {
+    toast.add({
+      title: 'Профиль заполнен не полностью',
+      description: 'Укажите ОФО и должность в профиле — они попадут в журнал.',
+      color: 'error',
+      icon: 'i-lucide-alert-circle',
+      actions: [{ label: 'Открыть профиль', color: 'neutral', variant: 'outline', to: '/profile' }],
+    });
     return;
   }
 
@@ -686,11 +696,9 @@ async function startAbsence() {
   try {
     const data = await apiSessionFetch('/api/absence_journal.php', {
       method: 'POST',
+      // ФИО, ОФО и должность сервер берёт из профиля сам.
       json: {
         user_id:        Number(u.id),
-        fio:            u.fio,
-        ofo:            Number(u.ofoId),
-        role:           u.role,
         start_datetime: toApiDateTime(start),
         reason,
       },
@@ -1327,15 +1335,15 @@ watch(
             body: 'flex flex-col gap-4 p-4 sm:p-5',
           }"
         >
-          <div
-            v-if="currentUser && !hasOfo"
-            class="rounded-lg ring-1 ring-warning/40 bg-warning/5 p-3 text-sm text-warning flex items-start gap-2"
-          >
-            <UIcon name="i-lucide-alert-triangle" class="size-4 shrink-0 mt-0.5" />
-            <span>
-              У вас не указано подразделение (ОФО). Отметить отсутствие нельзя — обратитесь к администратору, чтобы заполнить ОФО в профиле.
-            </span>
-          </div>
+          <UAlert
+            v-if="currentUser && (!hasOfo || !hasRole)"
+            color="warning"
+            variant="subtle"
+            icon="i-lucide-alert-triangle"
+            title="Заполните профиль"
+            description="Чтобы отметить отсутствие, укажите в профиле ОФО и должность — они попадут в журнал."
+            :actions="[{ label: 'Открыть профиль', color: 'warning', variant: 'outline', to: '/profile' }]"
+          />
 
           <div class="flex flex-col xl:flex-row xl:items-end gap-4 xl:gap-6">
             <div class="flex min-w-0 flex-1 flex-col gap-3">

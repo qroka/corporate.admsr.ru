@@ -128,7 +128,7 @@ func (h *Absence) get(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	sql := `SELECT id, user_id, fio, ofo, role, start_datetime, end_datetime, reason, created_at FROM public.absence_journal`
+	sql := `SELECT * FROM (` + absenceView + `) j`
 	if len(cond) > 0 {
 		sql += " WHERE " + strings.Join(cond, " AND ")
 	}
@@ -170,27 +170,12 @@ func (h *Absence) post(w http.ResponseWriter, r *http.Request) {
 		absenceFail(w, http.StatusBadRequest, "Некорректный JSON")
 		return
 	}
+	// user_id не передан — отмечает себя.
 	userID := int64(num(body["user_id"]))
-	fio := strings.TrimSpace(strVal(body["fio"]))
-	ofo := int64(num(body["ofo"]))
-	role := strings.TrimSpace(strVal(body["role"]))
-	start := strings.TrimSpace(strVal(body["start_datetime"]))
 	if userID <= 0 {
-		absenceFail(w, http.StatusBadRequest, "user_id обязателен")
-		return
+		userID = actor.ID
 	}
-	if fio == "" {
-		absenceFail(w, http.StatusBadRequest, "fio обязателен")
-		return
-	}
-	if ofo <= 0 {
-		absenceFail(w, http.StatusBadRequest, "ofo обязателен")
-		return
-	}
-	if role == "" {
-		absenceFail(w, http.StatusBadRequest, "role обязателен")
-		return
-	}
+	start := strings.TrimSpace(strVal(body["start_datetime"]))
 	if start == "" || !validDatetime(start) {
 		absenceFail(w, http.StatusBadRequest, "start_datetime обязателен")
 		return
@@ -198,6 +183,16 @@ func (h *Absence) post(w http.ResponseWriter, r *http.Request) {
 
 	if !auth.CanEditSection(r.Context(), h.Pool, actor, "absence_journal") && actor.ID != userID {
 		absenceFail(w, http.StatusForbidden, "Отмечать можно только своё отсутствие")
+		return
+	}
+
+	fio, ofo, role, err := h.employeeSnapshot(r.Context(), userID)
+	if err != nil {
+		absenceFail(w, http.StatusNotFound, "Сотрудник не найден")
+		return
+	}
+	if fio == "" || ofo <= 0 || role == "" {
+		absenceFail(w, http.StatusUnprocessableEntity, "Заполните ФИО, ОФО и должность в профиле — они попадут в журнал")
 		return
 	}
 
@@ -220,14 +215,18 @@ func (h *Absence) post(w http.ResponseWriter, r *http.Request) {
 	startNorm := roundDtToStep(normDt(start))
 	created := nowPortal()
 
-	row := h.Pool.QueryRow(r.Context(), `
+	var newID int64
+	err = h.Pool.QueryRow(r.Context(), `
 		INSERT INTO public.absence_journal
 			(user_id, fio, ofo, role, start_datetime, end_datetime, reason, created_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-		RETURNING id, user_id, fio, ofo, role, start_datetime, end_datetime, reason, created_at`,
-		userID, fio, ofo, role, startNorm, end, reason, created)
-
-	item, err := scanAbsence(row)
+		RETURNING id`,
+		userID, fio, ofo, role, startNorm, end, reason, created).Scan(&newID)
+	if err != nil {
+		absenceFail(w, http.StatusInternalServerError, "Не удалось создать запись")
+		return
+	}
+	item, err := h.fetchOne(r.Context(), newID)
 	if err != nil {
 		absenceFail(w, http.StatusInternalServerError, "Не удалось создать запись")
 		return
@@ -304,11 +303,14 @@ func (h *Absence) put(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	args = append(args, id)
-	row := h.Pool.QueryRow(r.Context(),
-		`UPDATE public.absence_journal SET `+strings.Join(sets, ", ")+
-			fmt.Sprintf(` WHERE id=$%d RETURNING id, user_id, fio, ofo, role, start_datetime, end_datetime, reason, created_at`, n),
+	tag, err := h.Pool.Exec(r.Context(),
+		`UPDATE public.absence_journal SET `+strings.Join(sets, ", ")+fmt.Sprintf(` WHERE id=$%d`, n),
 		args...)
-	item, err := scanAbsence(row)
+	if err != nil || tag.RowsAffected() == 0 {
+		absenceFail(w, http.StatusInternalServerError, "Не удалось обновить запись")
+		return
+	}
+	item, err := h.fetchOne(r.Context(), id)
 	if err != nil {
 		absenceFail(w, http.StatusInternalServerError, "Не удалось обновить запись")
 		return
@@ -354,11 +356,36 @@ func (h *Absence) del(w http.ResponseWriter, r *http.Request) {
 	absenceOK(w, map[string]any{"deleted_id": deleted})
 }
 
+// absenceView — записи журнала с данными сотрудника из user_info: ФИО, ОФО и
+// должность те же, что в профиле и админке. Копия в самой записи — запасной
+// вариант, если сотрудника уже нет в user_info.
+const absenceView = `
+	SELECT a.id, a.user_id,
+		COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.surname, u.firstname, u.lastname)), ''), a.fio) AS fio,
+		CASE WHEN u.ofo ~ '^[0-9]+$' AND u.ofo::bigint > 0 THEN u.ofo::bigint ELSE a.ofo END AS ofo,
+		COALESCE(NULLIF(TRIM(u.role), ''), a.role) AS role,
+		a.start_datetime, a.end_datetime, a.reason, a.created_at
+	FROM public.absence_journal a
+	LEFT JOIN public.user_info u ON u.id = a.user_id`
+
 func (h *Absence) fetchOne(ctx context.Context, id int64) (map[string]any, error) {
-	row := h.Pool.QueryRow(ctx, `
-		SELECT id, user_id, fio, ofo, role, start_datetime, end_datetime, reason, created_at
-		FROM public.absence_journal WHERE id=$1`, id)
+	row := h.Pool.QueryRow(ctx, `SELECT * FROM (`+absenceView+`) j WHERE id=$1`, id)
 	return scanAbsence(row)
+}
+
+// employeeSnapshot — ФИО, ОФО и должность сотрудника из user_info для новой
+// записи. Клиенту эти поля больше не доверяются: раньше они приходили из
+// снимка на момент входа и после правки профиля расходились с профилем.
+func (h *Absence) employeeSnapshot(ctx context.Context, userID int64) (fio string, ofo int64, role string, err error) {
+	var ofoText string
+	err = h.Pool.QueryRow(ctx, `
+		SELECT TRIM(CONCAT_WS(' ', surname, firstname, lastname)), COALESCE(ofo::text, ''), COALESCE(TRIM(role), '')
+		FROM public.user_info WHERE id = $1`, userID).Scan(&fio, &ofoText, &role)
+	if err != nil {
+		return "", 0, "", err
+	}
+	ofo, _ = strconv.ParseInt(strings.TrimSpace(ofoText), 10, 64)
+	return fio, ofo, role, nil
 }
 
 type absenceScanner interface {

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import type { DropdownMenuItem } from '@nuxt/ui';
 import { useAppToast } from '../composables/useAppToast';
-import { useOfoTree, type OfoPosition } from '../composables/useOfoTree';
-import OfoSelect from '../components/OfoSelect.vue';
+import UserWorkFields from '../components/UserWorkFields.vue';
+import { defaultAvatarUrl } from '../composables/useOnboarding';
+import { userShortName, userFullName } from '../utils/userName';
 import { useProfileDisplay } from '../composables/useProfileDisplay';
 import {
   FONT_OPTIONS,
@@ -28,11 +29,6 @@ import ProfileCreatePost from '../components/profile/ProfileCreatePost.vue';
 
 const { profileSaved, error } = useAppToast();
 
-const { ensureLoaded: ensureOfoLoaded, error: ofoError, unitNumberOf, fetchPositions } = useOfoTree();
-ensureOfoLoaded();
-
-const positionsList = ref<OfoPosition[]>([]);
-const positionsLoading = ref(false);
 
 type PageView = 'wall' | 'edit';
 const pageView = ref<PageView>('wall');
@@ -212,7 +208,6 @@ const accountForm = reactive({
   phone: '',
   email: '',
   ofoId: null as number | null,
-  positionId: null as number | null,
   role: '',
 });
 
@@ -239,48 +234,14 @@ async function loadProfile() {
     accountForm.ofoId      = (p.ofo != null && Number.isFinite(ofoNum) && ofoNum > 0) ? ofoNum : null;
     accountForm.role       = p.role      ?? '';
 
-    if (p.avatar_url) setAvatarSrc(p.avatar_url);
-    if (p.role)       setSubtitle(p.role);
-
-    const full = [p.surname, p.firstname].filter(Boolean).join(' ');
-    if (full) setDisplayName(full);
+    // Всегда с сервера: пустое значение не должно оставлять прежнее.
+    setAvatarSrc(p.avatar_url || defaultAvatarUrl());
+    setSubtitle(p.role || '');
+    setDisplayName(userShortName(p));
   } finally {
     profileLoading.value = false;
   }
 }
-
-const positionItems = computed(() =>
-  positionsList.value.map((p) => ({ value: p.id, label: p.name })),
-);
-
-watch(
-  () => accountForm.ofoId,
-  async (id) => {
-    accountForm.positionId = null;
-    positionsList.value = [];
-    const un = unitNumberOf(id);
-    if (un == null) { accountForm.role = ''; return; }
-    positionsLoading.value = true;
-    try {
-      positionsList.value = await fetchPositions(un);
-      const match = positionsList.value.find((p) => p.name === accountForm.role);
-      if (match) accountForm.positionId = match.id;
-      else accountForm.role = '';
-    } catch {
-      positionsList.value = [];
-    } finally {
-      positionsLoading.value = false;
-    }
-  },
-);
-
-watch(
-  () => accountForm.positionId,
-  (val) => {
-    const pos = positionsList.value.find((p) => p.id === val);
-    if (pos?.name) accountForm.role = pos.name;
-  },
-);
 
 async function onUpdateAccount() {
   const raw = localStorage.getItem('auth-user');
@@ -312,10 +273,21 @@ async function onUpdateAccount() {
       return;
     }
 
-    const full = [accountForm.lastName, accountForm.firstName]
-      .filter(Boolean).join(' ');
-    if (full) setDisplayName(full);
-    if (accountForm.role) setSubtitle(accountForm.role);
+    const names = { surname: accountForm.lastName, firstname: accountForm.firstName, lastname: accountForm.patronymic };
+    setDisplayName(userShortName(names));
+    setSubtitle(accountForm.role);
+    // Снимок пользователя из входа тоже обновляем — его читают другие экраны.
+    try {
+      const snap = JSON.parse(localStorage.getItem('auth-user') || 'null');
+      if (snap && snap.id === user.id) {
+        snap.fio = userFullName(names);
+        snap.ofo = accountForm.ofoId != null ? String(accountForm.ofoId) : '';
+        snap.role = accountForm.role;
+        localStorage.setItem('auth-user', JSON.stringify(snap));
+      }
+    } catch {
+      /* снимок не критичен */
+    }
     profileSaved();
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('ui:user-profile-updated'));
@@ -521,24 +493,11 @@ onMounted(() => {
               <UFormField label="Электронная почта" name="email">
                 <UInput v-model="accountForm.email" size="lg" class="w-full" type="email" autocomplete="email" :disabled="profileLoading" />
               </UFormField>
-              <UFormField label="ОФО" name="ofoId" :help="ofoError ? String(ofoError) : undefined">
-                <OfoSelect v-model="accountForm.ofoId" />
-              </UFormField>
-              <UFormField label="Должность" name="positionId">
-                <USelectMenu
-                  v-model="accountForm.positionId"
-                  :items="positionItems"
-                  value-key="value"
-                  label-key="label"
-                  :placeholder="accountForm.ofoId == null ? 'Сначала выберите ОФО' : 'Выберите должность'"
-                  size="lg"
-                  color="neutral"
-                  class="w-full"
-                  :disabled="accountForm.ofoId == null || positionsLoading"
-                  :loading="positionsLoading"
-                  :content="{ align: 'start', sideOffset: 8 }"
-                />
-              </UFormField>
+              <UserWorkFields
+                v-model:ofo-id="accountForm.ofoId"
+                v-model:role="accountForm.role"
+                :disabled="profileLoading"
+              />
             </div>
 
             <USeparator />

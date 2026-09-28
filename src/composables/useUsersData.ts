@@ -1,4 +1,5 @@
 import { onMounted, ref } from 'vue';
+import { userFullName } from '../utils/userName';
 
 function extractTableData(exportJson: unknown, tableName: string) {
   if (!Array.isArray(exportJson)) return [];
@@ -38,7 +39,7 @@ function mapUser(r: any): AdminUserRow {
   const fname = r.firstname || '';
   const sname = r.surname || '';
   const lname = r.lastname || '';
-  const fullName = [sname, fname, lname].filter(Boolean).join(' ') || '—';
+  const fullName = userFullName({ surname: sname, firstname: fname, lastname: lname }) || '—';
   return {
     id: Number.isFinite(id) ? id : 0,
     status: r.status === 'Активен' || r.status === '1' ? 'Активен' : 'Заблокирован',

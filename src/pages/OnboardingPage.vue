@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { useOfoTree, type OfoPosition } from '../composables/useOfoTree';
-import OfoSelect from '../components/OfoSelect.vue';
+import { useOfoTree } from '../composables/useOfoTree';
+import UserWorkFields from '../components/UserWorkFields.vue';
+import { userShortName } from '../utils/userName';
 import { useProfileDisplay } from '../composables/useProfileDisplay';
 import { useAppToast } from '../composables/useAppToast';
 import {
@@ -23,11 +24,9 @@ const router = useRouter();
 const { success, error } = useAppToast();
 const { setAvatarSrc, setDisplayName, setSubtitle } = useProfileDisplay();
 
-const { ensureLoaded: ensureOfoLoaded, error: ofoError, pathLabel, unitNumberOf, fetchPositions } = useOfoTree();
+const { ensureLoaded: ensureOfoLoaded, pathLabel } = useOfoTree();
 ensureOfoLoaded();
 
-const positionsList = ref<OfoPosition[]>([]);
-const positionsLoading = ref(false);
 
 const STEPS = [
   { id: 'welcome', label: 'Приветствие', icon: 'i-lucide-sparkles', date: 'Шаг 1' },
@@ -78,7 +77,6 @@ const profileLoading = ref(true);
 
 const form = reactive({
   ofoId: null as number | null,
-  positionId: null as number | null,
   role: '',
   avatarUrl: defaultAvatarUrl(),
 });
@@ -135,14 +133,11 @@ const portalFeatures = [
   },
 ];
 
-const positionItems = computed(() =>
-  positionsList.value.map((p) => ({ value: p.id, label: p.name })),
-);
 
 const selectedOfoLabel = computed(() => pathLabel(form.ofoId));
 
 const canProceedFromWork = computed(
-  () => form.ofoId != null && form.positionId != null,
+  () => form.ofoId != null && Boolean(form.role.trim()),
 );
 
 const canProceedFromAvatar = computed(() => Boolean(String(form.avatarUrl ?? '').trim()));
@@ -153,32 +148,6 @@ const greetingName = computed(() => {
   const namePatronymic = [p.firstname, p.lastname].filter(Boolean).join(' ');
   return namePatronymic || 'коллега';
 });
-
-watch(
-  () => form.ofoId,
-  async (id) => {
-    form.positionId = null;
-    form.role = '';
-    positionsList.value = [];
-    const un = unitNumberOf(id);
-    if (un == null) return;
-    positionsLoading.value = true;
-    try {
-      positionsList.value = await fetchPositions(un);
-    } catch {
-      positionsList.value = [];
-    } finally {
-      positionsLoading.value = false;
-    }
-  },
-);
-
-watch(
-  () => form.positionId,
-  (val) => {
-    form.role = positionsList.value.find((p) => p.id === val)?.name ?? '';
-  },
-);
 
 function goNext() {
   const idx = stepIndex.value;
@@ -236,9 +205,8 @@ async function finishOnboarding() {
     }
 
     setAvatarSrc(form.avatarUrl);
-    if (form.role) setSubtitle(form.role);
-    const full = [p.surname, p.firstname].filter(Boolean).join(' ');
-    if (full) setDisplayName(full);
+    setSubtitle(form.role);
+    setDisplayName(userShortName(p));
 
     const raw = localStorage.getItem('auth-user');
     if (raw) {
@@ -470,30 +438,13 @@ onMounted(async () => {
               </div>
 
               <UForm class="space-y-4 max-w-md mx-auto w-full">
-                <UFormField
-                  label="ОФО"
-                  name="ofoId"
+                <UserWorkFields
+                  v-model:ofo-id="form.ofoId"
+                  v-model:role="form.role"
                   required
-                  :help="ofoError ? String(ofoError) : 'Категория — заголовок, раскройте и выберите подразделение.'"
-                >
-                  <OfoSelect v-model="form.ofoId" />
-                </UFormField>
-
-                <UFormField label="Должность" name="positionId" required>
-                  <USelectMenu
-                    v-model="form.positionId"
-                    :items="positionItems"
-                    value-key="value"
-                    label-key="label"
-                    :placeholder="form.ofoId == null ? 'Сначала выберите ОФО' : 'Выберите должность'"
-                    size="xl"
-                    color="neutral"
-                    class="w-full"
-                    :disabled="form.ofoId == null || positionsLoading"
-                    :loading="positionsLoading"
-                    :content="{ align: 'start', sideOffset: 8 }"
-                  />
-                </UFormField>
+                  size="xl"
+                  ofo-help="Категория — заголовок, раскройте и выберите подразделение."
+                />
               </UForm>
 
               <div class="flex flex-wrap justify-between gap-3 pt-2">

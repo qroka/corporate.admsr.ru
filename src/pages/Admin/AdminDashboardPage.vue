@@ -4,6 +4,9 @@ import type { TableColumn } from '@nuxt/ui';
 import { useAppToast } from '../../composables/useAppToast';
 import { useOfoData, type OfoStat } from '../../composables/useOfoData';
 import AdminOfoPanel from '../../components/AdminOfoPanel.vue';
+import UserWorkFields from '../../components/UserWorkFields.vue';
+import { avatarUrlFromFilename, PROFILE_AVATAR_FILENAMES } from '../../constants/profileAvatars';
+import { userFullName } from '../../utils/userName';
 import { useOfoTree } from '../../composables/useOfoTree';
 import { useGroupsData } from '../../composables/useGroupsData';
 import { useUsersData, type AdminUserRow } from '../../composables/useUsersData';
@@ -829,6 +832,31 @@ const editForm = reactive<AdminUserRow>({
   role: ''
 });
 
+/** ОФО в user_info — строка с id ofo_unit; форма работает с числом, как в профиле. */
+const editOfoId = computed<number | null>({
+  get: () => {
+    const n = Number(editForm.ofo);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  },
+  set: (v) => {
+    editForm.ofo = v != null ? String(v) : '';
+  },
+});
+
+/** Те же аватары, что в профиле; нестандартный URL не теряем. */
+const editAvatarItems = computed(() => {
+  const items = PROFILE_AVATAR_FILENAMES.map((f) => ({
+    value: avatarUrlFromFilename(f),
+    label: f.replace(/\.png$/i, ''),
+    avatar: { src: avatarUrlFromFilename(f), alt: '' },
+  }));
+  const current = String(editForm.avatar_url || '').trim();
+  if (current && !items.some((i) => i.value === current)) {
+    items.unshift({ value: current, label: 'Текущий аватар', avatar: { src: current, alt: '' } });
+  }
+  return items;
+});
+
 function openEdit(user: AdminUserRow) {
   Object.assign(editForm, { ...user });
   const g = String(user.user_group ?? '').trim().toLowerCase();
@@ -846,7 +874,7 @@ async function saveEdit() {
   users.value = users.value.map((u) =>
     u.id === editForm.id ? {
       ...editForm,
-      fullName: [editForm.surname, editForm.firstname, editForm.lastname].filter(Boolean).join(' ') || '—'
+      fullName: userFullName(editForm) || '—'
     } : u,
   );
 
@@ -871,7 +899,7 @@ async function saveEdit() {
     });
     const json = await res.json().catch(() => null);
     if (!res.ok || !json?.success) throw new Error(json?.message || `Ошибка ${res.status}`);
-    adminUserSaved([editForm.surname, editForm.firstname, editForm.lastname].filter(Boolean).join(' ') || 'Пользователь');
+    adminUserSaved(userFullName(editForm) || 'Пользователь');
     editOpen.value = false;
   } catch(e) {
     if (prevSnapshot) {
@@ -1738,10 +1766,8 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
           <UFormField label="Пароль" name="password">
             <UInput v-model="editForm.password" size="xl" class="w-full" type="password" />
           </UFormField>
-          <UFormField label="ОФО" name="ofo">
-            <UInput v-model="editForm.ofo" size="xl" class="w-full" />
-          </UFormField>
-          <UFormField label="Email" name="email">
+          <UserWorkFields v-model:ofo-id="editOfoId" v-model:role="editForm.role" size="xl" />
+          <UFormField label="Электронная почта" name="email">
             <UInput v-model="editForm.email" size="xl" class="w-full" />
           </UFormField>
           <UFormField label="Телефон" name="phone">
@@ -1751,18 +1777,26 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
             <USelect
               v-model="editForm.user_group"
               :items="[
-                { value: 'user', label: 'user (сотрудник)' },
-                { value: 'admin', label: 'admin (суперadmin)' },
+                { value: 'user', label: 'Сотрудник' },
+                { value: 'admin', label: 'Суперадминистратор' },
               ]"
               size="xl"
               class="w-full"
             />
           </UFormField>
-          <UFormField label="Должность" name="role">
-            <UInput v-model="editForm.role" size="xl" class="w-full" />
-          </UFormField>
-          <UFormField label="Аватар (URL)" name="avatar_url">
-            <UInput v-model="editForm.avatar_url" size="xl" class="w-full" />
+          <UFormField label="Аватар" name="avatar_url">
+            <USelectMenu
+              v-model="editForm.avatar_url"
+              :items="editAvatarItems"
+              value-key="value"
+              label-key="label"
+              :avatar="editForm.avatar_url ? { src: editForm.avatar_url, alt: '' } : undefined"
+              placeholder="Выберите аватар"
+              size="xl"
+              color="neutral"
+              class="w-full"
+              :content="{ align: 'start', sideOffset: 8 }"
+            />
           </UFormField>
           <UFormField label="Статус" name="status">
             <USelect
@@ -1774,9 +1808,6 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
               size="xl"
               class="w-full"
             />
-          </UFormField>
-          <UFormField label="Последняя авторизация" name="auth">
-            <UInput v-model="editForm.auth" size="xl" class="w-full" disabled />
           </UFormField>
         </UForm>
       </template>
