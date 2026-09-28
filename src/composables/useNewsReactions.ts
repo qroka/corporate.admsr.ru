@@ -1,116 +1,156 @@
 import { ref } from 'vue';
-import { useNewsData } from './useNewsData';
+import { apiSessionFetch } from './useAuthSession';
+import { useAppToast } from './useAppToast';
 
-const LIKES_KEY = 'news-likes:v1';
-const VIEW_SESSION_KEY = 'news-viewed:v1';
+/**
+ * Реакции на новости — на сервере (news_reactions), по одной каждого вида на
+ * сотрудника. Порядок и ключи дублируются в Go:
+ * backend/internal/handlers/news_reactions.go (NewsReactionKeys) — менять парами.
+ */
+export const NEWS_REACTIONS = [
+  { key: 'like', emoji: '👍', label: 'Нравится' },
+  { key: 'love', emoji: '❤️', label: 'Люблю' },
+  { key: 'haha', emoji: '😄', label: 'Смешно' },
+  { key: 'wow', emoji: '😮', label: 'Удивительно' },
+  { key: 'sad', emoji: '😢', label: 'Грустно' },
+  { key: 'fire', emoji: '🔥', label: 'Огонь' },
+  { key: 'clap', emoji: '👏', label: 'Браво' },
+  { key: 'party', emoji: '🎉', label: 'Праздник' },
+] as const;
 
-// Хранилище лайков (localStorage) — инициализируется один раз
-const localLikes = ref<Record<string, boolean>>({});
-const submitting = ref<Record<string, boolean>>({});
-let initialized = false;
+export type NewsReactionKey = (typeof NEWS_REACTIONS)[number]['key'];
+export type NewsReactionSummary = { key: NewsReactionKey; count: number; mine: boolean };
+export type NewsReactor = { id: number; name: string; avatar_url: string };
 
-function initLikes() {
-  if (initialized || typeof window === 'undefined') return;
-  initialized = true;
+const KNOWN = new Set<string>(NEWS_REACTIONS.map((r) => r.key));
+
+// Раньше «лайкнул ли я» хранилось в браузере — теперь это знает сервер.
+if (typeof window !== 'undefined') {
   try {
-    const stored = window.localStorage.getItem(LIKES_KEY);
-    if (stored) localLikes.value = JSON.parse(stored);
-  } catch { /* ignore */ }
+    window.localStorage.removeItem('news-likes:v1');
+  } catch {
+    /* хранилище недоступно */
+  }
 }
 
-function saveLikes() {
-  if (typeof window === 'undefined') return;
-  try { window.localStorage.setItem(LIKES_KEY, JSON.stringify(localLikes.value)); } catch { /* ignore */ }
+/** Сводка по новостям: id → реакции с count > 0. */
+const summaries = ref<Record<string, NewsReactionSummary[]>>({});
+/** Новости, по которым идёт запрос: ответ ленты не должен затирать оптимистичное состояние. */
+const pending = new Set<string>();
+/** Кто отреагировал: `${newsId}:${key}` → список (грузится при наведении). */
+const reactorsCache = ref<Record<string, NewsReactor[]>>({});
+const reactorsLoading = ref<Record<string, boolean>>({});
+
+function normalize(raw: unknown): NewsReactionSummary[] {
+  if (!Array.isArray(raw)) return [];
+  const out: NewsReactionSummary[] = [];
+  for (const r of raw) {
+    const key = String((r as any)?.key ?? '');
+    const count = Math.max(0, Number((r as any)?.count) || 0);
+    if (!KNOWN.has(key) || count <= 0) continue;
+    out.push({ key: key as NewsReactionKey, count, mine: Boolean((r as any)?.mine) });
+  }
+  return out;
 }
 
-function safeParseJson(raw: string | null): any {
-  if (!raw) return null;
-  try { return JSON.parse(raw); } catch { return null; }
+/** Принять реакции из любого ответа news.php (лента, список, карточка). */
+export function seedNewsReactions(newsId: string | number, raw: unknown) {
+  const id = String(newsId);
+  if (!id || pending.has(id) || !Array.isArray(raw)) return;
+  summaries.value = { ...summaries.value, [id]: normalize(raw) };
 }
 
-function readViewedMap(): Record<string, boolean> {
-  if (typeof window === 'undefined') return {};
-  return safeParseJson(window.sessionStorage.getItem(VIEW_SESSION_KEY)) ?? {};
-}
-
-function writeViewedMap(map: Record<string, boolean>) {
-  if (typeof window === 'undefined') return;
-  window.sessionStorage.setItem(VIEW_SESSION_KEY, JSON.stringify(map));
-}
-
-function mapApiToNewsRecord(d: any) {
-  return {
-    id:          String(d?.id ?? ''),
-    title:       String(d?.title ?? ''),
-    category:    String(d?.category ?? ''),
-    description: String(d?.description ?? ''),
-    date:        String(d?.date ?? ''),
-    imagePath:   d?.image_path ?? null,
-    createdAt:   d?.created_at ?? null,
-    likes: Number(d?.likes ?? 0) || 0,
-    views: Number(d?.views ?? 0) || 0,
-  };
+function isLoggedIn(): boolean {
+  try {
+    const u = JSON.parse(localStorage.getItem('auth-user') || 'null');
+    return Number(u?.id ?? 0) > 0;
+  } catch {
+    return false;
+  }
 }
 
 export function useNewsReactions() {
-  const { getById, patchItem } = useNewsData();
+  const { toast } = useAppToast();
 
-  if (!initialized) initLikes();
-
-  function isLiked(id: string | number): boolean {
-    return !!localLikes.value[String(id)];
+  function reactionsOf(newsId: string | number): NewsReactionSummary[] {
+    return summaries.value[String(newsId)] ?? [];
   }
 
-  async function toggleLike(id: string | number) {
-    const key = String(id);
-    if (submitting.value[key]) return;
+  function countOf(newsId: string | number, key: NewsReactionKey): number {
+    return reactionsOf(newsId).find((r) => r.key === key)?.count ?? 0;
+  }
 
-    const item = getById(key);
-    if (!item) return;
+  function isMine(newsId: string | number, key: NewsReactionKey): boolean {
+    return Boolean(reactionsOf(newsId).find((r) => r.key === key)?.mine);
+  }
 
-    const nextLiked = !isLiked(key);
-    const before = { ...item };
-    submitting.value[key] = true;
+  /** Поставить / снять реакцию. Сразу меняем счётчик, при ошибке — откат. */
+  async function toggle(newsId: string | number, key: NewsReactionKey) {
+    const id = String(newsId);
+    if (pending.has(id)) return;
+    if (!isLoggedIn()) {
+      toast.add({ title: 'Войдите, чтобы ставить реакции', color: 'neutral', icon: 'i-lucide-log-in' });
+      return;
+    }
 
-    // Если лайкаем и новость ещё не просматривалась в этой сессии — засчитать просмотр
-    const viewed = readViewedMap();
-    const needsView = nextLiked && !viewed[key];
+    const before = reactionsOf(id);
+    const active = !isMine(id, key);
+    const next = NEWS_REACTIONS.map(({ key: k }) => {
+      const cur = before.find((r) => r.key === k);
+      if (k !== key) return cur ?? null;
+      const count = Math.max(0, (cur?.count ?? 0) + (active ? 1 : -1));
+      return count > 0 ? { key: k, count, mine: active } : null;
+    }).filter(Boolean) as NewsReactionSummary[];
 
+    summaries.value = { ...summaries.value, [id]: next };
+    pending.add(id);
     try {
-      const [likeRes, viewRes] = await Promise.all([
-        fetch(`/api/news.php?id=${key}&action=like`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ liked: nextLiked }),
-        }),
-        needsView
-          ? fetch(`/api/news.php?id=${key}&action=view`, { method: 'POST' })
-          : Promise.resolve(null),
-      ]);
-
-      const json = await likeRes.json();
-      if (!json?.success) throw new Error(json?.message || 'Ошибка обновления лайка');
-
-      let patched = mapApiToNewsRecord(json.data);
-
-      if (viewRes) {
-        const viewJson = await viewRes.json();
-        if (viewJson?.success) {
-          patched = { ...patched, views: mapApiToNewsRecord(viewJson.data).views };
-          viewed[key] = true;
-          writeViewedMap(viewed);
-        }
+      const json = await apiSessionFetch<any>(`/api/news.php?id=${encodeURIComponent(id)}&action=react`, {
+        method: 'POST',
+        json: { reaction: key, active },
+      });
+      if (!json?.success) throw new Error(json?.message || 'Не удалось сохранить реакцию');
+      pending.delete(id);
+      seedNewsReactions(id, json.data?.reactions);
+      // Список «кто отреагировал» устарел — перезагрузим при следующем наведении.
+      const cacheKey = `${id}:${key}`;
+      if (reactorsCache.value[cacheKey]) {
+        const { [cacheKey]: _drop, ...rest } = reactorsCache.value;
+        reactorsCache.value = rest;
       }
-
-      patchItem(patched);
-      localLikes.value[key] = nextLiked;
-      saveLikes();
-    } catch {
-      patchItem(before);
-    } finally {
-      submitting.value[key] = false;
+    } catch (e) {
+      pending.delete(id);
+      summaries.value = { ...summaries.value, [id]: before };
+      toast.add({
+        title: 'Реакция не сохранилась',
+        description: e instanceof Error ? e.message : undefined,
+        color: 'error',
+        icon: 'i-lucide-alert-circle',
+      });
     }
   }
 
-  return { isLiked, toggleLike };
+  async function loadReactors(newsId: string | number, key: NewsReactionKey) {
+    const cacheKey = `${newsId}:${key}`;
+    if (reactorsCache.value[cacheKey] || reactorsLoading.value[cacheKey] || !isLoggedIn()) return;
+    reactorsLoading.value = { ...reactorsLoading.value, [cacheKey]: true };
+    try {
+      const json = await apiSessionFetch<any>(
+        `/api/news.php?id=${encodeURIComponent(String(newsId))}&action=reactors&reaction=${key}`,
+      );
+      if (json?.success && Array.isArray(json.data)) {
+        reactorsCache.value = { ...reactorsCache.value, [cacheKey]: json.data as NewsReactor[] };
+      }
+    } catch {
+      /* подсказка просто останется без имён */
+    } finally {
+      reactorsLoading.value = { ...reactorsLoading.value, [cacheKey]: false };
+    }
+  }
+
+  function reactorsOf(newsId: string | number, key: NewsReactionKey): NewsReactor[] | null {
+    return reactorsCache.value[`${newsId}:${key}`] ?? null;
+  }
+
+  return { reactionsOf, countOf, isMine, toggle, loadReactors, reactorsOf };
 }

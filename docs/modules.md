@@ -62,9 +62,13 @@
 Эндпоинт: `news.php` (GET публичный; POST/PUT/DELETE — право секции `news`,
 `backend/internal/handlers/news.go`).
 
-Реакции: счётчики уходят на сервер (`?action=like`, `?action=view`), а «я уже
-лайкнул / просмотрел» хранится локально в `news-likes:v1` и `news-viewed:v1` —
-`useNewsReactions.ts:4-5,81-87`. **[ЧАСТИЧНО]**
+Реакции (с 2026-09-28, ADR-033): 8 видов (`NEWS_REACTIONS` в
+`useNewsReactions.ts` и `NewsReactionKeys` в `news_reactions.go` — менять
+парами), таблица `news_reactions` (V11). У сотрудника на новость — несколько
+разных реакций, каждая не больше одной. Компонент `src/components/NewsReactions.vue`
+(карточка на рабочем столе, страница новости; в киоске скрыт). Ответы `news.php`
+несут `reactions: [{key, count, mine}]`; `mine` — по сессии, без входа `false`.
+Просмотр «уже засчитан в этой сессии» — по-прежнему `sessionStorage['news-viewed:v1']`.
 
 Индекс под курсорную пагинацию: `db/migration/V8__news_feed_index.sql`.
 

@@ -59,6 +59,10 @@ func (h *News) get(w http.ResponseWriter, r *http.Request) {
 			httpx.Fail(w, http.StatusBadRequest, "Некорректный id")
 			return
 		}
+		if strings.EqualFold(q.Get("action"), "reactors") {
+			h.reactors(w, r, id, q.Get("reaction"))
+			return
+		}
 		row, err := h.fetchOne(r.Context(), id)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
@@ -68,7 +72,7 @@ func (h *News) get(w http.ResponseWriter, r *http.Request) {
 			httpx.Fail(w, http.StatusInternalServerError, "Ошибка подключения к БД")
 			return
 		}
-		httpx.OK(w, fmtNews(row), "OK")
+		httpx.OK(w, h.oneWithReactions(r, row), "OK")
 		return
 	}
 
@@ -82,6 +86,9 @@ func (h *News) get(w http.ResponseWriter, r *http.Request) {
 			httpx.Fail(w, http.StatusInternalServerError, "Ошибка подключения к БД")
 			return
 		}
+		if items, ok := page["items"].([]map[string]any); ok {
+			h.attachReactions(r, items)
+		}
 		httpx.OK(w, page, "OK")
 		return
 	}
@@ -91,6 +98,7 @@ func (h *News) get(w http.ResponseWriter, r *http.Request) {
 		httpx.Fail(w, http.StatusInternalServerError, "Ошибка подключения к БД")
 		return
 	}
+	h.attachReactions(r, items)
 	httpx.OK(w, items, "OK")
 }
 
@@ -116,9 +124,23 @@ func (h *News) post(w http.ResponseWriter, r *http.Request) {
 				httpx.Fail(w, http.StatusNotFound, "Новость не найдена")
 				return
 			}
-			httpx.OK(w, fmtNews(row), "Просмотр учтён")
+			httpx.OK(w, h.oneWithReactions(r, row), "Просмотр учтён")
+			return
+		case "react":
+			var body struct {
+				Reaction string `json:"reaction"`
+				Active   *bool  `json:"active"`
+			}
+			if err := httpx.DecodeJSON(r, &body); err != nil || body.Active == nil {
+				httpx.Fail(w, http.StatusUnprocessableEntity, "Нужны поля «reaction» и «active»")
+				return
+			}
+			h.react(w, r, id, body.Reaction, *body.Active)
 			return
 		case "like":
+			// Совместимость со старым клиентом: лайк — это реакция «like».
+			// Раньше лайк менял анонимный счётчик news.likes без входа; теперь
+			// он привязан к сотруднику, а news.likes больше не меняется.
 			var body struct {
 				Liked *bool `json:"liked"`
 			}
@@ -126,28 +148,7 @@ func (h *News) post(w http.ResponseWriter, r *http.Request) {
 				httpx.Fail(w, http.StatusUnprocessableEntity, "Поле «liked» обязательно (true/false)")
 				return
 			}
-			liked := 0
-			if *body.Liked {
-				liked = 1
-			}
-			_, err := h.Pool.Exec(r.Context(), `
-				UPDATE public.news
-				SET likes = CASE
-					WHEN $2 = 1 THEN COALESCE(likes, 0) + 1
-					ELSE GREATEST(COALESCE(likes, 0) - 1, 0)
-				END,
-				updated_at = NOW()
-				WHERE id = $1`, id, liked)
-			if err != nil {
-				httpx.Fail(w, http.StatusInternalServerError, "Ошибка подключения к БД")
-				return
-			}
-			row, err := h.fetchOne(r.Context(), id)
-			if err != nil {
-				httpx.Fail(w, http.StatusNotFound, "Новость не найдена")
-				return
-			}
-			httpx.OK(w, fmtNews(row), "Лайк обновлён")
+			h.react(w, r, id, "like", *body.Liked)
 			return
 		default:
 			httpx.Fail(w, http.StatusBadRequest, "Неизвестное действие")

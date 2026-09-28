@@ -2,7 +2,7 @@
 import { computed, nextTick, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useNewsData, formatNewsDate, resolveNewsImageSrc } from '../../composables/useNewsData';
-import { useNewsReactions } from '../../composables/useNewsReactions';
+import { seedNewsReactions } from '../../composables/useNewsReactions';
 import { newsEditorToolbarItems } from '../../composables/newsEditorToolbar';
 import { newsEditorExtensions } from '../../composables/newsEditorExtensions';
 import { newsEditorHandlers } from '../../composables/newsEditorHandlers';
@@ -111,8 +111,6 @@ const relatedNews = computed(() => {
   }));
 });
 
-const { isLiked: isLikedFn, toggleLike: toggleLikeAction } = useNewsReactions();
-
 const viewSessionKey = 'news-viewed:v1';
 
 function safeParseJson(raw: string | null): any {
@@ -150,6 +148,7 @@ function writeViewedMap(map: Record<string, boolean>) {
 }
 
 function mapApiToNewsRecord(d: any) {
+  seedNewsReactions(String(d?.id ?? ''), d?.reactions);
   return {
     id: String(d?.id ?? ''),
     title: String(d?.title ?? ''),
@@ -161,12 +160,6 @@ function mapApiToNewsRecord(d: any) {
     likes: Number(d?.likes ?? 0) || 0,
     views: Number(d?.views ?? 0) || 0,
   };
-}
-
-const isLiked = computed(() => (item.value ? isLikedFn(item.value.id) : false));
-
-function toggleLike() {
-  if (item.value?.id) void toggleLikeAction(item.value.id);
 }
 
 async function incrementViewOnce(id: string) {
@@ -428,15 +421,6 @@ async function removeCoverImage(e?: Event) {
     });
   }
 }
-
-function onExtraReaction() {
-  toast.add({
-    title: 'Реакции',
-    description: 'Дополнительные реакции появятся после поддержки на сервере. Пока доступен лайк.',
-    color: 'neutral',
-    icon: 'i-lucide-smile',
-  });
-}
 </script>
 
 <template>
@@ -491,56 +475,7 @@ function onExtraReaction() {
                     <UIcon name="i-lucide-eye" class="size-4 shrink-0" />
                     {{ viewsLabel(item.views) }}
                   </span>
-                  <div
-                    v-if="!isKiosk"
-                    class="flex flex-wrap items-center gap-1.5"
-                  >
-                    <UButton
-                      type="button"
-                      size="xs"
-                      :color="isLiked ? 'primary' : 'neutral'"
-                      variant="subtle"
-                      :label="formatCountRu(item.likes)"
-                      @click="toggleLike"
-                    >
-                      <template #leading>
-                        <span class="text-sm leading-none" aria-hidden="true">👍</span>
-                      </template>
-                    </UButton>
-                    <UButton
-                      type="button"
-                      size="xs"
-                      color="neutral"
-                      variant="subtle"
-                      square
-                      aria-label="Нравится"
-                      @click="onExtraReaction"
-                    >
-                      <span class="text-sm leading-none" aria-hidden="true">❤️</span>
-                    </UButton>
-                    <UButton
-                      type="button"
-                      size="xs"
-                      color="neutral"
-                      variant="subtle"
-                      square
-                      aria-label="Улыбка"
-                      @click="onExtraReaction"
-                    >
-                      <span class="text-sm leading-none" aria-hidden="true">🙂</span>
-                    </UButton>
-                    <UTooltip text="Добавить реакцию">
-                      <UButton
-                        type="button"
-                        size="xs"
-                        color="neutral"
-                        variant="ghost"
-                        square
-                        icon="i-lucide-plus"
-                        aria-label="Добавить реакцию"
-                        @click="onExtraReaction" />
-                    </UTooltip>
-                  </div>
+                  <NewsReactions v-if="!isKiosk" :news-id="item.id" />
                 </div>
               </div>
 

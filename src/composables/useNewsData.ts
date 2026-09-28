@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue';
 import { formatDateRuLong } from '../utils/date';
+import { seedNewsReactions } from './useNewsReactions';
 
 export type NewsRecord = {
   id: string;
@@ -22,6 +23,8 @@ let sharedLoadPromise: Promise<void> | null = null;
 export function mapApiRow(r: Record<string, unknown>): NewsRecord | null {
   const id = String(r?.id ?? '').trim();
   if (!id) return null;
+  // Реакции живут в общем хранилище useNewsReactions — там же и оптимистичные правки.
+  seedNewsReactions(id, r?.reactions);
   return {
     id,
     title:       String(r?.title       ?? '').trim(),

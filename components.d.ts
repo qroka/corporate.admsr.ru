@@ -24,6 +24,7 @@ declare module 'vue' {
     HomeNewsCard: typeof import('./src/components/home/HomeNewsCard.vue')['default']
     KioskAside: typeof import('./src/components/KioskAside.vue')['default']
     KioskHeader: typeof import('./src/components/KioskHeader.vue')['default']
+    NewsReactions: typeof import('./src/components/NewsReactions.vue')['default']
     OfoMultiSelect: typeof import('./src/components/OfoMultiSelect.vue')['default']
     OfoSelect: typeof import('./src/components/OfoSelect.vue')['default']
     ProfileCreatePost: typeof import('./src/components/profile/ProfileCreatePost.vue')['default']

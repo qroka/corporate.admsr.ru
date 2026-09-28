@@ -4,7 +4,6 @@ import type { TabsItem } from '@nuxt/ui';
 import { onBeforeRouteLeave } from 'vue-router';
 import { resolveNewsImageSrc } from '../composables/useNewsData';
 import { useNewsFeed, useFeedSentinel } from '../composables/useNewsFeed';
-import { useNewsReactions } from '../composables/useNewsReactions';
 import { useBirthdayColleagues } from '../composables/useBirthdayColleagues';
 import { attachAbsenceStorageSync, hasActiveAbsence } from '../stores/absenceJournal';
 import { useSectionAccess } from '../composables/useSectionAccess';
@@ -100,7 +99,6 @@ const servicesGridClass = computed(
 
 type NewsFeedItem = {
   id: string;
-  likes: number;
   views: number;
   title: string;
   description: string;
@@ -169,7 +167,6 @@ const newsItems = computed<NewsFeedItem[]>(() =>
     const counts = resolveLikesViews(n.id);
     return {
       id: n.id,
-      likes: counts.likes,
       views: counts.views,
       title: n.title || `Новость #${n.id}`,
       description: newsPreviewText(n.description, 220),
@@ -191,8 +188,6 @@ const newsTabItems = computed<TabsItem[]>(() => [
     ui: { label: 'truncate' },
   })),
 ]);
-
-const { isLiked: isNewsLiked, toggleLike: toggleNewsLike } = useNewsReactions();
 
 const displayNewsItems = computed(() => newsItems.value);
 
@@ -478,11 +473,8 @@ onUnmounted(() => {
                 :to="item.to"
                 :date="item.date"
                 :created-at="item.createdAt"
-                :likes="item.likes"
                 :views="item.views"
-                :liked="isNewsLiked(item.id)"
                 :author-role="item.category"
-                @toggle-like="toggleNewsLike(item.id)"
               />
 
               <template v-if="feedLoading && !feedInitialLoading">

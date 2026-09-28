@@ -86,7 +86,7 @@ PHP-реализацию (или в 404, если PHP-файла нет).
 | `health.php` | публично | — |
 | `auth.php`, `logout.php`, `check-auth.php`, `heartbeat.php` | — | публично (сам механизм входа) |
 | `session_bootstrap.php` | — | только для текущей сессии; чужой `id` в теле → 403 |
-| `news.php` | публично | секция `news` |
+| `news.php` | публично; `?action=reactors` — `requireUser` | секция `news`; `?action=react`, `?action=like` — `requireUser` (личность из сессии); `?action=view` — публично |
 | `events.php` | публично | секция `events` |
 | `gallery.php`, `gallery_base.php` | публично | секция `gallery` |
 | `Upload/upload.php` | — | см. `gallery.go:519` (`Upload`) |

@@ -15,24 +15,17 @@ const props = withDefaults(
     to: string;
     date?: string | null;
     createdAt?: string | null;
-    likes: number;
     views: number;
-    liked?: boolean;
     authorName?: string;
     authorRole?: string;
     authorAvatar?: string;
   }>(),
   {
     imageAlt: 'Новость',
-    liked: false,
     authorName: 'Редакция портала',
     authorRole: 'Новости',
   },
 );
-
-const emit = defineEmits<{
-  toggleLike: [];
-}>();
 
 const { toast } = useAppToast();
 const subscribed = ref(false);
@@ -79,11 +72,6 @@ const avatarProps = computed(() => {
   return { text: initials || 'РП', alt: props.authorName };
 });
 
-function formatCountRu(n: number): string {
-  const v = Number.isFinite(Number(n)) ? Number(n) : 0;
-  return Math.max(0, Math.round(v)).toLocaleString('ru-RU');
-}
-
 function toggleSubscribe() {
   const key = String(props.id);
   const map = readSubscribed();
@@ -99,15 +87,6 @@ function toggleSubscribe() {
       : undefined,
     color: 'primary',
     icon: next ? 'i-lucide-bell' : 'i-lucide-bell-off',
-  });
-}
-
-function onExtraReaction() {
-  toast.add({
-    title: 'Реакции',
-    description: 'Дополнительные реакции появятся после поддержки на сервере. Пока доступен лайк.',
-    color: 'neutral',
-    icon: 'i-lucide-smile',
   });
 }
 
@@ -240,53 +219,7 @@ function openLightbox(e?: Event) {
           :ui="{ border: 'border-inverted/20' }"
         />
 
-        <div class="flex shrink-0 flex-wrap items-center gap-1.5" @click.stop>
-          <UButton
-            type="button"
-            size="xs"
-            :color="liked ? 'primary' : 'neutral'"
-            variant="subtle"
-            :label="formatCountRu(likes)"
-            @click="emit('toggleLike')"
-          >
-            <template #leading>
-              <span class="text-sm leading-none" aria-hidden="true">👍</span>
-            </template>
-          </UButton>
-          <UButton
-            type="button"
-            size="xs"
-            color="neutral"
-            variant="subtle"
-            square
-            aria-label="Нравится"
-            @click="onExtraReaction"
-          >
-            <span class="text-sm leading-none" aria-hidden="true">❤️</span>
-          </UButton>
-          <UButton
-            type="button"
-            size="xs"
-            color="neutral"
-            variant="subtle"
-            square
-            aria-label="Улыбка"
-            @click="onExtraReaction"
-          >
-            <span class="text-sm leading-none" aria-hidden="true">🙂</span>
-          </UButton>
-          <UTooltip text="Добавить реакцию">
-            <UButton
-              type="button"
-              size="xs"
-              color="neutral"
-              variant="ghost"
-              square
-              icon="i-lucide-plus"
-              aria-label="Добавить реакцию"
-              @click="onExtraReaction" />
-          </UTooltip>
-        </div>
+        <NewsReactions :news-id="id" class="shrink-0" />
       </div>
     </div>
   </UCard>
