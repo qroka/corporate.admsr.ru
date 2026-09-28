@@ -78,8 +78,7 @@ curl -fsS -H "Host: corporate.admsr.ru" http://127.0.0.1/api/health.php
 ```
 
 **Чего нет:** `tsconfig.json` (проверки типов), линтера, форматтера, тестов
-фронтенда, CI. `npm test` — заглушка. `npm run gallery:json` ссылается на
-несуществующий файл.
+фронтенда, CI. `npm test` — заглушка.
 
 **Минимум перед сдачей:** фронтенд — `npm run build`; backend —
 `go build ./... && go vet ./... && go test ./...`.

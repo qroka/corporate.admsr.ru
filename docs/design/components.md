@@ -33,7 +33,6 @@
 | `OfoSelect.vue` | Выбор одного подразделения ОФО | формы, `TestLinkPage` |
 | `OfoMultiSelect.vue` | Выбор нескольких подразделений | `TestsBlankPage`, адресация форм |
 | `AdminOfoPanel.vue` | Панель управления ОФО в админке | `AdminDashboardPage` |
-| `UContentSurround.vue` | Навигация «предыдущее / следующее» двумя `UPageCard` | **не используется** (см. [inconsistencies.md](inconsistencies.md)) |
 
 ### Рабочий стол
 
@@ -270,7 +269,7 @@
    страницами этого раздела (как `src/pages/Courses/components/`).
 3. `<script setup lang="ts">`, типизированные `defineProps`.
 4. **Не** давать имя с префиксом `U` — он зарезервирован за Nuxt UI
-   (`UContentSurround.vue` — ошибка, а не образец).
+   (удалённый 2026-09-25 `UContentSurround.vue` был ошибкой, а не образцом).
 5. Только семантические цветовые токены, никаких `text-green-600`.
 6. Собирать из компонентов Nuxt UI, а не из голой вёрстки.
 7. Не импортировать вручную — автоимпорт подхватит.

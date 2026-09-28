@@ -116,7 +116,6 @@ curl -s http://127.0.0.1:8080/api/health.php
 | `npm run build` | Production-сборка в `dist/` | ✅ |
 | `npm run preview` | Просмотр собранного | ✅ |
 | `npm run images:webp` | `node scripts/generate-events-webp.mjs` | ✅ файл существует |
-| `npm run gallery:json` | `node scripts/build-gallery-json.mjs` | ❌ **файла нет** — команда падает |
 | `npm run formdata:excel` | `node scripts/formdata-to-excel.mjs` | ✅ файл существует |
 | `npm run test:courses` | `php scripts/test_courses.php` — smoke-проверка схемы курсов | ✅ файл существует |
 | `npm test` | `echo "Error: no test specified" && exit 1` | заглушка |

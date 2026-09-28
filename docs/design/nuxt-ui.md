@@ -77,7 +77,7 @@ Nuxt UI; поиск по реестру отложенных инструмен�
 ```js
 ui({
   ui: {
-    colors: { primary: 'emerald', neutral: 'zinc' },
+    colors: { primary: 'emerald', neutral: 'slate' },
     container: { base: 'p-0 sm:p-0 md:p-0 lg:p-0 xl:p-0 mx-0' },
     main:      { base: 'min-h-[calc(100vh-var(--ui-header-height))] w-full max-w-[1600px] mx-auto' },
     pageHeader:{ slots: { root: 'relative border-b border-default py-4' } },
@@ -95,7 +95,7 @@ ui({
 палитры. Далее `applyUiTheme()` (`src/composables/useUiTheme.ts:188-226`)
 перезаписывает `--ui-color-primary-*`, `--ui-color-neutral-*` и `--ui-primary`
 значениями выбранной пользователем палитры — при каждом старте приложения и при
-каждой смене темы. Значения по умолчанию совпадают (emerald / zinc).
+каждой смене темы. Значения по умолчанию совпадают (emerald / slate; до 2026-09-25 — zinc, ADR-028).
 **[ПОДТВЕРЖДЕНО]**
 
 Семантические `success`, `info`, `warning`, `error` **не переопределяются** и
@@ -121,8 +121,8 @@ ui({
 ## Инвентарь компонентов
 
 В `@nuxt/ui` 4.8.0 — **121 компонент**. Проект использует **52**
-(по `components.d.ts` последней сборки; 53-я запись с префиксом `U` —
-`UContentSurround`, это компонент проекта, а не библиотеки).
+(по `components.d.ts` сборки на 2026-09-22; 53-й записью с префиксом `U` тогда
+был компонент проекта `UContentSurround`, удалённый 2026-09-25 — IMP-12).
 **[ПОДТВЕРЖДЕНО — сверено скриптом]**
 
 ### Используются (52)

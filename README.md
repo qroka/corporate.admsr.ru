@@ -9,7 +9,6 @@
 | Frontend | Vue 3 · Vite · Nuxt UI · Vue Router · Pinia · Tailwind CSS 4 |
 | API | PHP 8.3 (PHP-FPM) + **Go** (параллельная миграция, `backend/`) |
 | БД | PostgreSQL 14+ |
-| AI-чат | Python · FastAPI · Ollama (`python-ai/`) |
 
 ---
 
@@ -39,7 +38,7 @@ npm run build    # → dist/
 npm run preview  # проверка production-сборки
 ```
 
-> В отличие от [grafic.admsr.ru](https://github.com/qroka/grafic.admsr.ru), здесь **нет** Node.js/Fastify и скрипта `build:server`. API — PHP через PHP-FPM.
+> В отличие от [grafic.admsr.ru](https://github.com/qroka/grafic.admsr.ru), здесь **нет** Node.js/Fastify и скрипта `build:server`. API — Go (`backend/`), для ещё не перенесённых эндпоинтов — PHP через PHP-FPM.
 
 ---
 
@@ -58,14 +57,14 @@ npm run preview  # проверка production-сборки
 | Профиль | `/profile` | Карточка сотрудника, стена постов |
 | Формы (в Сервисах) | `/tests` | Конструктор, прохождение, статистика |
 | Публичная ссылка | `/t/:token` | Прохождение теста/формы без входа |
-| Учебные курсы | `/courses`, `/courses/history` | Назначенные курсы, прохождение, история |
-| AI-ассистент | `/chatbot` | Чат с локальной LLM |
+| Учебные курсы | `/courses` | Назначенные курсы, прохождение, итоги и сертификат |
+| Обратная связь | `/feedback` | Сообщение команде портала (`/chatbot` — редирект сюда) |
 | Онбординг | `/welcome` | Первый вход нового пользователя |
 
 ### Отделы и справочники
 
-- **Новичкам** (`/newcomers`), **корпоративная культура** (`/culture`)
-- **База знаний**, **заявки**, **кадровый резерв**
+- **Документация** (`/documentation`; `/knowledge-base` — редирект сюда)
+- **Заявки**, **кадровый резерв**, **развитие и мотивация** — экраны «в разработке»
 - Страницы отделов: кадров, муниципальной службы, развития и мотивации
 - **ОФО** — организационно-функциональная структура (дерево подразделений и должностей)
 
@@ -96,7 +95,6 @@ npm run preview  # проверка production-сборки
 │  /var/lib/...   │                     │  corporate_portal│
 └─────────────────┘                     └──────────────────┘
 
-         /chatbot ──► python-ai (FastAPI + Ollama)
 ```
 
 ### Go API (миграция)
@@ -109,8 +107,7 @@ cd backend && cp .env.example .env && make run
 curl -s http://127.0.0.1:8080/api/health.php
 ```
 
-Сейчас на Go: auth/session, news, events, gallery, upload, users/profile/feedback, ofo_*, absence_journal, portal_groups.
-Ещё на PHP: birthdays, sync, tests/forms, LMS courses.
+На Go уже перенесены и стоят в nginx-allowlist, в том числе: auth/session, news, events, gallery, upload, users/profile/feedback, ofo_*, absence_journal, portal_groups, birthdays, sync, tests/forms, LMS courses. Полный список и то, что осталось на PHP, — [`docs/api.md`](docs/api.md).
 
 ### Структура репозитория
 
@@ -128,7 +125,6 @@ curl -s http://127.0.0.1:8080/api/health.php
 ├── db/migration/        # SQL-миграции (Flyway-стиль)
 ├── deploy/              # nginx, deploy.sh, env-пример
 ├── scripts/             # Утилиты (webp, gallery JSON, Excel…)
-├── python-ai/           # FastAPI-сервер чат-бота
 ├── public/              # Статика и symlink на uploads
 └── dist/                # Результат `npm run build`
 ```
@@ -144,7 +140,7 @@ curl -s http://127.0.0.1:8080/api/health.php
 
 Конфиг БД для health-check: `api/config.local.php` (из `api/config.local.php.example`). Не коммитьте секреты.
 
-> Модуль курсов **не** доверяет `userId` из тела запроса. Часть легаси API тестов/форм по-прежнему может принимать `userId` в JSON — см. `docs/tests-users-ofo.md` и `docs/courses-permissions.md`.
+> Личность берётся только из серверной сессии: `userId` из тела запроса и заголовок `X-User-Id` серверы игнорируют (исправления SEC-001/008, см. `docs/PROJECT_AUDIT.md`). Клиент `/tests` их больше не отправляет; заголовок `X-User-Id` остался только в киосковом модуле форм (`src/tests/api.ts`) — см. `docs/known-issues.md`, IMP-13.
 
 ---
 
@@ -161,7 +157,7 @@ curl -s http://127.0.0.1:8080/api/health.php
 | Отсутствия | `absence_journal.php` | Журнал отсутствия |
 | Тесты/формы | `forms*.php`, `tests_*.php` | CRUD, публикация, прохождение, статистика |
 | Курсы (LMS) | `courses_*.php`, `course_*.php`, `tests_attempt_*.php` | Конструктор, назначение, прохождение, попытки тестов курса |
-| Прочее | `chat.php`, `sync.php`, `Upload/upload.php`, `health.php` | Чат, синхронизация, загрузки, мониторинг |
+| Прочее | `sync.php`, `Upload/upload.php`, `health.php` | Синхронизация, загрузки, мониторинг |
 
 Проверка живости:
 
@@ -183,6 +179,14 @@ curl -fsS -H "Host: corporate.admsr.ru" http://127.0.0.1/api/health.php
 | `V2__tests_module.sql` | Расширения модуля тестов |
 | `V3__tests_link.sql` | Публичные ссылки по токену |
 | `V4__courses_module.sql` | LMS: `user_sessions`, `course_*` (версии, темы, материалы, enrollment, completions) |
+| `V5__portal_access_groups.sql` | Группы доступа к разделам портала |
+| `V6__portal_group_course_categories.sql` | Категории курсов в группах доступа |
+| `V7__events_gallery_album.sql` | Связь мероприятий с альбомами галереи |
+| `V8__news_feed_index.sql` | Индекс ленты новостей |
+| `V9__course_certificate.sql` | Сертификаты курсов |
+| `V10__portal_services.sql` | Сервисы портала |
+
+Миграции идемпотентны: `deploy.sh` прогоняет все `V*.sql` при каждом деплое.
 
 Основная БД: `corporate_portal` (PostgreSQL). Расширение `pgcrypto` для UUID.
 
@@ -196,25 +200,10 @@ curl -fsS -H "Host: corporate.admsr.ru" http://127.0.0.1/api/health.php
 | `npm run build` | Production-сборка в `dist/` |
 | `npm run preview` | Локальный просмотр сборки |
 | `npm run images:webp` | Генерация WebP-обложек мероприятий |
-| `npm run gallery:json` | Сборка JSON галереи |
 | `npm run formdata:excel` | Экспорт formdata в Excel |
 | `npm run test:courses` | Smoke-тест схемы курсов (`php scripts/test_courses.php`) |
 
 Дополнительно в `scripts/`: конвертация журнала отсутствия (Python), экспорт SQL галереи, smoke LMS.
-
----
-
-## AI-ассистент (`python-ai/`)
-
-Отдельный сервис на FastAPI + Ollama для страницы `/chatbot`.
-
-```bash
-cd python-ai
-pip install -r requirements.txt   # Python ≥ 3.11
-./start.sh                        # или python server.py
-```
-
-Требуется запущенный демон Ollama на машине сервера.
 
 ---
 

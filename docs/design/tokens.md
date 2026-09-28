@@ -56,6 +56,18 @@
 > `bg-accented/40`. На фоне страницы (`bg-default`) `*-default` работает.
 > См. [decisions.md](../decisions.md), ADR-022.
 
+> **Смысл — только токенами.** «Верно / неверно», «успех / ошибка» — это
+> `success` / `error` (`ring-success`, `bg-success/10`, `text-success` и
+> т. д.), не `green-500` / `red-500`. Тёмную тему токен переключает сам, поэтому
+> пара `text-green-600 dark:text-green-400` не нужна.
+>
+> **Исключение — категориальные цвета**, которые различают виды, а не
+> состояния: источники календаря (`CALENDAR_SOURCE_META` в
+> `src/composables/useCalendarFeed.ts`) и типы подразделений (департамент,
+> комитет, служба — `AdminDashboardPage.vue:641` и рядом). Семантических
+> токенов для «фиолетового типа события» нет; сырые классы палитры здесь
+> допустимы, но только в одном месте-справочнике на категорию.
+
 Фактическое использование в `src/` (число вхождений):
 `text-muted` 238, `text-highlighted` 173, `bg-elevated` 98, `text-dimmed` 74,
 `ring-default` 61, `border-default` 47, `text-default` 39, `ring-primary` 32,
@@ -69,7 +81,7 @@
 | Псевдоним | Палитра | Использование в проекте |
 |-----------|---------|-------------------------|
 | `primary` | `emerald` (переопределено в `vite.config.js:10`) | 90 вхождений `color="primary"` |
-| `neutral` | `zinc` (переопределено в `vite.config.js:11`) | 279 вхождений — **самый частый** |
+| `neutral` | `slate` (переопределено в `vite.config.js:12`; до 2026-09-25 — `zinc`) | 279 вхождений — **самый частый** |
 | `error` | `red` | 49 |
 | `warning` | `yellow` | 29 |
 | `info` | `blue` | 5 |
@@ -115,7 +127,7 @@
 `lime`, `green`, `emerald` ← по умолчанию, `teal`, `cyan`, `sky`, `blue`,
 `indigo`, `violet`, `purple`, `fuchsia`, `pink`, `rose`.
 
-**Neutral (9):** `slate`, `gray`, `zinc` ← по умолчанию, `neutral`, `stone`,
+**Neutral (9):** `slate` ← по умолчанию, `gray`, `zinc`, `neutral`, `stone`,
 `taupe`, `mauve`, `mist`, `olive`.
 
 Последние четыре (`taupe`, `mauve`, `mist`, `olive`) — не стандартные палитры
@@ -411,7 +423,7 @@ Tailwind. Фактическое распределение `gap-*`:
 | Что | Значение | Комментарий в коде |
 |-----|----------|--------------------|
 | `colors.primary` | `emerald` | — |
-| `colors.neutral` | `zinc` | — |
+| `colors.neutral` | `slate` | до 2026-09-25 — `zinc`, см. ADR-028 |
 | `container.base` | `p-0 … mx-0` | отступы обнулены |
 | `main.base` | `min-h-[calc(100vh-var(--ui-header-height))] w-full max-w-[1600px] mx-auto` | — |
 | `pageHeader.slots.root` | `relative border-b border-default py-4` | — |
