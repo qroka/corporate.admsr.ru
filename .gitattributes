@@ -1,0 +1,2 @@
+# Выполняется внутри Linux-контейнера — CRLF ломает скрипт
+db/local-dev/*.sh text eol=lf
