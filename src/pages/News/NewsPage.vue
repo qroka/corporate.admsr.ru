@@ -407,6 +407,8 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <ScrollToTopButton :target="mainScrollEl" />
+
     <USlideover
       v-model:open="createOpen"
       side="right"
