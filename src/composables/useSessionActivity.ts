@@ -1,5 +1,5 @@
 import type { Router } from 'vue-router';
-import { setUnauthorizedHandler } from './useAuthSession';
+import { clearAuthStorage, setUnauthorizedHandler } from './useAuthSession';
 
 /**
  * Авто-логаут по бездействию.
@@ -46,8 +46,10 @@ export function startSessionActivity(router: Router) {
   started = true;
 
   function forceLogout() {
-    localStorage.removeItem('auth-user');
-    localStorage.removeItem('auth-last-check');
+    // Тот же набор, что при выходе по кнопке: раньше здесь оставался
+    // `auth-session`, и getSessionToken() после повторного входа мог вернуть
+    // мёртвый токен, если сервер не прислал новый (IMP-06).
+    clearAuthStorage();
     if (router.currentRoute.value.name !== 'login') {
       // Отметка для страницы входа: показать «сессия истекла» вместо тихого редиректа.
       try { sessionStorage.setItem('session-expired', '1'); } catch { /* ignore */ }

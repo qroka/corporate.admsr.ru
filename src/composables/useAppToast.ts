@@ -24,29 +24,30 @@ export function useAppToast() {
     toast.add({ title, description, ...errorDefaults });
   }
 
+  /** Вызывается после успешного ответа сервера — изменения реально записаны. */
   function profileSaved() {
-    toast.add({
-      title: 'Профиль сохранён',
-      description: 'Изменения записаны локально (демо).',
-      ...successDefaults,
-    });
+    toast.add({ title: 'Профиль сохранён', ...successDefaults });
   }
 
-  /** После сохранения карточки пользователя в админке (демо). */
+  /** Вызывается после успешного PUT /api/users.php — изменения реально записаны. */
   function adminUserSaved(fullName: string) {
     toast.add({
       title: 'Пользователь сохранён',
-      description: `Данные «${fullName}» обновлены (демо).`,
+      description: `Данные «${fullName}» обновлены.`,
       ...successDefaults,
     });
   }
 
-  /** После сохранения ОФО в админке (демо). */
-  function adminOfoSaved(title: string) {
+  /**
+   * Редактирование ОФО и должностей в админке к серверу не подключено: форма
+   * ничего не записывает. Раньше здесь был тост «ОФО сохранено» — говорим правду.
+   */
+  function adminOfoNotSaved(title: string) {
     toast.add({
-      title: 'ОФО сохранено',
-      description: `«${title}» — изменения записаны локально (демо).`,
-      ...successDefaults,
+      title: 'Изменения не сохранены',
+      description: `«${title}»: редактирование ОФО пока не подключено к серверу.`,
+      color: 'warning',
+      icon: 'i-lucide-info',
     });
   }
 
@@ -56,6 +57,6 @@ export function useAppToast() {
     error,
     profileSaved,
     adminUserSaved,
-    adminOfoSaved,
+    adminOfoNotSaved,
   };
 }

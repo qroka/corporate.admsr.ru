@@ -11,7 +11,7 @@ import { currentRole } from '../../stores/role';
 import { PORTAL_SECTIONS, portalSectionLabel } from './portalSections';
 import { COURSE_CATEGORY_ITEMS } from '../Courses/courseCategories';
 
-const { toast, adminUserSaved, adminOfoSaved } = useAppToast();
+const { toast, adminUserSaved, adminOfoNotSaved } = useAppToast();
 
 const UBadge = resolveComponent('UBadge');
 const UButton = resolveComponent('UButton');
@@ -505,7 +505,7 @@ function openOfoEdit(o: OfoActionTarget) {
 }
 
 function saveOfoEdit() {
-  adminOfoSaved(ofoEditForm.title);
+  adminOfoNotSaved(ofoEditForm.title);
   ofoEditOpen.value = false;
 }
 
@@ -572,7 +572,7 @@ function ofoActionItems(o: OfoActionTarget) {
 
 function saveOfoPositions() {
   const title = ofoPositionsContext.value?.title ?? 'ОФО';
-  adminOfoSaved(`Должности: ${title}`);
+  adminOfoNotSaved(`Должности: ${title}`);
   ofoPositionsOpen.value = false;
 }
 
@@ -1240,7 +1240,7 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
     <UContainer class="flex-1 min-h-0 overflow-y-auto sm:p-px max-w-full w-full md:p-px lg:p-px xl:p-px scrollbar-hide mx-0">
       <UAlert
         v-if="!isAdmin"
-        color="red"
+        color="error"
         variant="subtle"
         icon="i-lucide-shield-alert"
         title="Недостаточно прав"
@@ -1380,15 +1380,16 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
                   <div class="text-sm text-muted">{{ g.memberCount }} участников</div>
                   <p class="text-xs text-dimmed mt-1 line-clamp-2">{{ groupPermissionsLabel(g.permissions, g.courseCategories) }}</p>
                 </div>
-                <UButton
-                  color="neutral"
-                  variant="ghost"
-                  size="sm"
-                  icon="i-lucide-pencil"
-                  square
-                  aria-label="Редактировать"
-                  @click.stop="openEditGroup(g.id)"
-                />
+                <UTooltip text="Редактировать">
+                  <UButton
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    icon="i-lucide-pencil"
+                    square
+                    aria-label="Редактировать"
+                    @click.stop="openEditGroup(g.id)" />
+                </UTooltip>
               </div>
             </UCard>
           </div>
@@ -1478,20 +1479,24 @@ const ofoColumns: TableColumn<OfoFlatRow>[] = [
                         <div class="text-sm text-muted truncate">ID: {{ node.stat.id }}</div>
                       </div>
                       <div class="flex items-center gap-1 shrink-0">
-                        <UDropdownMenu
-                          :items="ofoActionItems(node.stat)"
-                          :content="{ align: 'end' }"
-                          aria-label="Действия с ОФО"
-                        >
-                          <UButton
-                            icon="i-lucide-ellipsis-vertical"
-                            color="neutral"
-                            variant="ghost"
-                            square
-                            size="sm"
-                            aria-label="Действия"
-                          />
-                        </UDropdownMenu>
+                        <UTooltip text="Действия">
+                          <span class="inline-flex">
+                            <UDropdownMenu
+                              :items="ofoActionItems(node.stat)"
+                              :content="{ align: 'end' }"
+                              aria-label="Действия с ОФО"
+                            >
+                              <UButton
+                                icon="i-lucide-ellipsis-vertical"
+                                color="neutral"
+                                variant="ghost"
+                                square
+                                size="sm"
+                                aria-label="Действия"
+                              />
+                            </UDropdownMenu>
+                          </span>
+                        </UTooltip>
                       </div>
                     </div>
 

@@ -26,7 +26,7 @@ import { useProfileWall, wallPostPlainText, type WallPost } from '../composables
 import ProfileWallPost from '../components/profile/ProfileWallPost.vue';
 import ProfileCreatePost from '../components/profile/ProfileCreatePost.vue';
 
-const { profileSaved } = useAppToast();
+const { profileSaved, error } = useAppToast();
 
 const { ensureLoaded: ensureOfoLoaded, error: ofoError, unitNumberOf, fetchPositions } = useOfoTree();
 ensureOfoLoaded();
@@ -305,8 +305,12 @@ async function onUpdateAccount() {
         avatar_url: avatarSrc.value,
       }),
     });
-    const data = await res.json();
-    if (!data.success) return;
+    const data = await res.json().catch(() => null);
+    // Раньше отказ сервера молча обрывал сохранение — форма просто не закрывалась.
+    if (!res.ok || !data?.success) {
+      error('Не удалось сохранить профиль', data?.message || `Ошибка ${res.status}`);
+      return;
+    }
 
     const full = [accountForm.lastName, accountForm.firstName]
       .filter(Boolean).join(' ');
@@ -317,6 +321,8 @@ async function onUpdateAccount() {
       window.dispatchEvent(new Event('ui:user-profile-updated'));
     }
     pageView.value = 'wall';
+  } catch {
+    error('Не удалось сохранить профиль', 'Проверьте подключение к сети и попробуйте ещё раз.');
   } finally {
     profileSaving.value = false;
   }
@@ -354,31 +360,35 @@ onMounted(() => {
             class="profile-header__avatar"
             :ui="{ root: '!bg-elevated ring-4 ring-(--ui-bg)' }"
           />
-          <UPopover v-model:open="avatarPickerOpen">
-            <UButton
-              type="button"
-              color="primary"
-              variant="solid"
-              size="xs"
-              icon="i-lucide-plus"
-              class="profile-header__avatar-btn rounded-full"
-              aria-label="Изменить аватар"
-            />
-            <template #content>
-              <div class="p-3 grid grid-cols-3 gap-2 w-56">
+          <UTooltip text="Изменить аватар">
+            <span class="inline-flex">
+              <UPopover v-model:open="avatarPickerOpen">
                 <UButton
-                  v-for="name in avatarFilenames"
-                  :key="name"
-                  size="sm"
-                  variant="subtle"
-                  color="neutral"
-                  @click="selectAvatar(name)"
-                >
-                  <img :src="avatarUrlFromFilename(name)" alt="" class="w-10 h-10 object-contain" />
-                </UButton>
-              </div>
-            </template>
-          </UPopover>
+                  type="button"
+                  color="primary"
+                  variant="solid"
+                  size="xs"
+                  icon="i-lucide-plus"
+                  class="profile-header__avatar-btn rounded-full"
+                  aria-label="Изменить аватар"
+                />
+                <template #content>
+                  <div class="p-3 grid grid-cols-3 gap-2 w-56">
+                    <UButton
+                      v-for="name in avatarFilenames"
+                      :key="name"
+                      size="sm"
+                      variant="subtle"
+                      color="neutral"
+                      @click="selectAvatar(name)"
+                    >
+                      <img :src="avatarUrlFromFilename(name)" alt="" class="w-10 h-10 object-contain" />
+                    </UButton>
+                  </div>
+                </template>
+              </UPopover>
+            </span>
+          </UTooltip>
         </div>
 
         <div class="profile-header__info min-w-0">
@@ -420,23 +430,29 @@ onMounted(() => {
           <UIcon name="i-lucide-plus" class="size-5 text-dimmed shrink-0" />
           <span class="text-muted text-sm sm:text-base">Создать пост</span>
           <div class="profile-wall__composer-tools" @click.stop>
-            <UButton type="button" color="neutral" variant="ghost" size="sm" icon="i-lucide-image" class="rounded-full" aria-label="Добавить фото" @click="openCreatePost" />
-            <UButton type="button" color="neutral" variant="ghost" size="sm" icon="i-lucide-smile" class="rounded-full" aria-label="Эмодзи" @click="openCreatePost" />
+            <UTooltip text="Добавить фото">
+              <UButton type="button" color="neutral" variant="ghost" size="sm" icon="i-lucide-image" class="rounded-full" aria-label="Добавить фото" @click="openCreatePost" />
+            </UTooltip>
+            <UTooltip text="Эмодзи">
+              <UButton type="button" color="neutral" variant="ghost" size="sm" icon="i-lucide-smile" class="rounded-full" aria-label="Эмодзи" @click="openCreatePost" />
+            </UTooltip>
           </div>
         </div>
 
         <div class="profile-wall__toolbar">
           <span class="text-sm font-medium text-highlighted">Все посты</span>
-          <UButton
-            type="button"
-            color="neutral"
-            variant="ghost"
-            size="sm"
-            :icon="wallSearchOpen ? 'i-lucide-x' : 'i-lucide-search'"
-            class="rounded-full shrink-0"
-            :aria-label="wallSearchOpen ? 'Закрыть поиск' : 'Поиск по постам'"
-            @click="toggleWallSearch"
-          />
+          <UTooltip :text="wallSearchOpen ? 'Закрыть поиск' : 'Поиск по постам'">
+            <UButton
+              type="button"
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              :icon="wallSearchOpen ? 'i-lucide-x' : 'i-lucide-search'"
+              class="rounded-full shrink-0"
+              :aria-label="wallSearchOpen ? 'Закрыть поиск' : 'Поиск по постам'"
+              @click="toggleWallSearch"
+            />
+          </UTooltip>
         </div>
 
         <UInput
