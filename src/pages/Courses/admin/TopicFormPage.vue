@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useAppToast } from '../../../composables/useAppToast';
 import { useAdminCoursePortalBreadcrumbs } from '../useAdminCoursePortalBreadcrumbs';
-import { activeTimeHint } from '../courseDuration';
+import { activeTimeHint, minutesToSeconds, secondsToMinutes } from '../courseDuration';
 
 const route = useRoute();
 const router = useRouter();
@@ -32,8 +32,8 @@ const schema = z.object({
   title: z.string().trim().min(1, 'Укажите название темы'),
   description: z.string(),
   minimumActiveSeconds: z
-    .number({ message: 'Введите число секунд' })
-    .int('Только целые секунды')
+    .number({ message: 'Введите число минут' })
+    .int('Введите число минут')
     .min(0, 'Не может быть отрицательным')
     .max(86400, 'Не больше суток'),
 });
@@ -47,6 +47,13 @@ const form = reactive({
 
 /** Поле остаётся в секундах, как в API, но рядом показываем то же число по-человечески. */
 const minimumActiveHint = computed(() => activeTimeHint(form.minimumActiveSeconds, 'тему'));
+/** Поле ввода — в минутах, в форме и API остаются секунды. */
+const minimumActiveMinutes = computed({
+  get: () => secondsToMinutes(form.minimumActiveSeconds),
+  set: (v: unknown) => {
+    form.minimumActiveSeconds = minutesToSeconds(v);
+  },
+});
 
 const materialTypeLabels: Record<string, string> = {
   rich_text: 'Текст',
@@ -171,7 +178,7 @@ async function onSubmit() {
 
 <template>
   <UMain class="relative w-full h-full min-h-0">
-    <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-3xl mx-auto overflow-y-auto scrollbar-hide p-px pb-8">
+    <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-3xl mx-auto overflow-y-auto scrollbar-hide p-px pb-8 *:shrink-0">
       <UPageHeader
         headline="Обучение"
         :title="isEdit ? 'Редактирование темы' : 'Новая тема'"
@@ -253,14 +260,14 @@ async function onSubmit() {
           <UFormField
             label="Минимум активного времени"
             name="minimumActiveSeconds"
-            hint="В секундах"
+            hint="В минутах"
             :description="minimumActiveHint"
           >
             <UInput
-              v-model.number="form.minimumActiveSeconds"
+              v-model.number="minimumActiveMinutes"
               type="number"
               :min="0"
-              :step="30"
+              step="any"
               size="lg"
               class="w-full"
             />

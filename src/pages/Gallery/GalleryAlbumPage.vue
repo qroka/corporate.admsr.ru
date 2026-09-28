@@ -889,5 +889,7 @@ onUnmounted(() => {
         </div>
       </template>
     </UModal>
+
+    <ScrollToTopButton :target="mainScrollEl" />
   </UMain>
 </template>

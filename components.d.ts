@@ -31,6 +31,7 @@ declare module 'vue' {
     QuestionEditor: typeof import('./src/components/tests/QuestionEditor.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    ScrollToTopButton: typeof import('./src/components/ScrollToTopButton.vue')['default']
     SectionInDevelopment: typeof import('./src/components/SectionInDevelopment.vue')['default']
     UAlert: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Alert.vue')['default']
     UApp: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/App.vue')['default']

@@ -139,10 +139,36 @@ curl -s http://127.0.0.1:8080/api/health.php
 Единственный автоматический набор проверок — Go-тесты (`backend/internal/handlers/`,
 9 тест-функций). См. [quality-and-deploy.md](quality-and-deploy.md).
 
+## Локальная БД в Docker
+
+Когда тестовая БД недоступна (или нужна чистая база), поднимается локальная
+PostgreSQL — `db/local-dev/` (добавлено 2026-09-28, ADR-030):
+
+```bash
+docker compose -f db/local-dev/docker-compose.yml up -d     # 127.0.0.1:55432
+docker compose -f db/local-dev/docker-compose.yml down -v   # сбросить всё
+```
+
+При первом старте контейнер применяет по порядку:
+`00_legacy_schema.sql` (базовые таблицы, которых нет в `db/migration/` —
+IMP-14; восстановлены по SQL-запросам Go, **это не копия продовой схемы**) →
+`10_migrations.sh` (все `db/migration/V*.sql`) → `20_seed.sql` (три ОФО, три
+пользователя, одна новость). Логины и пароли тестовых пользователей — в
+комментарии `20_seed.sql`; вход идёт по `user_info` без обращения к ASU.
+
+Go API подключается к ней переменными окружения, которые перекрывают
+`backend/.env` (`LoadDotEnv` не затирает уже заданные):
+`DB_HOST=127.0.0.1 DB_PORT=55432 DB_USER=devuser DB_PASS=devpass`.
+
+Чего нет в локальной БД: картинок (`/img/*` dev-прокси отправляет на прод-сервер,
+локально это 500 в консоли — на работу портала не влияет), данных ASU.
+
 ## Preview-конфигурация для инструментов
 
-`.claude/launch.json` описывает dev-сервер `dev` (`npm run dev`, порт 5173) —
-используется preview-инструментами. **[ПОДТВЕРЖДЕНО]**
+`.claude/launch.json` описывает dev-сервер `dev` (`npm run dev`, порт 5173) и
+`api` (собранный `backend/bin/api.exe`, порт 8080, с переменными `DB_*` на
+локальную БД из раздела выше; перед запуском — `go build -o bin/api.exe ./cmd/api`
+в `backend/`). **[ПОДТВЕРЖДЕНО]**
 
 ## Ключи localStorage / sessionStorage
 

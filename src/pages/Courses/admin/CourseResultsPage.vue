@@ -115,7 +115,9 @@ function testKindLabel(t: any) {
 function testResultLabel(t: any) {
   if (t?.passed === true) return 'Сдан';
   if (t?.passed === false) return 'Не сдан';
-  if (t?.status === 'finished') return 'Завершён';
+  // Попытки модуля тестов завершаются статусом 'completed' (V2__tests_module.sql).
+  if (t?.status === 'completed' || t?.status === 'finished') return 'Завершён';
+  if (t?.status === 'expired') return 'Время вышло';
   if (t?.status && t.status !== 'not_started') return 'В процессе';
   return 'Не пройден';
 }
@@ -123,6 +125,7 @@ function testResultLabel(t: any) {
 function testResultColor(t: any): 'success' | 'error' | 'warning' | 'neutral' {
   if (t?.passed === true) return 'success';
   if (t?.passed === false) return 'error';
+  if (t?.status === 'completed' || t?.status === 'finished') return 'success';
   if (t?.status && t.status !== 'not_started') return 'warning';
   return 'neutral';
 }
@@ -412,7 +415,7 @@ async function confirmReset() {
 
 <template>
   <UMain class="relative w-full h-full min-h-0">
-    <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-[1600px] mx-auto overflow-y-auto scrollbar-hide p-px pb-8">
+    <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-[1600px] mx-auto overflow-y-auto scrollbar-hide p-px pb-8 *:shrink-0">
     <UPageHeader
       headline="Обучение"
       title="Результаты"

@@ -30,3 +30,14 @@ export function activeTimeHint(value: unknown, subject: string): string {
   }
   return `Нельзя завершить ${subject} раньше, чем через ${formatSeconds(total)}.`;
 }
+
+/** API хранит секунды, админ вводит минуты (допустимы дробные: 1,5 мин = 90 с). */
+export function secondsToMinutes(seconds: unknown): number {
+  const total = Number(seconds) || 0;
+  return Math.round((total / 60) * 100) / 100;
+}
+
+export function minutesToSeconds(minutes: unknown): number {
+  const n = Number(minutes);
+  return Number.isFinite(n) ? Math.round(n * 60) : NaN;
+}

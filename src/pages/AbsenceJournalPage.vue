@@ -462,6 +462,8 @@ function onMyScroll(e: Event) {
   }
 }
 
+const pageScrollEl = ref<HTMLElement | null>(null);
+
 function onPageScroll(e: Event) {
   if (adminTab.value === 'my') onMyScroll(e);
   else onAdminScroll(e);
@@ -1279,6 +1281,7 @@ watch(
 <template>
   <UMain class="relative w-full h-full min-h-0">
     <div
+      ref="pageScrollEl"
       class="flex flex-col gap-6 w-full h-full min-h-0 max-w-[1600px] mx-auto overflow-y-auto scrollbar-hide p-px pb-8"
       @scroll.passive="onPageScroll"
     >
@@ -2012,5 +2015,7 @@ watch(
         </template>
       </USlideover>
     </div>
+
+    <ScrollToTopButton :target="pageScrollEl" />
   </UMain>
 </template>

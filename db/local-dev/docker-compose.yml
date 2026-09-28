@@ -1,0 +1,24 @@
+# Локальная PostgreSQL для разработки: легаси-схема + db/migration + тестовые данные.
+# Запуск:  docker compose -f db/local-dev/docker-compose.yml up -d
+# Сброс:   docker compose -f db/local-dev/docker-compose.yml down -v
+# Подробно — docs/local-setup.md, раздел «Локальная БД в Docker».
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: corporate-portal-db
+    environment:
+      POSTGRES_DB: corporate_portal
+      POSTGRES_USER: devuser
+      POSTGRES_PASSWORD: devpass
+      TZ: Europe/Moscow
+      PGTZ: Europe/Moscow
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - ./00_legacy_schema.sql:/docker-entrypoint-initdb.d/00_legacy_schema.sql:ro
+      - ./10_migrations.sh:/docker-entrypoint-initdb.d/10_migrations.sh:ro
+      - ./20_seed.sql:/docker-entrypoint-initdb.d/20_seed.sql:ro
+      - ../migration:/migrations:ro
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata:
