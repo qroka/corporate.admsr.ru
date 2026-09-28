@@ -364,7 +364,8 @@ const absenceView = `
 		COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.surname, u.firstname, u.lastname)), ''), a.fio) AS fio,
 		CASE WHEN u.ofo ~ '^[0-9]+$' AND u.ofo::bigint > 0 THEN u.ofo::bigint ELSE a.ofo END AS ofo,
 		COALESCE(NULLIF(TRIM(u.role), ''), a.role) AS role,
-		a.start_datetime, a.end_datetime, a.reason, a.created_at
+		a.start_datetime, a.end_datetime, a.reason, a.created_at,
+		COALESCE(u.avatar_url, '') AS avatar_url
 	FROM public.absence_journal a
 	LEFT JOIN public.user_info u ON u.id = a.user_id`
 
@@ -395,12 +396,12 @@ type absenceScanner interface {
 func scanAbsence(row absenceScanner) (map[string]any, error) {
 	var (
 		id, userID, ofo                                   int64
-		fio, role                                         string
+		fio, role, avatarURL                              string
 		start, end, reason, created                       *string
 		startT, endT, createdT                            *time.Time
 	)
 	// Try time.Time first via interface — use *string from to_char for simplicity
-	err := row.Scan(&id, &userID, &fio, &ofo, &role, &startT, &endT, &reason, &createdT)
+	err := row.Scan(&id, &userID, &fio, &ofo, &role, &startT, &endT, &reason, &createdT, &avatarURL)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
@@ -433,7 +434,7 @@ func scanAbsence(row absenceScanner) (map[string]any, error) {
 	return map[string]any{
 		"id": id, "user_id": userID, "fio": fio, "ofo": ofo, "role": role,
 		"start_datetime": startOut, "end_datetime": endOut, "reason": reasonOut,
-		"created_at": createdOut, "status": status,
+		"created_at": createdOut, "status": status, "avatar_url": avatarURL,
 	}, nil
 }
 

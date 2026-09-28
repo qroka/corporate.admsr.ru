@@ -9,7 +9,7 @@ import { apiSessionFetch } from '../composables/useAuthSession';
 import { toCalendarDate, parseLocalDateTime, roundDateToMinuteStep } from '../utils/date';
 import { slideoverPopoverContent, slideoverSelectContent } from '../composables/slideoverFieldUi';
 import { useOfoTree } from '../composables/useOfoTree';
-import { userFullName } from '../utils/userName';
+import { userAvatarSrc, userFullName } from '../utils/userName';
 
 type JsonRow = Record<string, unknown>;
 
@@ -25,6 +25,7 @@ type AbsenceRecord = {
   id: string;
   userId: string;
   fio: string;
+  avatarUrl: string;
   ofoId: string;
   ofoTitle: string;
   createdAt: Date;
@@ -51,6 +52,7 @@ function mapApiRecord(row: JsonRow, ofoMap: Record<string, string>): AbsenceReco
     id:        String(row.id),
     userId:    String(row.user_id),
     fio:       asText(row.fio),
+    avatarUrl: userAvatarSrc({ avatar_url: asText((row as any).avatar_url) }),
     ofoId,
     ofoTitle:  ofoMap[ofoId] || (ofoId ? `ОФО #${ofoId}` : '—'),
     createdAt: asLocalDate(row.created_at),
@@ -358,6 +360,7 @@ const UBadge = resolveComponent('UBadge');
 const UButton = resolveComponent('UButton');
 const UDropdownMenu = resolveComponent('UDropdownMenu');
 const UIcon = resolveComponent('UIcon');
+const UAvatar = resolveComponent('UAvatar');
 
 const { toast } = useAppToast();
 
@@ -1161,20 +1164,21 @@ const columns: TableColumn<AbsenceRow>[] = [
   },
 ];
 
+// Заголовки — с иконками, как в «Моих отсутствиях».
 const adminColumns: TableColumn<AbsenceAdminRow>[] = [
   {
-    accessorKey: 'userIdLabel',
-    header: 'ID',
-    meta: { class: { th: '', td: 'tabular-nums whitespace-nowrap text-muted' } },
-  },
-  {
     accessorKey: 'fioLabel',
-    header: 'Сотрудник',
-    meta: { class: { th: '', td: 'whitespace-normal break-words' } },
+    header: headerWithIcon('i-lucide-user', 'Сотрудник'),
+    meta: { class: { th: 'min-w-[240px]', td: 'whitespace-normal break-words' } },
+    cell: ({ row }) =>
+      h('div', { class: 'flex items-center gap-3 min-w-0' }, [
+        h(UAvatar, { src: row.original.avatarUrl, alt: row.original.fioLabel, size: 'md', class: 'shrink-0' }),
+        h('span', row.original.fioLabel),
+      ]),
   },
   {
     accessorKey: 'ofoLabel',
-    header: 'ОФО',
+    header: headerWithIcon('i-lucide-building-2', 'ОФО'),
     meta: { class: { th: 'min-w-[240px]', td: 'whitespace-normal' } },
     cell: ({ row }) => {
       const r = row.original as AbsenceAdminRow;
@@ -1198,27 +1202,27 @@ const adminColumns: TableColumn<AbsenceAdminRow>[] = [
   },
   {
     accessorKey: 'createdLabel',
-    header: 'Создано',
+    header: headerWithIcon('i-lucide-pencil', 'Создание записи'),
     meta: { class: { th: 'min-w-[150px]', td: 'tabular-nums whitespace-pre-line' } },
   },
   {
     accessorKey: 'startLabel',
-    header: 'Начало',
+    header: headerWithIcon('i-lucide-calendar-clock', 'Начало'),
     meta: { class: { th: 'min-w-[150px]', td: 'tabular-nums whitespace-pre-line' } },
   },
   {
     accessorKey: 'endLabel',
-    header: 'Конец',
+    header: headerWithIcon('i-lucide-calendar-check-2', 'Конец'),
     meta: { class: { th: 'min-w-[150px]', td: 'tabular-nums whitespace-pre-line' } },
   },
   {
     accessorKey: 'durationLabel',
-    header: 'Длительность',
+    header: headerWithIcon('i-lucide-timer', 'Длительность'),
     meta: { class: { th: 'w-[120px]', td: 'tabular-nums whitespace-nowrap' } },
   },
   {
     accessorKey: 'reason',
-    header: 'Причина',
+    header: headerWithIcon('i-lucide-message-circle', 'Причина'),
     meta: { class: { th: 'min-w-[280px]', td: 'whitespace-normal' } },
     cell: ({ row }) => {
       const r = row.original as AbsenceAdminRow;
