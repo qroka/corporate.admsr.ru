@@ -480,16 +480,20 @@ onUnmounted(() => {
                 :key="index"
                 v-bind="link"
               />
-              <UDropdownMenu :items="moreMenuItems">
-                <UButton
-                  color="neutral"
-                  variant="outline"
-                  size="md"
-                  icon="i-lucide-ellipsis"
-                  square
-                  aria-label="Ещё действия"
-                />
-              </UDropdownMenu>
+              <UTooltip text="Ещё действия">
+                <span class="inline-flex">
+                  <UDropdownMenu :items="moreMenuItems">
+                    <UButton
+                      color="neutral"
+                      variant="outline"
+                      size="md"
+                      icon="i-lucide-ellipsis"
+                      square
+                      aria-label="Ещё действия"
+                    />
+                  </UDropdownMenu>
+                </span>
+              </UTooltip>
             </template>
           </UPageHeader>
 
@@ -533,50 +537,57 @@ onUnmounted(() => {
             />
 
             <div class="flex items-center gap-1 rounded-lg ring-1 ring-default p-0.5">
-              <UButton
-                type="button"
-                color="neutral"
-                :variant="gridDensity === 'sm' ? 'soft' : 'ghost'"
-                size="sm"
-                icon="i-lucide-grid-3x3"
-                square
-                :class="gridDensity === 'sm' ? 'ring-1 ring-primary' : ''"
-                aria-label="Плотная сетка"
-                @click="gridDensity = 'sm'"
-              />
-              <UButton
-                type="button"
-                color="neutral"
-                :variant="gridDensity === 'md' ? 'soft' : 'ghost'"
-                size="sm"
-                icon="i-lucide-layout-grid"
-                square
-                :class="gridDensity === 'md' ? 'ring-1 ring-primary' : ''"
-                aria-label="Средняя сетка"
-                @click="gridDensity = 'md'"
-              />
-              <UButton
-                type="button"
-                color="neutral"
-                :variant="gridDensity === 'lg' ? 'soft' : 'ghost'"
-                size="sm"
-                icon="i-lucide-panels-top-left"
-                square
-                :class="gridDensity === 'lg' ? 'ring-1 ring-primary' : ''"
-                aria-label="Крупная сетка"
-                @click="gridDensity = 'lg'"
-              />
-              <UButton
-                type="button"
-                color="neutral"
-                :variant="gridDensity === 'xl' ? 'soft' : 'ghost'"
-                size="sm"
-                icon="i-lucide-square"
-                square
-                :class="gridDensity === 'xl' ? 'ring-1 ring-primary' : ''"
-                aria-label="Очень крупная сетка"
-                @click="gridDensity = 'xl'"
-              />
+              <UTooltip text="Плотная сетка">
+                <UButton
+                  type="button"
+                  color="neutral"
+                  :variant="gridDensity === 'sm' ? 'soft' : 'ghost'"
+                  size="sm"
+                  icon="i-lucide-grid-3x3"
+                  square
+                  :class="gridDensity === 'sm' ? 'ring-1 ring-primary' : ''"
+                  aria-label="Плотная сетка"
+                  @click="gridDensity = 'sm'" />
+              </UTooltip>
+              <UTooltip text="Средняя сетка">
+                <UButton
+                  type="button"
+                  color="neutral"
+                  :variant="gridDensity === 'md' ? 'soft' : 'ghost'"
+                  size="sm"
+                  icon="i-lucide-layout-grid"
+                  square
+                  :class="gridDensity === 'md' ? 'ring-1 ring-primary' : ''"
+                  aria-label="Средняя сетка"
+                  @click="gridDensity = 'md'"
+                />
+              </UTooltip>
+              <UTooltip text="Крупная сетка">
+                <UButton
+                  type="button"
+                  color="neutral"
+                  :variant="gridDensity === 'lg' ? 'soft' : 'ghost'"
+                  size="sm"
+                  icon="i-lucide-panels-top-left"
+                  square
+                  :class="gridDensity === 'lg' ? 'ring-1 ring-primary' : ''"
+                  aria-label="Крупная сетка"
+                  @click="gridDensity = 'lg'"
+                />
+              </UTooltip>
+              <UTooltip text="Очень крупная сетка">
+                <UButton
+                  type="button"
+                  color="neutral"
+                  :variant="gridDensity === 'xl' ? 'soft' : 'ghost'"
+                  size="sm"
+                  icon="i-lucide-square"
+                  square
+                  :class="gridDensity === 'xl' ? 'ring-1 ring-primary' : ''"
+                  aria-label="Очень крупная сетка"
+                  @click="gridDensity = 'xl'"
+                />
+              </UTooltip>
             </div>
 
             <UButton
@@ -654,41 +665,46 @@ onUnmounted(() => {
               class="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition"
             >
               <div class="absolute top-2 right-2 flex gap-1 pointer-events-auto">
-                <UButton
-                  type="button"
-                  color="neutral"
-                  variant="solid"
-                  size="xs"
-                  icon="i-lucide-download"
-                  square
-                  class="bg-black/60 hover:bg-black/80 text-white ring-0"
-                  aria-label="Скачать"
-                  @click="downloadPhoto(item, $event)"
-                />
-                <UButton
-                  type="button"
-                  color="neutral"
-                  variant="solid"
-                  size="xs"
-                  icon="i-lucide-expand"
-                  square
-                  class="bg-black/60 hover:bg-black/80 text-white ring-0"
-                  aria-label="Открыть"
-                  @click="openPhoto(item)"
-                />
-                <UButton
-                  v-if="isAdmin"
-                  type="button"
-                  color="error"
-                  variant="solid"
-                  size="xs"
-                  icon="i-lucide-trash-2"
-                  square
-                  class="bg-black/60 hover:bg-error text-white ring-0"
-                  :disabled="deletingPhotoId === item.id"
-                  aria-label="Удалить"
-                  @click.stop="deletePhoto(item.id)"
-                />
+                <UTooltip text="Скачать">
+                  <UButton
+                    type="button"
+                    color="neutral"
+                    variant="solid"
+                    size="xs"
+                    icon="i-lucide-download"
+                    square
+                    class="bg-black/60 hover:bg-black/80 text-white ring-0"
+                    aria-label="Скачать"
+                    @click="downloadPhoto(item, $event)" />
+                </UTooltip>
+                <UTooltip text="Открыть">
+                  <UButton
+                    type="button"
+                    color="neutral"
+                    variant="solid"
+                    size="xs"
+                    icon="i-lucide-expand"
+                    square
+                    class="bg-black/60 hover:bg-black/80 text-white ring-0"
+                    aria-label="Открыть"
+                    @click="openPhoto(item)"
+                  />
+                </UTooltip>
+                <UTooltip v-if="isAdmin" text="Удалить">
+                  <UButton
+                   
+                    type="button"
+                    color="error"
+                    variant="solid"
+                    size="xs"
+                    icon="i-lucide-trash-2"
+                    square
+                    class="bg-black/60 hover:bg-error text-white ring-0"
+                    :disabled="deletingPhotoId === item.id"
+                    aria-label="Удалить"
+                    @click.stop="deletePhoto(item.id)"
+                  />
+                </UTooltip>
               </div>
               <span
                 class="absolute bottom-2 left-2 rounded-md bg-black/60 px-2 py-0.5 text-xs text-white tabular-nums"

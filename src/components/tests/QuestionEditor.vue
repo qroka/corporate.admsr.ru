@@ -97,7 +97,7 @@ function markSingleCorrect(id: UUID) {
 
         <div class="flex items-center gap-2">
           <UBadge color="neutral" variant="soft">#{{ modelValue.order + 1 }}</UBadge>
-          <UButton color="red" variant="soft" icon="i-lucide-trash-2" size="sm" @click="$emit('delete')">
+          <UButton color="error" variant="soft" icon="i-lucide-trash-2" size="sm" @click="$emit('delete')">
             Удалить
           </UButton>
         </div>
@@ -151,7 +151,7 @@ function markSingleCorrect(id: UUID) {
             <UTooltip text="Правильный вариант">
               <UButton
                 v-if="modelValue.type === 'multiple_choice'"
-                :color="opt.isCorrect ? 'green' : 'neutral'"
+                :color="opt.isCorrect ? 'success' : 'neutral'"
                 variant="soft"
                 icon="i-lucide-check"
                 size="sm"
@@ -159,7 +159,7 @@ function markSingleCorrect(id: UUID) {
               />
               <UButton
                 v-else
-                :color="opt.isCorrect ? 'green' : 'neutral'"
+                :color="opt.isCorrect ? 'success' : 'neutral'"
                 variant="soft"
                 icon="i-lucide-check"
                 size="sm"
@@ -168,7 +168,9 @@ function markSingleCorrect(id: UUID) {
             </UTooltip>
           </template>
 
-          <UButton color="red" variant="ghost" icon="i-lucide-x" size="sm" @click="deleteOption(opt.id)" />
+          <UTooltip text="Удалить вариант">
+            <UButton color="error" variant="ghost" icon="i-lucide-x" size="sm" aria-label="Удалить вариант" @click="deleteOption(opt.id)" />
+          </UTooltip>
         </div>
       </div>
     </div>

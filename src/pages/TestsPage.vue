@@ -97,7 +97,7 @@ const tabs = [
     <div v-else-if="tab === 'take'">
       <UAlert
         v-if="!store.activeFormId"
-        color="amber"
+        color="warning"
         variant="soft"
         title="Форма ещё не опубликована"
         description="Сохраните и опубликуйте форму в конструкторе. Затем можно проходить."

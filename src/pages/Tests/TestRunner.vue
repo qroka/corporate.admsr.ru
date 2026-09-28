@@ -125,8 +125,8 @@ const revealing = ref(false);
 function optionRowClass(optId: string, boxed = true): string {
   const q = currentQuestion.value!;
   if (revealing.value && hasCorrect(q)) {
-    if (isCorrectOption(q, optId)) return boxed ? 'ring-green-500 bg-green-500/10 text-green-600 dark:text-green-400' : 'text-green-600 dark:text-green-400';
-    if (isSelected(optId)) return boxed ? 'ring-red-500 bg-red-500/10 text-red-600 dark:text-red-400' : 'text-red-600 dark:text-red-400';
+    if (isCorrectOption(q, optId)) return boxed ? 'ring-success bg-success/10 text-success' : 'text-success';
+    if (isSelected(optId)) return boxed ? 'ring-error bg-error/10 text-error' : 'text-error';
     return boxed ? 'ring-default' : 'text-default';
   }
   if (isSelected(optId)) return boxed ? 'ring-primary bg-primary/10 text-highlighted' : 'text-highlighted';
@@ -458,7 +458,7 @@ function pollPercent(id: string): number { return pollResults.value[id]?.percent
               <UBadge :color="passed === false ? 'error' : 'success'" variant="subtle" size="lg" class="tabular-nums">{{ scoreInfo.correct }}/{{ scoreInfo.scorable }} · {{ scoreInfo.percent }}%</UBadge>
             </div>
             <div class="flex-1 min-h-0 overflow-y-auto flex flex-col gap-3 px-1 py-1">
-              <div v-for="(it, i) in view" :key="it.q.id" class="rounded-xl ring-1 p-3 flex flex-col gap-1" :class="answeredCorrectly(it) ? 'ring-green-500/40 bg-green-500/5' : 'ring-red-500/40 bg-red-500/5'">
+              <div v-for="(it, i) in view" :key="it.q.id" class="rounded-xl ring-1 p-3 flex flex-col gap-1" :class="answeredCorrectly(it) ? 'ring-success/40 bg-success/5' : 'ring-error/40 bg-error/5'">
                 <div class="flex items-center gap-2">
                   <UIcon :name="answeredCorrectly(it) ? 'i-lucide-check-circle-2' : 'i-lucide-x-circle'" :class="answeredCorrectly(it) ? 'text-success' : 'text-error'" class="size-4 shrink-0" />
                   <span class="text-sm text-highlighted">{{ i + 1 }}. {{ it.q.title || 'Без названия' }}</span>
@@ -563,7 +563,7 @@ function pollPercent(id: string): number { return pollResults.value[id]?.percent
                     :disabled="currentLocked"
                     class="size-10 rounded-lg ring-1 text-sm font-medium transition-colors disabled:cursor-default"
                     :class="revealing && hasCorrect(currentQuestion)
-                      ? (String(currentQuestion.correct) === String(n) ? 'ring-green-500 bg-green-500/10 text-green-600 dark:text-green-400' : (answers[currentQuestion.id] === n ? 'ring-red-500 bg-red-500/10 text-red-600' : 'ring-default text-muted'))
+                      ? (String(currentQuestion.correct) === String(n) ? 'ring-success bg-success/10 text-success' : (answers[currentQuestion.id] === n ? 'ring-error bg-error/10 text-error' : 'ring-default text-muted'))
                       : (answers[currentQuestion.id] === n ? 'bg-primary text-inverted ring-primary' : 'ring-default text-muted hover:bg-elevated')"
                     @click="!currentLocked && (answers[currentQuestion.id] = n)"
                   >

@@ -1370,20 +1370,24 @@ watch(
                     :disabled="loading"
                   >
                     <template #trailing>
-                      <UPopover :content="slideoverPopoverContent">
-                        <UButton
-                          color="neutral"
-                          variant="link"
-                          size="md"
-                          icon="i-lucide-calendar"
-                          aria-label="Выбрать дату"
-                          class="px-0"
-                          :disabled="loading"
-                        />
-                        <template #content>
-                          <UCalendar v-model="startDateValue" class="p-2" />
-                        </template>
-                      </UPopover>
+                      <UTooltip text="Выбрать дату">
+                        <span class="inline-flex">
+                          <UPopover :content="slideoverPopoverContent">
+                            <UButton
+                              color="neutral"
+                              variant="link"
+                              size="md"
+                              icon="i-lucide-calendar"
+                              aria-label="Выбрать дату"
+                              class="px-0"
+                              :disabled="loading"
+                            />
+                            <template #content>
+                              <UCalendar v-model="startDateValue" class="p-2" />
+                            </template>
+                          </UPopover>
+                        </span>
+                      </UTooltip>
                     </template>
                   </UInputDate>
                   <UInputTime
@@ -1398,50 +1402,54 @@ watch(
                     :disabled="loading"
                   >
                     <template #trailing>
-                      <UPopover :content="slideoverPopoverContent">
-                        <UButton
-                          color="neutral"
-                          variant="link"
-                          size="md"
-                          icon="i-lucide-clock"
-                          aria-label="Выбрать время"
-                          class="px-0"
-                          :disabled="loading"
-                        />
-                        <template #content>
-                          <div class="p-3 w-64 flex flex-col gap-2">
-                            <div class="flex items-end gap-2">
-                              <UFormField label="Часы" class="min-w-0 flex-1">
-                                <USelectMenu
-                                  v-model="startHour"
-                                  :items="hourOptions"
-                                  :content="slideoverSelectContent"
-                                  :search-input="false"
-                                  value-key="value"
-                                  label-key="label"
-                                  size="md"
-                                  color="neutral"
-                                  class="w-full"
-                                />
-                              </UFormField>
-                              <span class="pb-2.5 text-lg text-muted shrink-0" aria-hidden="true">:</span>
-                              <UFormField label="Минуты" class="min-w-0 flex-1">
-                                <USelectMenu
-                                  v-model="startMinute"
-                                  :items="minuteOptions"
-                                  :content="slideoverSelectContent"
-                                  :search-input="false"
-                                  value-key="value"
-                                  label-key="label"
-                                  size="md"
-                                  color="neutral"
-                                  class="w-full"
-                                />
-                              </UFormField>
-                            </div>
-                          </div>
-                        </template>
-                      </UPopover>
+                      <UTooltip text="Выбрать время">
+                        <span class="inline-flex">
+                          <UPopover :content="slideoverPopoverContent">
+                            <UButton
+                              color="neutral"
+                              variant="link"
+                              size="md"
+                              icon="i-lucide-clock"
+                              aria-label="Выбрать время"
+                              class="px-0"
+                              :disabled="loading"
+                            />
+                            <template #content>
+                              <div class="p-3 w-64 flex flex-col gap-2">
+                                <div class="flex items-end gap-2">
+                                  <UFormField label="Часы" class="min-w-0 flex-1">
+                                    <USelectMenu
+                                      v-model="startHour"
+                                      :items="hourOptions"
+                                      :content="slideoverSelectContent"
+                                      :search-input="false"
+                                      value-key="value"
+                                      label-key="label"
+                                      size="md"
+                                      color="neutral"
+                                      class="w-full"
+                                    />
+                                  </UFormField>
+                                  <span class="pb-2.5 text-lg text-muted shrink-0" aria-hidden="true">:</span>
+                                  <UFormField label="Минуты" class="min-w-0 flex-1">
+                                    <USelectMenu
+                                      v-model="startMinute"
+                                      :items="minuteOptions"
+                                      :content="slideoverSelectContent"
+                                      :search-input="false"
+                                      value-key="value"
+                                      label-key="label"
+                                      size="md"
+                                      color="neutral"
+                                      class="w-full"
+                                    />
+                                  </UFormField>
+                                </div>
+                              </div>
+                            </template>
+                          </UPopover>
+                        </span>
+                      </UTooltip>
                     </template>
                   </UInputTime>
                   <UInput
@@ -1524,54 +1532,62 @@ watch(
                 />
               </UTooltip>
 
-              <UPopover v-model:open="historyFilterOpen">
-                <UButton
-                  type="button"
-                  color="neutral"
-                  :variant="filterPeriod !== 'all' ? 'soft' : 'ghost'"
-                  size="md"
-                  icon="i-lucide-funnel"
-                  square
-                  aria-label="Фильтр периода"
-                />
-                <template #content>
-                  <div class="p-3 w-56">
-                    <USelectMenu
-                      v-model="filterPeriod"
-                      :items="periodOptions"
-                      value-key="value"
-                      label-key="label"
-                      size="md"
+              <UTooltip text="Фильтр периода">
+                <span class="inline-flex">
+                  <UPopover v-model:open="historyFilterOpen">
+                    <UButton
+                      type="button"
                       color="neutral"
-                      class="w-full"
+                      :variant="filterPeriod !== 'all' ? 'soft' : 'ghost'"
+                      size="md"
+                      icon="i-lucide-funnel"
+                      square
+                      aria-label="Фильтр периода"
                     />
-                  </div>
-                </template>
-              </UPopover>
+                    <template #content>
+                      <div class="p-3 w-56">
+                        <USelectMenu
+                          v-model="filterPeriod"
+                          :items="periodOptions"
+                          value-key="value"
+                          label-key="label"
+                          size="md"
+                          color="neutral"
+                          class="w-full"
+                        />
+                      </div>
+                    </template>
+                  </UPopover>
+                </span>
+              </UTooltip>
 
-              <UPopover v-model:open="historySearchOpen">
-                <UButton
-                  type="button"
-                  color="neutral"
-                  :variant="mySearchQuery ? 'soft' : 'ghost'"
-                  size="md"
-                  icon="i-lucide-search"
-                  square
-                  aria-label="Поиск"
-                />
-                <template #content>
-                  <div class="p-3 w-72">
-                    <UInput
-                      v-model="mySearchQuery"
-                      icon="i-lucide-search"
-                      size="md"
+              <UTooltip text="Поиск">
+                <span class="inline-flex">
+                  <UPopover v-model:open="historySearchOpen">
+                    <UButton
+                      type="button"
                       color="neutral"
-                      placeholder="Поиск по причине, дате…"
-                      class="w-full"
+                      :variant="mySearchQuery ? 'soft' : 'ghost'"
+                      size="md"
+                      icon="i-lucide-search"
+                      square
+                      aria-label="Поиск"
                     />
-                  </div>
-                </template>
-              </UPopover>
+                    <template #content>
+                      <div class="p-3 w-72">
+                        <UInput
+                          v-model="mySearchQuery"
+                          icon="i-lucide-search"
+                          size="md"
+                          color="neutral"
+                          placeholder="Поиск по причине, дате…"
+                          class="w-full"
+                        />
+                      </div>
+                    </template>
+                  </UPopover>
+                </span>
+              </UTooltip>
 
               <UButton
                 color="neutral"
@@ -1775,20 +1791,24 @@ watch(
                     :disabled="loading"
                   >
                     <template #trailing>
-                      <UPopover :content="slideoverPopoverContent">
-                        <UButton
-                          color="neutral"
-                          variant="link"
-                          size="md"
-                          icon="i-lucide-calendar"
-                          aria-label="Выбрать дату окончания"
-                          class="px-0"
-                          :disabled="loading"
-                        />
-                        <template #content>
-                          <UCalendar v-model="finishDateValue" class="p-2" />
-                        </template>
-                      </UPopover>
+                      <UTooltip text="Выбрать дату окончания">
+                        <span class="inline-flex">
+                          <UPopover :content="slideoverPopoverContent">
+                            <UButton
+                              color="neutral"
+                              variant="link"
+                              size="md"
+                              icon="i-lucide-calendar"
+                              aria-label="Выбрать дату окончания"
+                              class="px-0"
+                              :disabled="loading"
+                            />
+                            <template #content>
+                              <UCalendar v-model="finishDateValue" class="p-2" />
+                            </template>
+                          </UPopover>
+                        </span>
+                      </UTooltip>
                     </template>
                   </UInputDate>
                   <UInputTime
@@ -1803,50 +1823,54 @@ watch(
                     :disabled="loading"
                   >
                     <template #trailing>
-                      <UPopover :content="slideoverPopoverContent">
-                        <UButton
-                          color="neutral"
-                          variant="link"
-                          size="md"
-                          icon="i-lucide-clock"
-                          aria-label="Выбрать время окончания"
-                          class="px-0"
-                          :disabled="loading"
-                        />
-                        <template #content>
-                          <div class="p-3 w-64 flex flex-col gap-2">
-                            <div class="flex items-end gap-2">
-                              <UFormField label="Часы" class="min-w-0 flex-1">
-                                <USelectMenu
-                                  v-model="finishHour"
-                                  :items="hourOptions"
-                                  :content="slideoverSelectContent"
-                                  :search-input="false"
-                                  value-key="value"
-                                  label-key="label"
-                                  size="md"
-                                  color="neutral"
-                                  class="w-full"
-                                />
-                              </UFormField>
-                              <span class="pb-2.5 text-lg text-muted shrink-0" aria-hidden="true">:</span>
-                              <UFormField label="Минуты" class="min-w-0 flex-1">
-                                <USelectMenu
-                                  v-model="finishMinute"
-                                  :items="minuteOptions"
-                                  :content="slideoverSelectContent"
-                                  :search-input="false"
-                                  value-key="value"
-                                  label-key="label"
-                                  size="md"
-                                  color="neutral"
-                                  class="w-full"
-                                />
-                              </UFormField>
-                            </div>
-                          </div>
-                        </template>
-                      </UPopover>
+                      <UTooltip text="Выбрать время окончания">
+                        <span class="inline-flex">
+                          <UPopover :content="slideoverPopoverContent">
+                            <UButton
+                              color="neutral"
+                              variant="link"
+                              size="md"
+                              icon="i-lucide-clock"
+                              aria-label="Выбрать время окончания"
+                              class="px-0"
+                              :disabled="loading"
+                            />
+                            <template #content>
+                              <div class="p-3 w-64 flex flex-col gap-2">
+                                <div class="flex items-end gap-2">
+                                  <UFormField label="Часы" class="min-w-0 flex-1">
+                                    <USelectMenu
+                                      v-model="finishHour"
+                                      :items="hourOptions"
+                                      :content="slideoverSelectContent"
+                                      :search-input="false"
+                                      value-key="value"
+                                      label-key="label"
+                                      size="md"
+                                      color="neutral"
+                                      class="w-full"
+                                    />
+                                  </UFormField>
+                                  <span class="pb-2.5 text-lg text-muted shrink-0" aria-hidden="true">:</span>
+                                  <UFormField label="Минуты" class="min-w-0 flex-1">
+                                    <USelectMenu
+                                      v-model="finishMinute"
+                                      :items="minuteOptions"
+                                      :content="slideoverSelectContent"
+                                      :search-input="false"
+                                      value-key="value"
+                                      label-key="label"
+                                      size="md"
+                                      color="neutral"
+                                      class="w-full"
+                                    />
+                                  </UFormField>
+                                </div>
+                              </div>
+                            </template>
+                          </UPopover>
+                        </span>
+                      </UTooltip>
                     </template>
                   </UInputTime>
                 </div>

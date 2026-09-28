@@ -765,12 +765,16 @@ onUnmounted(() => {
             <UFormField label="Дата проведения" name="date" required>
               <UInputDate v-model="editDateValue" size="lg" class="w-full">
                 <template #trailing>
-                  <UPopover :content="slideoverPopoverContent">
-                    <UButton color="neutral" variant="link" size="sm" icon="i-lucide-calendar" aria-label="Выбрать дату" class="px-0" />
-                    <template #content>
-                      <UCalendar v-model="editDateValue" class="p-2" />
-                    </template>
-                  </UPopover>
+                  <UTooltip text="Выбрать дату">
+                    <span class="inline-flex">
+                      <UPopover :content="slideoverPopoverContent">
+                        <UButton color="neutral" variant="link" size="sm" icon="i-lucide-calendar" aria-label="Выбрать дату" class="px-0" />
+                        <template #content>
+                          <UCalendar v-model="editDateValue" class="p-2" />
+                        </template>
+                      </UPopover>
+                    </span>
+                  </UTooltip>
                 </template>
               </UInputDate>
             </UFormField>
@@ -821,7 +825,7 @@ onUnmounted(() => {
       <template #footer>
         <div class="flex gap-3 justify-end w-full">
           <UButton color="neutral" variant="outline" size="lg" @click="deleteConfirmOpen = false">Отмена</UButton>
-          <UButton color="red" size="lg" :loading="deleteSubmitting" @click="handleDelete">Удалить</UButton>
+          <UButton color="error" size="lg" :loading="deleteSubmitting" @click="handleDelete">Удалить</UButton>
         </div>
       </template>
     </UModal>

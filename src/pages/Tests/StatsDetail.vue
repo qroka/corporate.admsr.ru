@@ -201,7 +201,7 @@ async function openParticipant(p: { id: number; name: string }) {
               v-for="(a, i) in participantData.answers"
               :key="i"
               class="rounded-xl ring-1 p-3 flex flex-col gap-1"
-              :class="a.isCorrect === false ? 'ring-red-500/40 bg-red-500/5' : (a.isCorrect === true ? 'ring-green-500/40 bg-green-500/5' : 'ring-default')"
+              :class="a.isCorrect === false ? 'ring-error/40 bg-error/5' : (a.isCorrect === true ? 'ring-success/40 bg-success/5' : 'ring-default')"
             >
               <div class="flex items-center gap-2">
                 <UIcon v-if="a.isCorrect === true" name="i-lucide-check-circle-2" class="size-4 text-success shrink-0" />

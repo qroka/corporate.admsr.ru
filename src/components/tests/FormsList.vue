@@ -62,7 +62,7 @@ const columns = computed<TableColumn<FormListItem>[]>(() => {
       header: 'Статус',
       cell: ({ row }) => {
         const s = String(row.getValue('status') ?? '')
-        const color = s === 'published' ? 'green' : s === 'archived' ? 'neutral' : 'amber'
+        const color = s === 'published' ? 'success' : s === 'archived' ? 'neutral' : 'warning'
         const label = s === 'published' ? 'Опубликован' : s === 'archived' ? 'Архив' : 'Черновик'
         return h(UBadge, { color, variant: 'soft' }, () => label)
       },
@@ -108,7 +108,7 @@ const columns = computed<TableColumn<FormListItem>[]>(() => {
             )
           }
           kids.push(
-            h(UButton, { color: 'red', variant: 'soft', size: 'sm', icon: 'i-lucide-trash-2', onClick: () => openConfirm('delete', r.id) }, () => 'Удалить'),
+            h(UButton, { color: 'error', variant: 'soft', size: 'sm', icon: 'i-lucide-trash-2', onClick: () => openConfirm('delete', r.id) }, () => 'Удалить'),
           )
         }
 
@@ -195,7 +195,9 @@ onMounted(() => {
       <template #header>
         <div class="flex items-center justify-between">
           <div class="font-semibold text-highlighted">Подтверждение</div>
-          <UButton color="neutral" variant="ghost" icon="i-lucide-x" @click="confirmOpen = false" />
+          <UTooltip text="Закрыть">
+            <UButton color="neutral" variant="ghost" icon="i-lucide-x" aria-label="Закрыть" @click="confirmOpen = false" />
+          </UTooltip>
         </div>
       </template>
 
@@ -215,7 +217,7 @@ onMounted(() => {
         <div class="flex justify-end gap-2">
           <UButton color="neutral" variant="outline" @click="confirmOpen = false">Отмена</UButton>
           <UButton
-            :color="confirmKind === 'delete' ? 'red' : 'primary'"
+            :color="confirmKind === 'delete' ? 'error' : 'primary'"
             :loading="store.loading"
             @click="runConfirm()"
           >

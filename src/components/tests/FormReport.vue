@@ -26,7 +26,7 @@ const participantColumns = ref<TableColumn<any>[]>([
     header: 'Статус',
     cell: ({ row }) => {
       const s = String(row.getValue('status') ?? '')
-      return h(UBadge, { color: s === 'completed' ? 'green' : 'amber', variant: 'soft' }, () => (s === 'completed' ? 'Завершён' : 'Не завершён'))
+      return h(UBadge, { color: s === 'completed' ? 'success' : 'warning', variant: 'soft' }, () => (s === 'completed' ? 'Завершён' : 'Не завершён'))
     },
   },
   { accessorKey: 'fio', header: 'ФИО' },
@@ -152,7 +152,7 @@ watch(() => props.report, () => build())
       <div class="space-y-2">
         <div v-for="t in report.topMistakes" :key="t.questionId" class="flex items-center justify-between">
           <div class="text-sm text-default">Вопрос {{ t.questionId.slice(0, 8) }}…</div>
-          <UBadge color="red" variant="soft">{{ t.wrongPercent.toFixed(1) }}%</UBadge>
+          <UBadge color="error" variant="soft">{{ t.wrongPercent.toFixed(1) }}%</UBadge>
         </div>
       </div>
     </UCard>

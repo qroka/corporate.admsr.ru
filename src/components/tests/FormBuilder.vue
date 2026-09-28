@@ -12,9 +12,9 @@ const showPreview = ref(false)
 
 const statusBadge = computed(() => {
   const s = store.form?.status ?? store.draft?.status ?? 'draft'
-  if (s === 'published') return { label: 'Опубликован', color: 'green' as const }
+  if (s === 'published') return { label: 'Опубликован', color: 'success' as const }
   if (s === 'archived') return { label: 'Архив', color: 'neutral' as const }
-  return { label: 'Черновик', color: 'amber' as const }
+  return { label: 'Черновик', color: 'warning' as const }
 })
 
 const modeItems = [
@@ -186,7 +186,9 @@ async function onPublish() {
         <template #item="{ element }">
           <div>
             <div class="flex items-center gap-2 mb-2">
-              <UButton class="drag-handle" icon="i-lucide-grip-vertical" variant="ghost" color="neutral" size="xs" />
+              <UTooltip text="Перетащить вопрос">
+                <UButton class="drag-handle" icon="i-lucide-grip-vertical" variant="ghost" color="neutral" size="xs" aria-label="Перетащить вопрос" />
+              </UTooltip>
               <span class="text-xs text-muted">Перетащите, чтобы изменить порядок</span>
             </div>
             <QuestionEditor
@@ -205,7 +207,9 @@ async function onPublish() {
         <template #header>
           <div class="flex items-center justify-between">
             <div class="font-semibold text-highlighted">Предпросмотр</div>
-            <UButton color="neutral" variant="ghost" icon="i-lucide-x" @click="showPreview = false" />
+            <UTooltip text="Закрыть">
+              <UButton color="neutral" variant="ghost" icon="i-lucide-x" aria-label="Закрыть" @click="showPreview = false" />
+            </UTooltip>
           </div>
         </template>
         <slot name="preview" />

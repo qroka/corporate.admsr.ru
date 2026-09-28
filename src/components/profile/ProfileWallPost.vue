@@ -54,17 +54,21 @@ const hasContent = computed(() => {
         </div>
       </div>
 
-      <UDropdownMenu v-if="isOwner && menuItems[0]?.length" :items="menuItems">
-        <UButton
-          type="button"
-          color="neutral"
-          variant="ghost"
-          size="sm"
-          icon="i-lucide-ellipsis"
-          class="rounded-full"
-          aria-label="Действия с постом"
-        />
-      </UDropdownMenu>
+      <UTooltip v-if="isOwner && menuItems[0]?.length" text="Действия с постом">
+        <span class="inline-flex">
+          <UDropdownMenu :items="menuItems">
+            <UButton
+              type="button"
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              icon="i-lucide-ellipsis"
+              class="rounded-full"
+              aria-label="Действия с постом"
+            />
+          </UDropdownMenu>
+        </span>
+      </UTooltip>
     </header>
 
     <div

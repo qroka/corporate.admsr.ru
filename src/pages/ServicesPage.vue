@@ -321,14 +321,16 @@ function cardProps(s: PortalService) {
       :ui="{ trailing: 'pe-1' }"
     >
       <template v-if="searchQuery" #trailing>
-        <UButton
-          color="neutral"
-          variant="link"
-          size="sm"
-          icon="i-lucide-x"
-          aria-label="Очистить"
-          @click="searchQuery = ''"
-        />
+        <UTooltip text="Очистить">
+          <UButton
+            color="neutral"
+            variant="link"
+            size="sm"
+            icon="i-lucide-x"
+            aria-label="Очистить"
+            @click="searchQuery = ''"
+          />
+        </UTooltip>
       </template>
     </UInput>
 
@@ -388,44 +390,52 @@ function cardProps(s: PortalService) {
               v-if="canEditServices && service.id > 0"
               class="absolute top-2 right-2 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
             >
-              <UButton
-                color="neutral"
-                variant="soft"
-                size="xs"
-                icon="i-lucide-arrow-up"
-                square
-                :disabled="reordering || !canMove(service, -1)"
-                aria-label="Выше"
-                @click.prevent="moveService(service, -1)"
-              />
-              <UButton
-                color="neutral"
-                variant="soft"
-                size="xs"
-                icon="i-lucide-arrow-down"
-                square
-                :disabled="reordering || !canMove(service, 1)"
-                aria-label="Ниже"
-                @click.prevent="moveService(service, 1)"
-              />
-              <UButton
-                color="neutral"
-                variant="soft"
-                size="xs"
-                icon="i-lucide-pencil"
-                square
-                aria-label="Редактировать"
-                @click.prevent="openEdit(service)"
-              />
-              <UButton
-                color="error"
-                variant="soft"
-                size="xs"
-                icon="i-lucide-trash-2"
-                square
-                aria-label="Удалить"
-                @click.prevent="askDelete(service)"
-              />
+              <UTooltip text="Выше">
+                <UButton
+                  color="neutral"
+                  variant="soft"
+                  size="xs"
+                  icon="i-lucide-arrow-up"
+                  square
+                  :disabled="reordering || !canMove(service, -1)"
+                  aria-label="Выше"
+                  @click.prevent="moveService(service, -1)"
+                />
+              </UTooltip>
+              <UTooltip text="Ниже">
+                <UButton
+                  color="neutral"
+                  variant="soft"
+                  size="xs"
+                  icon="i-lucide-arrow-down"
+                  square
+                  :disabled="reordering || !canMove(service, 1)"
+                  aria-label="Ниже"
+                  @click.prevent="moveService(service, 1)"
+                />
+              </UTooltip>
+              <UTooltip text="Редактировать">
+                <UButton
+                  color="neutral"
+                  variant="soft"
+                  size="xs"
+                  icon="i-lucide-pencil"
+                  square
+                  aria-label="Редактировать"
+                  @click.prevent="openEdit(service)"
+                />
+              </UTooltip>
+              <UTooltip text="Удалить">
+                <UButton
+                  color="error"
+                  variant="soft"
+                  size="xs"
+                  icon="i-lucide-trash-2"
+                  square
+                  aria-label="Удалить"
+                  @click.prevent="askDelete(service)"
+                />
+              </UTooltip>
             </div>
             <UBadge
               v-if="canEditServices && !service.isEnabled"

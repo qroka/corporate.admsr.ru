@@ -118,14 +118,17 @@ function scaleNumbers(q: Question): number[] {
         <div v-for="(opt, oi) in pollQuestion.options" :key="opt.id" class="flex items-center gap-2">
           <UIcon name="i-lucide-circle" class="size-4 shrink-0 text-dimmed" />
           <UInput v-model="opt.text" size="md" class="flex-1" :placeholder="`Кандидат ${oi + 1}`" />
-          <UButton
-            color="error"
-            variant="ghost"
-            size="sm"
-            icon="i-lucide-x"
-            :disabled="pollQuestion.options.length <= 2"
-            @click="removeOption(pollQuestion, oi)"
-          />
+          <UTooltip text="Удалить кандидата">
+            <UButton
+              color="error"
+              variant="ghost"
+              size="sm"
+              icon="i-lucide-x"
+              :disabled="pollQuestion.options.length <= 2"
+              aria-label="Удалить кандидата"
+              @click="removeOption(pollQuestion, oi)"
+            />
+          </UTooltip>
         </div>
         <UButton color="neutral" variant="outline" size="sm" icon="i-lucide-plus" class="w-fit ml-6" @click="addOption(pollQuestion)">
           Добавить кандидата
@@ -195,14 +198,17 @@ function scaleNumbers(q: Question): number[] {
           <div v-for="(opt, oi) in q.options" :key="opt.id" class="flex items-center gap-2">
             <UIcon :name="optionIcon(q.type)" class="size-4 shrink-0 text-dimmed" />
             <UInput v-model="opt.text" size="md" class="flex-1" :placeholder="`Вариант ${oi + 1}`" />
-            <UButton
-              color="error"
-              variant="ghost"
-              size="sm"
-              icon="i-lucide-x"
-              :disabled="q.options.length <= 2"
-              @click="removeOption(q, oi)"
-            />
+            <UTooltip text="Удалить вариант">
+              <UButton
+                color="error"
+                variant="ghost"
+                size="sm"
+                icon="i-lucide-x"
+                :disabled="q.options.length <= 2"
+                aria-label="Удалить вариант"
+                @click="removeOption(q, oi)"
+              />
+            </UTooltip>
           </div>
           <UButton color="neutral" variant="outline" size="sm" icon="i-lucide-plus" class="w-fit ml-6" @click="addOption(q)">
             Добавить вариант
@@ -257,7 +263,7 @@ function scaleNumbers(q: Question): number[] {
             :key="opt.id"
             type="button"
             class="flex items-center gap-2 w-full text-left rounded-lg ring-1 px-3 py-2 transition-colors"
-            :class="isCorrectSelected(opt.id) ? 'ring-green-500 bg-green-500/10 text-green-600 dark:text-green-400' : 'ring-default hover:bg-elevated'"
+            :class="isCorrectSelected(opt.id) ? 'ring-success bg-success/10 text-success' : 'ring-default hover:bg-elevated'"
             @click="pickCorrect(opt.id)"
           >
             <UIcon :name="isCorrectSelected(opt.id) ? 'i-lucide-check-circle-2' : optionIcon(correctQ.type)" class="size-4 shrink-0" />
@@ -273,7 +279,7 @@ function scaleNumbers(q: Question): number[] {
             :key="it.value"
             type="button"
             class="rounded-lg ring-1 px-5 py-2 text-sm transition-colors"
-            :class="isCorrectSelected(it.value) ? 'ring-green-500 bg-green-500/10 text-green-600 dark:text-green-400' : 'ring-default hover:bg-elevated'"
+            :class="isCorrectSelected(it.value) ? 'ring-success bg-success/10 text-success' : 'ring-default hover:bg-elevated'"
             @click="pickCorrect(it.value)"
           >
             {{ it.label }}
@@ -287,7 +293,7 @@ function scaleNumbers(q: Question): number[] {
             :key="n"
             type="button"
             class="size-10 rounded-lg ring-1 text-sm font-medium transition-colors"
-            :class="isCorrectSelected(n) ? 'ring-green-500 bg-green-500/10 text-green-600 dark:text-green-400' : 'ring-default text-muted hover:bg-elevated'"
+            :class="isCorrectSelected(n) ? 'ring-success bg-success/10 text-success' : 'ring-default text-muted hover:bg-elevated'"
             @click="pickCorrect(n)"
           >
             {{ n }}

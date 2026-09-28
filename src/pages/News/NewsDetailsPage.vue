@@ -462,16 +462,20 @@ function onExtraReaction() {
                   :title="title"
                 >
                   <template v-if="!isKiosk && moreMenuItems.length" #links>
-                    <UDropdownMenu :items="moreMenuItems">
-                      <UButton
-                        color="neutral"
-                        variant="outline"
-                        size="md"
-                        icon="i-lucide-ellipsis"
-                        square
-                        aria-label="Ещё действия"
-                      />
-                    </UDropdownMenu>
+                    <UTooltip text="Ещё действия">
+                      <span class="inline-flex">
+                        <UDropdownMenu :items="moreMenuItems">
+                          <UButton
+                            color="neutral"
+                            variant="outline"
+                            size="md"
+                            icon="i-lucide-ellipsis"
+                            square
+                            aria-label="Ещё действия"
+                          />
+                        </UDropdownMenu>
+                      </span>
+                    </UTooltip>
                   </template>
                 </UPageHeader>
 
@@ -525,16 +529,17 @@ function onExtraReaction() {
                     >
                       <span class="text-sm leading-none" aria-hidden="true">🙂</span>
                     </UButton>
-                    <UButton
-                      type="button"
-                      size="xs"
-                      color="neutral"
-                      variant="ghost"
-                      square
-                      icon="i-lucide-plus"
-                      aria-label="Добавить реакцию"
-                      @click="onExtraReaction"
-                    />
+                    <UTooltip text="Добавить реакцию">
+                      <UButton
+                        type="button"
+                        size="xs"
+                        color="neutral"
+                        variant="ghost"
+                        square
+                        icon="i-lucide-plus"
+                        aria-label="Добавить реакцию"
+                        @click="onExtraReaction" />
+                    </UTooltip>
                   </div>
                 </div>
               </div>
@@ -560,40 +565,46 @@ function onExtraReaction() {
                   class="pointer-events-none absolute inset-0 z-20 opacity-0 group-hover:opacity-100 transition"
                 >
                   <div class="absolute top-2 right-2 flex gap-1 pointer-events-auto">
-                    <UButton
-                      type="button"
-                      color="neutral"
-                      variant="solid"
-                      size="xs"
-                      icon="i-lucide-download"
-                      square
-                      class="bg-black/60 hover:bg-black/80 text-white ring-0"
-                      aria-label="Скачать"
-                      @click="downloadCoverImage($event)"
-                    />
-                    <UButton
-                      type="button"
-                      color="neutral"
-                      variant="solid"
-                      size="xs"
-                      icon="i-lucide-expand"
-                      square
-                      class="bg-black/60 hover:bg-black/80 text-white ring-0"
-                      aria-label="Открыть"
-                      @click="openCoverLightbox"
-                    />
-                    <UButton
-                      v-if="isAdmin && !isKiosk"
-                      type="button"
-                      color="error"
-                      variant="solid"
-                      size="xs"
-                      icon="i-lucide-trash-2"
-                      square
-                      class="bg-black/60 hover:bg-error text-white ring-0"
-                      aria-label="Удалить"
-                      @click="removeCoverImage($event)"
-                    />
+                    <UTooltip text="Скачать">
+                      <UButton
+                        type="button"
+                        color="neutral"
+                        variant="solid"
+                        size="xs"
+                        icon="i-lucide-download"
+                        square
+                        class="bg-black/60 hover:bg-black/80 text-white ring-0"
+                        aria-label="Скачать"
+                        @click="downloadCoverImage($event)"
+                      />
+                    </UTooltip>
+                    <UTooltip text="Открыть">
+                      <UButton
+                        type="button"
+                        color="neutral"
+                        variant="solid"
+                        size="xs"
+                        icon="i-lucide-expand"
+                        square
+                        class="bg-black/60 hover:bg-black/80 text-white ring-0"
+                        aria-label="Открыть"
+                        @click="openCoverLightbox"
+                      />
+                    </UTooltip>
+                    <UTooltip v-if="isAdmin && !isKiosk" text="Удалить">
+                      <UButton
+                       
+                        type="button"
+                        color="error"
+                        variant="solid"
+                        size="xs"
+                        icon="i-lucide-trash-2"
+                        square
+                        class="bg-black/60 hover:bg-error text-white ring-0"
+                        aria-label="Удалить"
+                        @click="removeCoverImage($event)"
+                      />
+                    </UTooltip>
                   </div>
                 </div>
               </div>
@@ -649,15 +660,17 @@ function onExtraReaction() {
             >
               <div class="flex items-center justify-between gap-2">
                 <h2 class="text-lg font-semibold text-highlighted">По теме</h2>
-                <UButton
-                  :to="newsListPath"
-                  color="neutral"
-                  variant="ghost"
-                  size="xs"
-                  icon="i-lucide-arrow-up-right"
-                  square
-                  aria-label="Все новости"
-                />
+                <UTooltip text="Все новости">
+                  <UButton
+                    :to="newsListPath"
+                    color="neutral"
+                    variant="ghost"
+                    size="xs"
+                    icon="i-lucide-arrow-up-right"
+                    square
+                    aria-label="Все новости"
+                  />
+                </UTooltip>
               </div>
 
               <div class="flex flex-col gap-3">
@@ -782,19 +795,23 @@ function onExtraReaction() {
           <UFormField label="Дата" name="date" required>
             <UInputDate v-model="editDateValue" size="xl" class="w-full">
               <template #trailing>
-                <UPopover>
-                  <UButton
-                    color="neutral"
-                    variant="link"
-                    size="md"
-                    icon="i-lucide-calendar"
-                    aria-label="Выбрать дату"
-                    class="px-0"
-                  />
-                  <template #content>
-                    <UCalendar v-model="editDateValue" class="p-2" />
-                  </template>
-                </UPopover>
+                <UTooltip text="Выбрать дату">
+                  <span class="inline-flex">
+                    <UPopover>
+                      <UButton
+                        color="neutral"
+                        variant="link"
+                        size="md"
+                        icon="i-lucide-calendar"
+                        aria-label="Выбрать дату"
+                        class="px-0"
+                      />
+                      <template #content>
+                        <UCalendar v-model="editDateValue" class="p-2" />
+                      </template>
+                    </UPopover>
+                  </span>
+                </UTooltip>
               </template>
             </UInputDate>
           </UFormField>

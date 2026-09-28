@@ -22,7 +22,7 @@ const sorted = computed(() => [...(props.form.questions ?? [])].sort((a, b) => a
         <div class="flex gap-2 mt-3">
           <UBadge color="primary" variant="soft">{{ form.mode === 'test' ? 'Тест' : 'Опрос' }}</UBadge>
           <UBadge color="neutral" variant="soft">Вопросов: {{ sorted.length }}</UBadge>
-          <UBadge v-if="form.settings?.timeLimitSec" color="amber" variant="soft">
+          <UBadge v-if="form.settings?.timeLimitSec" color="warning" variant="soft">
             Лимит: {{ form.settings.timeLimitSec }} сек.
           </UBadge>
         </div>
@@ -35,7 +35,7 @@ const sorted = computed(() => [...(props.form.questions ?? [])].sort((a, b) => a
           <div class="font-medium text-highlighted">{{ q.order + 1 }}. {{ q.title }}</div>
           <div v-if="q.hint" class="text-sm text-muted mt-1">{{ q.hint }}</div>
         </div>
-        <UBadge v-if="q.required" color="red" variant="soft">обязательный</UBadge>
+        <UBadge v-if="q.required" color="error" variant="soft">обязательный</UBadge>
       </div>
 
       <div class="mt-4">

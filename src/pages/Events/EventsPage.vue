@@ -782,19 +782,23 @@ onUnmounted(() => {
           <UFormField label="Дата проведения" name="date" required>
             <UInputDate v-model="createDateValue" size="xl" class="w-full">
               <template #trailing>
-                <UPopover :content="slideoverPopoverContent">
-                  <UButton
-                    color="neutral"
-                    variant="link"
-                    size="md"
-                    icon="i-lucide-calendar"
-                    aria-label="Выбрать дату"
-                    class="px-0"
-                  />
-                  <template #content>
-                    <UCalendar v-model="createDateValue" class="p-2" />
-                  </template>
-                </UPopover>
+                <UTooltip text="Выбрать дату">
+                  <span class="inline-flex">
+                    <UPopover :content="slideoverPopoverContent">
+                      <UButton
+                        color="neutral"
+                        variant="link"
+                        size="md"
+                        icon="i-lucide-calendar"
+                        aria-label="Выбрать дату"
+                        class="px-0"
+                      />
+                      <template #content>
+                        <UCalendar v-model="createDateValue" class="p-2" />
+                      </template>
+                    </UPopover>
+                  </span>
+                </UTooltip>
               </template>
             </UInputDate>
           </UFormField>

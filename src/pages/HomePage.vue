@@ -577,15 +577,16 @@ onUnmounted(() => {
                     />
                   </UTooltip>
                 </div>
-                <UButton
-                  to="/calendar"
-                  color="neutral"
-                  variant="ghost"
-                  size="xs"
-                  icon="i-lucide-arrow-up-right"
-                  square
-                  aria-label="Открыть календарь"
-                />
+                <UTooltip text="Открыть календарь">
+                  <UButton
+                    to="/calendar"
+                    color="neutral"
+                    variant="ghost"
+                    size="xs"
+                    icon="i-lucide-arrow-up-right"
+                    square
+                    aria-label="Открыть календарь" />
+                </UTooltip>
               </div>
             </template>
             <UButton

@@ -607,15 +607,16 @@ const showInlinePanel = computed(
                 class="hidden sm:inline-flex"
                 @click="settingsOpen = true"
               />
-              <UButton
-                icon="i-lucide-settings"
-                color="neutral"
-                variant="outline"
-                size="md"
-                class="sm:hidden"
-                aria-label="Настроить календари"
-                @click="settingsOpen = true"
-              />
+              <UTooltip text="Настроить календари">
+                <UButton
+                  icon="i-lucide-settings"
+                  color="neutral"
+                  variant="outline"
+                  size="md"
+                  class="sm:hidden"
+                  aria-label="Настроить календари"
+                  @click="settingsOpen = true" />
+              </UTooltip>
             </div>
           </template>
         </UPageHeader>
@@ -630,22 +631,25 @@ const showInlinePanel = computed(
               @click="goToday"
             />
             <div class="flex items-center gap-1">
-              <UButton
-                icon="i-lucide-chevron-left"
-                color="neutral"
-                variant="ghost"
-                size="md"
-                aria-label="Назад"
-                @click="prevPeriod"
-              />
-              <UButton
-                icon="i-lucide-chevron-right"
-                color="neutral"
-                variant="ghost"
-                size="md"
-                aria-label="Вперёд"
-                @click="nextPeriod"
-              />
+              <UTooltip text="Назад">
+                <UButton
+                  icon="i-lucide-chevron-left"
+                  color="neutral"
+                  variant="ghost"
+                  size="md"
+                  aria-label="Назад"
+                  @click="prevPeriod" />
+              </UTooltip>
+              <UTooltip text="Вперёд">
+                <UButton
+                  icon="i-lucide-chevron-right"
+                  color="neutral"
+                  variant="ghost"
+                  size="md"
+                  aria-label="Вперёд"
+                  @click="nextPeriod"
+                />
+              </UTooltip>
             </div>
             <h2 class="text-lg font-semibold text-highlighted min-w-40">
               {{ periodTitle }}
@@ -942,17 +946,22 @@ const showInlinePanel = computed(
                       :alt="item.title"
                       size="md"
                     />
-                    <UDropdownMenu
-                      v-if="item.source === 'meeting' || item.source === 'personal'"
-                      :items="[[{ label: 'Удалить', icon: 'i-lucide-trash-2', color: 'error', onSelect: () => deleteLocal(item) }]]"
-                    >
-                      <UButton
-                        icon="i-lucide-ellipsis-vertical"
-                        color="neutral"
-                        variant="ghost"
-                        size="xs"
-                      />
-                    </UDropdownMenu>
+                    <UTooltip v-if="item.source === 'meeting' || item.source === 'personal'" text="Действия с событием">
+                      <span class="inline-flex">
+                        <UDropdownMenu
+                         
+                          :items="[[{ label: 'Удалить', icon: 'i-lucide-trash-2', color: 'error', onSelect: () => deleteLocal(item) }]]"
+                        >
+                          <UButton
+                            icon="i-lucide-ellipsis-vertical"
+                            color="neutral"
+                            aria-label="Действия с событием"
+                            variant="ghost"
+                            size="xs"
+                          />
+                        </UDropdownMenu>
+                      </span>
+                    </UTooltip>
                   </div>
                 </div>
 

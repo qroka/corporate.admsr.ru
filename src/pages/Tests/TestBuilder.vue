@@ -481,7 +481,9 @@ function fmtDate(iso?: string): string {
               {{ store.hasActiveSession(d) ? 'Продолжить' : 'Пройти' }}
             </UButton>
             <UButton color="primary" size="sm" icon="i-lucide-send" @click="publishDraft(d)">Опубликовать</UButton>
-            <UButton color="error" variant="ghost" size="sm" icon="i-lucide-trash-2" @click="askDeleteDraft(d)" />
+            <UTooltip text="Удалить черновик">
+              <UButton color="error" variant="ghost" size="sm" icon="i-lucide-trash-2" aria-label="Удалить черновик" @click="askDeleteDraft(d)" />
+            </UTooltip>
           </div>
         </div>
       </div>

@@ -141,7 +141,7 @@ onBeforeUnmount(() => stopTimer())
             <div class="text-sm text-muted">Сессия: {{ sessionId.slice(0, 8) }}…</div>
           </div>
           <div class="flex items-center gap-3">
-            <UBadge v-if="timeLeft !== null" color="amber" variant="soft">
+            <UBadge v-if="timeLeft !== null" color="warning" variant="soft">
               Осталось: {{ timeLeft }}с
             </UBadge>
             <UButton
@@ -173,7 +173,7 @@ onBeforeUnmount(() => stopTimer())
             <div class="font-medium text-highlighted">
               {{ currentQuestion.order + 1 }}. {{ currentQuestion.title }}
             </div>
-            <UBadge v-if="currentQuestion.required" color="red" variant="soft">обязательный</UBadge>
+            <UBadge v-if="currentQuestion.required" color="error" variant="soft">обязательный</UBadge>
           </div>
           <div v-if="currentQuestion.hint" class="text-sm text-muted">{{ currentQuestion.hint }}</div>
 
@@ -251,7 +251,7 @@ onBeforeUnmount(() => stopTimer())
           <UCard v-for="q in sorted" :key="q.id">
             <div class="flex items-start justify-between gap-3">
               <div class="font-medium text-highlighted">{{ q.order + 1 }}. {{ q.title }}</div>
-              <UBadge v-if="q.required" color="red" variant="soft">обязательный</UBadge>
+              <UBadge v-if="q.required" color="error" variant="soft">обязательный</UBadge>
             </div>
             <div v-if="q.hint" class="text-sm text-muted mt-1">{{ q.hint }}</div>
 

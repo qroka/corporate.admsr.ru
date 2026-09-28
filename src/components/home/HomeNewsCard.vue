@@ -163,28 +163,32 @@ function openLightbox(e?: Event) {
           class="pointer-events-none absolute inset-0 z-20 opacity-0 group-hover:opacity-100 transition"
         >
           <div class="absolute top-2 right-2 flex gap-1 pointer-events-auto">
-            <UButton
-              type="button"
-              color="neutral"
-              variant="solid"
-              size="xs"
-              icon="i-lucide-download"
-              square
-              class="bg-black/60 hover:bg-black/80 text-white ring-0"
-              aria-label="Скачать"
-              @click="downloadImage($event)"
-            />
-            <UButton
-              type="button"
-              color="neutral"
-              variant="solid"
-              size="xs"
-              icon="i-lucide-expand"
-              square
-              class="bg-black/60 hover:bg-black/80 text-white ring-0"
-              aria-label="Открыть"
-              @click="openLightbox($event)"
-            />
+            <UTooltip text="Скачать">
+              <UButton
+                type="button"
+                color="neutral"
+                variant="solid"
+                size="xs"
+                icon="i-lucide-download"
+                square
+                class="bg-black/60 hover:bg-black/80 text-white ring-0"
+                aria-label="Скачать"
+                @click="downloadImage($event)"
+              />
+            </UTooltip>
+            <UTooltip text="Открыть">
+              <UButton
+                type="button"
+                color="neutral"
+                variant="solid"
+                size="xs"
+                icon="i-lucide-expand"
+                square
+                class="bg-black/60 hover:bg-black/80 text-white ring-0"
+                aria-label="Открыть"
+                @click="openLightbox($event)"
+              />
+            </UTooltip>
           </div>
         </div>
       </div>
@@ -271,16 +275,17 @@ function openLightbox(e?: Event) {
           >
             <span class="text-sm leading-none" aria-hidden="true">🙂</span>
           </UButton>
-          <UButton
-            type="button"
-            size="xs"
-            color="neutral"
-            variant="ghost"
-            square
-            icon="i-lucide-plus"
-            aria-label="Добавить реакцию"
-            @click="onExtraReaction"
-          />
+          <UTooltip text="Добавить реакцию">
+            <UButton
+              type="button"
+              size="xs"
+              color="neutral"
+              variant="ghost"
+              square
+              icon="i-lucide-plus"
+              aria-label="Добавить реакцию"
+              @click="onExtraReaction" />
+          </UTooltip>
         </div>
       </div>
     </div>
