@@ -6,6 +6,20 @@ import UserWorkFields from '../components/UserWorkFields.vue';
 import { userShortName } from '../utils/userName';
 import { useProfileDisplay } from '../composables/useProfileDisplay';
 import { useAppToast } from '../composables/useAppToast';
+import { clearAuthStorage } from '../composables/useAuthSession';
+import { patchAppTheme, useAppConfig } from '../composables/useAppConfig';
+import {
+  COLOR_MODE_KEY,
+  readMainColorModePreference,
+  resolveMainColorMode,
+  type ColorModeResolved,
+} from '../composables/useColorMode';
+import {
+  FONT_OPTIONS,
+  PRIMARY_COLORS,
+  PRIMARY_COLOR_LABELS,
+  RADIUS_OPTIONS,
+} from '../composables/useUiTheme';
 import {
   avatarUrlFromFilename,
   PROFILE_AVATAR_FILENAMES,
@@ -32,7 +46,8 @@ const STEPS = [
   { id: 'welcome', label: 'Приветствие', icon: 'i-lucide-sparkles', date: 'Шаг 1' },
   { id: 'work', label: 'Место работы', icon: 'i-lucide-building-2', date: 'Шаг 2' },
   { id: 'avatar', label: 'Аватар', icon: 'i-lucide-smile', date: 'Шаг 3' },
-  { id: 'done', label: 'Готово', icon: 'i-lucide-check-circle', date: 'Шаг 4' },
+  { id: 'look', label: 'Внешний вид', icon: 'i-lucide-palette', date: 'Шаг 4' },
+  { id: 'done', label: 'Готово', icon: 'i-lucide-check-circle', date: 'Шаг 5' },
 ] as const;
 
 type StepId = (typeof STEPS)[number]['id'];
@@ -98,8 +113,8 @@ async function logout() {
   } catch {
     /* сеть недоступна — всё равно выходим локально */
   } finally {
-    localStorage.removeItem('auth-user');
-    localStorage.removeItem('auth-last-check');
+    // Как в меню профиля: без этого токен сессии оставался в localStorage.
+    clearAuthStorage();
     loggingOut.value = false;
     await router.replace({ name: 'login' });
   }
@@ -109,32 +124,62 @@ const portalFeatures = [
   {
     icon: 'i-lucide-newspaper',
     title: 'Новости и мероприятия',
-    description: 'Актуальные события компании, анонсы и регистрация на мероприятия.',
+    description: 'Лента новостей с реакциями, афиша мероприятий и фотогалерея.',
+  },
+  {
+    icon: 'i-lucide-graduation-cap',
+    title: 'Обучение',
+    description: 'Назначенные курсы: материалы, видео и тесты. Прогресс и сроки — в разделе «Обучение».',
   },
   {
     icon: 'i-lucide-calendar-off',
     title: 'Журнал отсутствия',
-    description: 'Отмечайте отпуск, командировку и больничный — коллеги всегда в курсе.',
+    description: 'Отметьте выезд, совещание или другое отсутствие — коллеги увидят, где вы.',
   },
   {
-    icon: 'i-lucide-file-text',
-    title: 'Заявки и база знаний',
-    description: 'Сервисные заявки, документы и ответы на частые вопросы в одном месте.',
+    icon: 'i-lucide-clipboard-list',
+    title: 'Формы и опросы',
+    description: 'Анкеты, опросы и тесты, которые направили вам или вашему подразделению.',
   },
   {
     icon: 'i-lucide-cake',
     title: 'Дни рождения',
-    description: 'Именинники на главной и в календаре — не пропускайте важные даты.',
+    description: 'Именинники на главной — не пропускайте важные даты.',
   },
   {
     icon: 'i-lucide-user-circle',
     title: 'Профиль',
-    description: 'Настройки аккаунта, аватар и данные для корпоративных сервисов.',
+    description: 'Ваши данные, аватар и стена с публикациями.',
   },
 ];
 
 
 const selectedOfoLabel = computed(() => pathLabel(form.ofoId));
+
+// ── Внешний вид ──────────────────────────────────────────────────────────────
+// Настройки живут в этом браузере (localStorage) и применяются сразу — их видно
+// на самой странице. Те же переключатели остаются в меню профиля.
+const appConfig = useAppConfig();
+
+/**
+ * Светлая / тёмная схема. Состоянием владеет App.vue (useColorMode): сохраняем
+ * выбор в тот же ключ и сообщаем событием, которое App.vue уже слушает.
+ */
+const colorMode = ref<ColorModeResolved>(resolveMainColorMode(readMainColorModePreference()));
+function setColorMode(mode: ColorModeResolved) {
+  colorMode.value = mode;
+  try {
+    localStorage.setItem(COLOR_MODE_KEY, mode);
+  } catch {
+    /* ignore */
+  }
+  window.dispatchEvent(new CustomEvent('ui-color-mode-change', { detail: { mode, preference: mode } }));
+}
+
+const primaryLabel = computed(() => PRIMARY_COLOR_LABELS[appConfig.ui.colors.primary]);
+const fontLabel = computed(() => FONT_OPTIONS.find((f) => f.id === appConfig.ui.font)?.label ?? '');
+const radiusLabel = computed(() => RADIUS_OPTIONS.find((r) => r.id === appConfig.ui.radius)?.label ?? '');
+const lookSummary = computed(() => `${primaryLabel.value} · ${fontLabel.value} · скругление: ${radiusLabel.value}`);
 
 const canProceedFromWork = computed(
   () => form.ofoId != null && Boolean(form.role.trim()),
@@ -272,14 +317,19 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-(--ui-bg) px-4 py-8 sm:py-11">
+  <!--
+    Корень приложения — h-dvh overflow-hidden, документ не скроллится. Шаг «Внешний вид»
+    выше экрана, поэтому страница скроллит себя сама (my-auto у содержимого —
+    центр, когда помещается, и без обрезки сверху, когда нет).
+  -->
+  <div class="relative flex h-full min-h-0 flex-col items-center overflow-y-auto bg-(--ui-bg) px-4 py-8 sm:py-11">
     <div
-      class="pointer-events-none absolute inset-0 opacity-40 dark:opacity-25"
+      class="pointer-events-none fixed inset-0 opacity-40 dark:opacity-25"
       aria-hidden="true"
       style="background-image: radial-gradient(circle at 15% 20%, color-mix(in oklab, var(--ui-color-primary-500) 35%, transparent) 0%, transparent 45%), radial-gradient(circle at 85% 75%, color-mix(in oklab, var(--ui-color-violet-500) 25%, transparent) 0%, transparent 40%);"
     />
 
-    <div class="relative z-10 flex w-full max-w-4xl flex-col gap-6">
+    <div class="relative z-10 my-auto flex w-full max-w-4xl flex-col gap-6">
       <div class="flex flex-col items-center gap-2 text-center">
         <p
           class="text-[clamp(18px,3vw,28px)] leading-tight text-(--ui-text-highlighted)"
@@ -296,7 +346,7 @@ onMounted(async () => {
             aria-label="Шаги настройки профиля"
             class="w-full px-2 sm:px-6 pt-2 pb-1"
           >
-            <ol class="m-0 grid w-full list-none grid-cols-4 gap-0 p-0">
+            <ol class="m-0 grid w-full list-none grid-cols-5 gap-0 p-0">
               <li
                 v-for="(step, index) in STEPS"
                 :key="step.id"
@@ -367,8 +417,8 @@ onMounted(async () => {
                   Здравствуйте, {{ greetingName }}!
                 </h1>
                 <p class="text-base text-muted max-w-xl mx-auto">
-                  Мы обновили корпоративный портал ADMSR. За пару шагов настроим профиль,
-                  а затем покажем, чем пользоваться каждый день.
+                  Мы обновили корпоративный портал ADMSR. За пару шагов настроим профиль и внешний вид —
+                  цвета, шрифт, скругление и масштаб страницы. Ниже — чем можно пользоваться каждый день.
                 </p>
               </div>
 
@@ -432,8 +482,8 @@ onMounted(async () => {
                   Место работы
                 </h2>
                 <p class="text-sm text-muted max-w-lg mx-auto">
-                  Укажите ОФО и должность — они нужны для журнала отсутствия,
-                  заявок и отображения вас в корпоративных сервисах.
+                  Укажите ОФО и должность — они нужны для журнала отсутствия
+                  и отображения вас в корпоративных сервисах.
                 </p>
               </div>
 
@@ -542,7 +592,129 @@ onMounted(async () => {
               </div>
             </section>
 
-            <!-- Шаг 4: завершение -->
+            <!-- Шаг 4: внешний вид — минимум текста, всё применяется сразу -->
+            <section
+              v-show="currentStep === 'look'"
+              class="flex flex-col gap-6"
+              aria-labelledby="onboarding-look-title"
+            >
+              <div class="text-center space-y-2">
+                <h2
+                  id="onboarding-look-title"
+                  class="text-xl sm:text-2xl font-semibold text-highlighted font-unbounded"
+                >
+                  Внешний вид
+                </h2>
+                <p class="text-sm text-muted">Меняется сразу. Позже — в меню профиля.</p>
+              </div>
+
+              <div class="flex flex-col gap-5 max-w-xl mx-auto w-full">
+                <!-- Масштаб: своей настройки нет — масштаб браузера -->
+                <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 rounded-panel bg-primary/10 px-4 py-3 text-sm text-highlighted">
+                  <span class="inline-flex items-center gap-2 font-medium">
+                    <UIcon name="i-lucide-zoom-in" class="size-4 text-primary" aria-hidden="true" />
+                    Подберите масштаб:
+                  </span>
+                  <span class="inline-flex items-center gap-1"><UKbd>Ctrl</UKbd><UKbd>+</UKbd></span>
+                  <span class="inline-flex items-center gap-1"><UKbd>Ctrl</UKbd><UKbd>−</UKbd></span>
+                </div>
+
+                <div class="flex flex-col gap-2">
+                  <p class="text-sm font-medium text-highlighted">Тема</p>
+                  <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Тема">
+                    <UButton
+                      v-for="m in ([{ id: 'light', label: 'Светлая', icon: 'i-lucide-sun' }, { id: 'dark', label: 'Тёмная', icon: 'i-lucide-moon' }] as const)"
+                      :key="m.id"
+                      type="button"
+                      :icon="m.icon"
+                      :color="colorMode === m.id ? 'primary' : 'neutral'"
+                      :variant="colorMode === m.id ? 'soft' : 'outline'"
+                      role="radio"
+                      :aria-checked="colorMode === m.id"
+                      @click="setColorMode(m.id)"
+                    >
+                      {{ m.label }}
+                    </UButton>
+                  </div>
+                </div>
+
+                <div class="flex flex-col gap-2">
+                  <p class="text-sm font-medium text-highlighted">Цвет</p>
+                  <div class="flex flex-wrap gap-2.5 p-1" role="radiogroup" aria-label="Цвет">
+                    <button
+                      v-for="c in PRIMARY_COLORS"
+                      :key="c"
+                      type="button"
+                      role="radio"
+                      :aria-checked="appConfig.ui.colors.primary === c"
+                      :aria-label="PRIMARY_COLOR_LABELS[c]"
+                      :title="PRIMARY_COLOR_LABELS[c]"
+                      class="size-8 rounded-full ring-offset-2 ring-offset-(--ui-bg) transition-shadow focus-visible:outline-2 focus-visible:outline-primary"
+                      :class="[
+                        c === 'white' ? 'bg-inverted' : 'bg-(--chip-light) dark:bg-(--chip-dark)',
+                        appConfig.ui.colors.primary === c ? 'ring-2 ring-highlighted' : 'ring-1 ring-default',
+                      ]"
+                      :style="{ '--chip-light': `var(--color-${c}-500)`, '--chip-dark': `var(--color-${c}-400)` }"
+                      @click="patchAppTheme({ primary: c })"
+                    />
+                  </div>
+                </div>
+
+                <div class="flex flex-col gap-2">
+                  <p class="text-sm font-medium text-highlighted">Шрифт</p>
+                  <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Шрифт">
+                    <UButton
+                      v-for="f in FONT_OPTIONS"
+                      :key="f.id"
+                      type="button"
+                      :color="appConfig.ui.font === f.id ? 'primary' : 'neutral'"
+                      :variant="appConfig.ui.font === f.id ? 'soft' : 'outline'"
+                      role="radio"
+                      :aria-checked="appConfig.ui.font === f.id"
+                      :style="{ fontFamily: f.value }"
+                      @click="patchAppTheme({ font: f.id })"
+                    >
+                      {{ f.label }}
+                    </UButton>
+                  </div>
+                </div>
+
+                <div class="flex flex-col gap-2">
+                  <p class="text-sm font-medium text-highlighted">Скругление углов</p>
+                  <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Скругление углов">
+                    <UButton
+                      v-for="r in RADIUS_OPTIONS"
+                      :key="r.id"
+                      type="button"
+                      :color="appConfig.ui.radius === r.id ? 'primary' : 'neutral'"
+                      :variant="appConfig.ui.radius === r.id ? 'soft' : 'outline'"
+                      role="radio"
+                      :aria-checked="appConfig.ui.radius === r.id"
+                      @click="patchAppTheme({ radius: r.id })"
+                    >
+                      {{ r.label }}
+                    </UButton>
+                  </div>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap justify-between gap-3 pt-2">
+                <UButton
+                  size="xl"
+                  color="neutral"
+                  variant="outline"
+                  leading-icon="i-lucide-arrow-left"
+                  @click="goBack"
+                >
+                  Назад
+                </UButton>
+                <UButton size="xl" trailing-icon="i-lucide-arrow-right" @click="goNext">
+                  Далее
+                </UButton>
+              </div>
+            </section>
+
+            <!-- Шаг 5: завершение -->
             <section
               v-show="currentStep === 'done'"
               class="flex flex-col gap-5"
@@ -561,7 +733,8 @@ onMounted(async () => {
                   Всё готово!
                 </h2>
                 <p class="text-sm text-muted max-w-md mx-auto">
-                  Проверьте данные перед входом на главную страницу портала.
+                  Проверьте данные перед входом на главную страницу портала. Назначенные вам курсы
+                  появятся в разделе «Обучение», а цвета, шрифт и скругление можно поменять в меню профиля.
                 </p>
               </div>
 
@@ -590,6 +763,11 @@ onMounted(async () => {
                         :ui="{ root: '!bg-elevated' }"
                       />
                     </dd>
+                  </div>
+                  <USeparator />
+                  <div class="flex justify-between gap-4">
+                    <dt class="text-muted">Оформление</dt>
+                    <dd class="font-medium text-highlighted text-right">{{ lookSummary }}</dd>
                   </div>
                 </dl>
               </UCard>
