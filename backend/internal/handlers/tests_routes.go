@@ -887,6 +887,34 @@ func (h *TestsHandler) Stats(w http.ResponseWriter, r *http.Request) {
 				optRows.Close()
 			}
 			options = opts
+		case "match", "classify":
+			pItems, _, _ := tests.LoadPairing(ctx, h.Pool, qid)
+			right := map[int64]int{}
+			if aRows, err := h.Pool.Query(ctx, `
+				SELECT text_value FROM public.test_answers
+				WHERE question_id = $1 AND answered = true AND text_value IS NOT NULL`, qid); err == nil {
+				for aRows.Next() {
+					var tv string
+					if aRows.Scan(&tv) != nil {
+						continue
+					}
+					m := tests.ParseMapping(tv)
+					for _, it := range pItems {
+						if it.TargetID != nil && m[it.ID] == *it.TargetID {
+							right[it.ID]++
+						}
+					}
+				}
+				aRows.Close()
+			}
+			var opts []map[string]any
+			for _, it := range pItems {
+				opts = append(opts, map[string]any{
+					"id": strconv.FormatInt(it.ID, 10), "label": it.Text, "count": right[it.ID],
+					"percent": pct(right[it.ID], completions), "correct": it.TargetID != nil,
+				})
+			}
+			options = opts
 		case "yesno":
 			cnt := map[string]int{"yes": 0, "no": 0}
 			ynRows, _ := h.Pool.Query(ctx, `
@@ -1057,7 +1085,7 @@ func (h *TestsHandler) Participant(w http.ResponseWriter, r *http.Request) {
 		optText := map[int64]string{}
 		var correctOptIDs []int64
 		if qtype == "single" || qtype == "multiple" || qtype == "dropdown" {
-			optRows, _ := h.Pool.Query(ctx, `SELECT id, text, is_correct FROM public.test_options WHERE question_id = $1 ORDER BY position, id`, qid)
+			optRows, _ := h.Pool.Query(ctx, `SELECT id, text, is_correct FROM public.test_options WHERE question_id = $1 AND role = 'option' ORDER BY position, id`, qid)
 			for optRows != nil && optRows.Next() {
 				var oid int64
 				var text string
@@ -1117,6 +1145,11 @@ func (h *TestsHandler) Participant(w http.ResponseWriter, r *http.Request) {
 				} else if textValue != nil {
 					userAnswer = *textValue
 				}
+			case "match", "classify":
+				if textValue != nil {
+					pItems, pTargets, _ := tests.LoadPairing(ctx, h.Pool, qid)
+					userAnswer, _ = tests.PairingTexts(pItems, pTargets, tests.ParseMapping(*textValue))
+				}
 			default:
 				if textValue != nil {
 					userAnswer = *textValue
@@ -1140,6 +1173,9 @@ func (h *TestsHandler) Participant(w http.ResponseWriter, r *http.Request) {
 			if correctValue != nil {
 				correctAnswer = yn(*correctValue)
 			}
+		case "match", "classify":
+			pItems, pTargets, _ := tests.LoadPairing(ctx, h.Pool, qid)
+			_, correctAnswer = tests.PairingTexts(pItems, pTargets, nil)
 		default:
 			if correctValue != nil {
 				correctAnswer = *correctValue
@@ -1777,6 +1813,19 @@ func (h *TestsHandler) loadAttemptAnswers(ctx context.Context, attemptID int64) 
 }
 
 func (h *TestsHandler) loadAttemptAnswersInt(ctx context.Context, attemptID int64) (map[int64]any, error) {
+	pairingQ := map[int64]bool{}
+	if tr, err := h.Pool.Query(ctx, `
+		SELECT q.id FROM public.test_questions q
+		JOIN public.test_attempts a ON a.form_id = q.form_id
+		WHERE a.id = $1 AND q.type IN ('match', 'classify')`, attemptID); err == nil {
+		for tr.Next() {
+			var id int64
+			if tr.Scan(&id) == nil {
+				pairingQ[id] = true
+			}
+		}
+		tr.Close()
+	}
 	rows, err := h.Pool.Query(ctx, `SELECT * FROM public.test_answers WHERE attempt_id = $1`, attemptID)
 	if err != nil {
 		return nil, err
@@ -1810,6 +1859,13 @@ func (h *TestsHandler) loadAttemptAnswersInt(ctx context.Context, attemptID int6
 			if f, err := tests.ToFloatPublic(a["number_value"]); err == nil {
 				out[qid] = f
 			}
+		} else if pairingQ[qid] {
+			// {itemId: targetId} в ответ клиенту — объектом, как он его и отправлял.
+			m := map[string]any{}
+			for item, target := range tests.ParseMapping(a["text_value"]) {
+				m[strconv.FormatInt(item, 10)] = strconv.FormatInt(target, 10)
+			}
+			out[qid] = m
 		} else {
 			out[qid] = a["text_value"]
 		}
@@ -1958,6 +2014,12 @@ func parseAnswerValue(qtype string, val any) (textVal *string, numVal *float64, 
 				textVal = &s
 				answered = true
 			}
+		}
+	case "match", "classify":
+		if m := tests.ParseMapping(val); len(m) > 0 {
+			s := tests.MappingJSON(m)
+			textVal = &s
+			answered = true
 		}
 	default:
 		if val != nil && fmt.Sprint(val) != "" {

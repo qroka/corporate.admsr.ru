@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import PairingEditor from './components/PairingEditor.vue';
 import {
   QUESTION_TYPE_ITEMS,
   typeHasOptions,
+  typeIsPairing,
+  pairingHasKey,
   applyTypeDefaults,
   createQuestion,
   createOption,
@@ -22,9 +25,22 @@ function addQuestion() {
   questions.value.push(createQuestion());
 }
 
-function onTypeChange(q: Question) {
-  applyTypeDefaults(q);
+/** «Соответствие» имеет смысл только в тесте (нужен ключ); «Классификацию» можно и в опросе. */
+const typeItems = computed(() =>
+  props.kind === 'test' ? QUESTION_TYPE_ITEMS : QUESTION_TYPE_ITEMS.filter((t) => t.value !== 'match'),
+);
+
+function changeType(q: Question, next: QType) {
+  if (next === q.type) return;
+  // Между «обычными» типами варианты сохраняются; вход в соответствие/классификацию и выход
+  // из них начинают с чистого листа — варианты справа там значат другое.
+  if (typeIsPairing(q.type) || typeIsPairing(next)) {
+    q.options = [];
+    q.items = [];
+  }
+  q.type = next;
   q.correct = null; // правильный ответ сбрасываем при смене типа
+  applyTypeDefaults(q);
 }
 
 // ── Варианты / кандидаты ─────────────────────────────────────────────────────
@@ -75,6 +91,7 @@ function confirmDelete() {
 
 // ── Правильный ответ (только тесты) ──────────────────────────────────────────
 function hasCorrect(q: Question): boolean {
+  if (typeIsPairing(q.type)) return pairingHasKey(q);
   const c = q.correct;
   if (c == null) return false;
   if (Array.isArray(c)) return c.length > 0;
@@ -189,17 +206,25 @@ function scaleNumbers(q: Question): number[] {
 
       <div class="flex flex-col sm:flex-row sm:items-center gap-3 pl-12">
         <USelect
-          v-model="q.type"
-          :items="QUESTION_TYPE_ITEMS"
+          :model-value="q.type"
+          :items="typeItems"
           size="md"
           class="w-full sm:w-64"
           :content="{ align: 'start', sideOffset: 8 }"
-          @update:model-value="onTypeChange(q)"
+          @update:model-value="(v: QType) => changeType(q, v)"
         />
         <UCheckbox v-model="q.required" label="Обязательный вопрос" />
 
+        <UBadge
+          v-if="kind === 'test' && typeIsPairing(q.type)"
+          :color="hasCorrect(q) ? 'success' : 'warning'"
+          variant="subtle"
+          class="sm:ml-auto"
+        >
+          {{ hasCorrect(q) ? 'Ключ заполнен' : (q.type === 'match' ? 'Заполните пары' : 'Укажите правильные ответы') }}
+        </UBadge>
         <UButton
-          v-if="kind === 'test'"
+          v-else-if="kind === 'test'"
           :color="hasCorrect(q) ? 'success' : 'primary'"
           variant="soft"
           size="sm"
@@ -213,7 +238,9 @@ function scaleNumbers(q: Question): number[] {
 
       <!-- Конфигуратор ответа под выбранный тип -->
       <div class="pl-12 flex flex-col gap-2">
-        <template v-if="typeHasOptions(q.type)">
+        <PairingEditor v-if="typeIsPairing(q.type)" :q="q" :kind="kind" />
+
+        <template v-else-if="typeHasOptions(q.type)">
           <div v-for="(opt, oi) in q.options" :key="opt.id" class="flex items-center gap-2">
             <UTooltip v-if="kind === 'test'" :text="isOptionCorrect(q, opt.id) ? 'Правильный — снять отметку' : 'Отметить правильным'">
               <UButton

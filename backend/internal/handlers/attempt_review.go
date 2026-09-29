@@ -61,7 +61,7 @@ func buildAttemptReview(ctx context.Context, pool *pgxpool.Pool, formID, attempt
 		if qtype == "single" || qtype == "multiple" || qtype == "dropdown" {
 			optRows, _ := pool.Query(ctx, `
 				SELECT id, text, is_correct FROM public.test_options
-				WHERE question_id = $1 ORDER BY position, id`, qid)
+				WHERE question_id = $1 AND role = 'option' ORDER BY position, id`, qid)
 			for optRows != nil && optRows.Next() {
 				var oid int64
 				var text string
@@ -121,6 +121,11 @@ func buildAttemptReview(ctx context.Context, pool *pgxpool.Pool, formID, attempt
 				} else if textValue != nil {
 					userAnswer = *textValue
 				}
+			case "match", "classify":
+				if textValue != nil {
+					pItems, pTargets, _ := tests.LoadPairing(ctx, pool, qid)
+					userAnswer, _ = tests.PairingTexts(pItems, pTargets, tests.ParseMapping(*textValue))
+				}
 			default:
 				if textValue != nil {
 					userAnswer = *textValue
@@ -144,6 +149,9 @@ func buildAttemptReview(ctx context.Context, pool *pgxpool.Pool, formID, attempt
 			if correctValue != nil {
 				correctAnswer = yn(*correctValue)
 			}
+		case "match", "classify":
+			pItems, pTargets, _ := tests.LoadPairing(ctx, pool, qid)
+			_, correctAnswer = tests.PairingTexts(pItems, pTargets, nil)
 		default:
 			if correctValue != nil {
 				correctAnswer = *correctValue

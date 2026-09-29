@@ -6,6 +6,7 @@
 import { computed, ref } from 'vue';
 import type { TestForm } from '../../Tests/testForm';
 import QuestionsBuilder from '../../Tests/QuestionsBuilder.vue';
+import { pairingHasKey, typeIsPairing } from '../../Tests/questionTypes';
 import TestRunner from '../../Tests/TestRunner.vue';
 import TestSettingsForm, { type TestSettingsModel } from '../../Tests/components/TestSettingsForm.vue';
 import ModalTextField from '../../Tests/ModalTextField.vue';
@@ -49,6 +50,7 @@ const stepIdx = computed(() => STEPS.findIndex((s) => s.key === step.value));
 const questionsCount = computed(() => props.form.questions?.length ?? 0);
 const withCorrect = computed(
   () => (props.form.questions || []).filter((q) => {
+    if (typeIsPairing(q.type)) return pairingHasKey(q);
     const c = q.correct;
     if (c == null) return false;
     if (Array.isArray(c)) return c.length > 0;
@@ -229,7 +231,7 @@ function onRemove() {
 
         <div
           v-else
-          class="rounded-xl ring-1 ring-default bg-elevated/20 p-3 sm:p-4 min-h-[24rem] flex flex-col"
+          class="rounded-xl ring-1 ring-default bg-elevated/20 p-3 sm:p-4 h-[min(70dvh,42rem)] min-h-[24rem] flex flex-col"
         >
           <TestRunner
             v-if="step === 'preview'"

@@ -1057,10 +1057,10 @@ async function confirmReset() {
                 />
                 <span class="text-sm text-highlighted">{{ i + 1 }}. {{ a.title || 'Без названия' }}</span>
               </div>
-              <p class="text-sm text-muted pl-6">Ответ: {{ a.userAnswer }}</p>
+              <p class="text-sm text-muted pl-6 whitespace-pre-line">Ответ: {{ a.userAnswer }}</p>
               <p
                 v-if="a.isCorrect === false && a.correctAnswer"
-                class="text-sm text-success pl-6"
+                class="text-sm text-success pl-6 whitespace-pre-line"
               >
                 Правильно: {{ a.correctAnswer }}
               </p>

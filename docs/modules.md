@@ -208,7 +208,7 @@ POST/PUT/DELETE — редактор секции `absence_journal` за люб�
 | Точка входа | `src/pages/TestsBlankPage.vue` (маршрут `/tests`) |
 | Конструктор / прохождение / статистика | `src/pages/Tests/TestBuilder.vue`, `TestRunner.vue`, `StatsDetail.vue`, `QuestionsBuilder.vue`, `StatChart.vue` |
 | Модель формы | `src/pages/Tests/testForm.ts` (числовой `id`) |
-| Типы вопросов | `src/pages/Tests/questionTypes.ts` — 9 типов: `single`, `multiple`, `dropdown`, `text`, `textarea`, `scale`, `yesno`, `number`, `date` |
+| Типы вопросов | `src/pages/Tests/questionTypes.ts` — 11 типов: `single`, `multiple`, `dropdown`, `text`, `textarea`, `scale`, `yesno`, `number`, `date`, `match` (соответствие), `classify` (классификация); редактор последних двух — `src/pages/Tests/components/PairingEditor.vue` |
 | Стор | `src/composables/useTestsStore.ts` |
 | Публичная ссылка | `src/pages/TestLinkPage.vue` (`/t/:token`) |
 | Агрегация статистики | `src/composables/useTestStats.ts` |

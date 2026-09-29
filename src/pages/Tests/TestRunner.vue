@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, reactive, ref, watch } from 'vue';
 import { useTestsStore } from '../../composables/useTestsStore';
-import { type Question } from './questionTypes';
+import { pairingCorrect, typeIsPairing, type PairingMap, type Question } from './questionTypes';
 import { type TestForm } from './testForm';
 
 const props = withDefaults(defineProps<{
@@ -80,7 +80,21 @@ const currentLocked = computed(() => {
   return !!q && (lockedIds.value.has(q.id) || revealing.value || resultsView.value !== null);
 });
 
+/** Элементы слева у соответствия / классификации (пустые по тексту не показываем). */
+function pairItems(q: Question) {
+  return (q.items ?? []).filter((it) => it.text.trim());
+}
+function pairMap(q: Question): PairingMap {
+  const v = answers[q.id];
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as PairingMap) : {};
+}
+
 function isAnswered(q: Question): boolean {
+  if (typeIsPairing(q.type)) {
+    const items = pairItems(q);
+    const m = pairMap(q);
+    return items.length > 0 && items.every((it) => Boolean(m[it.id]));
+  }
   const v = answers[q.id];
   if (q.type === 'multiple') return Array.isArray(v) && v.length > 0;
   if (q.type === 'number' || q.type === 'scale') return v !== undefined && v !== null && (v as unknown) !== '';
@@ -113,8 +127,36 @@ function isSelected(optId: string): boolean {
   return Array.isArray(v) ? v.includes(optId) : v === optId;
 }
 
+// Соответствие / классификация: элементу слева выбирается один вариант справа.
+function onPair(itemId: string, targetId: string) {
+  if (currentLocked.value) return;
+  const q = currentQuestion.value!;
+  const next = { ...pairMap(q) };
+  if (next[itemId] === targetId) {
+    delete next[itemId]; // повторный клик снимает выбор
+  } else {
+    // В «Соответствии» определение подходит одному понятию — занятое освобождаем.
+    if (q.type === 'match') for (const k of Object.keys(next)) if (next[k] === targetId) delete next[k];
+    next[itemId] = targetId;
+  }
+  answers[q.id] = next;
+}
+function pairChipClass(itemId: string, targetId: string): string {
+  const q = currentQuestion.value!;
+  const chosen = pairMap(q)[itemId] === targetId;
+  const key = pairingCorrect(q)[itemId];
+  if (revealing.value && key) {
+    if (key === targetId) return 'ring-success bg-success/10 text-success';
+    if (chosen) return 'ring-error bg-error/10 text-error';
+    return 'ring-default text-muted';
+  }
+  if (chosen) return 'ring-primary bg-primary/10 text-highlighted';
+  return 'ring-default text-muted hover:bg-elevated';
+}
+
 // ── Правильные ответы (тесты) ─────────────────────────────────────────────────
 function hasCorrect(q: Question): boolean {
+  if (typeIsPairing(q.type)) return Object.keys(pairingCorrect(q)).length > 0;
   const c = q.correct;
   if (c == null || c === '') return false;
   return Array.isArray(c) ? c.length > 0 : true;
@@ -180,7 +222,7 @@ watch(answers, saveSessionNow, { deep: true });
 function buildView() {
   const base: ViewItem[] = props.form.questions.map((q) => ({
     q,
-    options: props.form.shuffleOptions ? shuffled(q.options ?? []).map((o) => ({ id: o.id, text: o.text })) : (q.options ?? []).map((o) => ({ id: o.id, text: o.text })),
+    options: (props.form.shuffleOptions || q.type === 'match') ? shuffled(q.options ?? []).map((o) => ({ id: o.id, text: o.text })) : (q.options ?? []).map((o) => ({ id: o.id, text: o.text })),
   }));
   view.value = props.form.shuffle && !isPoll.value ? shuffled(base) : base;
 }
@@ -277,7 +319,18 @@ function goToUnanswered() {
 // Результат теста (по правильным ответам на клиенте или с сервера)
 const clientScoreInfo = computed(() => {
   let scorable = 0, correct = 0;
-  for (const it of view.value) if (hasCorrect(it.q)) { scorable++; if (answeredCorrectly(it)) correct++; }
+  for (const it of view.value) {
+    if (!hasCorrect(it.q)) continue;
+    if (typeIsPairing(it.q.type)) {
+      // Каждое соответствие весит как отдельный вопрос — как на сервере.
+      const key = pairingCorrect(it.q);
+      const m = pairMap(it.q);
+      for (const item of pairItems(it.q)) if (key[item.id]) { scorable++; if (m[item.id] === key[item.id]) correct++; }
+      continue;
+    }
+    scorable++;
+    if (answeredCorrectly(it)) correct++;
+  }
   return { scorable, correct, percent: scorable > 0 ? Math.round((correct / scorable) * 100) : 0 };
 });
 const serverResult = ref<{
@@ -397,8 +450,14 @@ function onRetake() {
 function optText(it: ViewItem, id: string): string {
   return it.options.find((o) => o.id === id)?.text || '—';
 }
+function pairLines(it: ViewItem, map: PairingMap): string {
+  return pairItems(it.q)
+    .map((item) => `${item.text} → ${it.options.find((o) => o.id === map[item.id])?.text ?? '—'}`)
+    .join('\n');
+}
 function userAnswerText(it: ViewItem): string {
   const q = it.q; const v = answers[q.id];
+  if (typeIsPairing(q.type)) return Object.keys(pairMap(q)).length ? pairLines(it, pairMap(q)) : '— нет ответа';
   if (v == null || v === '' || (Array.isArray(v) && !v.length)) return '— нет ответа';
   if (q.type === 'single' || q.type === 'dropdown') return optText(it, v as string);
   if (q.type === 'multiple') return (v as string[]).map((id) => optText(it, id)).join(', ');
@@ -407,6 +466,7 @@ function userAnswerText(it: ViewItem): string {
 }
 function correctAnswerText(it: ViewItem): string {
   const q = it.q; const c = q.correct;
+  if (typeIsPairing(q.type)) return pairLines(it, pairingCorrect(q));
   if (c == null || c === '') return '—';
   if (q.type === 'single' || q.type === 'dropdown') return optText(it, c as string);
   if (q.type === 'multiple') return (c as string[]).map((id) => optText(it, id)).join(', ');
@@ -416,6 +476,11 @@ function correctAnswerText(it: ViewItem): string {
 function answeredCorrectly(it: ViewItem): boolean {
   const q = it.q;
   if (!hasCorrect(q)) return false;
+  if (typeIsPairing(q.type)) {
+    const key = pairingCorrect(q);
+    const m = pairMap(q);
+    return pairItems(q).every((item) => !key[item.id] || m[item.id] === key[item.id]);
+  }
   const v = answers[q.id];
   if (q.type === 'multiple') {
     const a = Array.isArray(v) ? [...(v as string[])].sort() : [];
@@ -472,8 +537,8 @@ function pollPercent(id: string): number { return pollResults.value[id]?.percent
                   <UIcon :name="answeredCorrectly(it) ? 'i-lucide-check-circle-2' : 'i-lucide-x-circle'" :class="answeredCorrectly(it) ? 'text-success' : 'text-error'" class="size-4 shrink-0" />
                   <span class="text-sm text-highlighted">{{ i + 1 }}. {{ it.q.title || 'Без названия' }}</span>
                 </div>
-                <p class="text-sm text-muted pl-6">Ваш ответ: {{ userAnswerText(it) }}</p>
-                <p v-if="!answeredCorrectly(it) && hasCorrect(it.q)" class="text-sm text-success pl-6">Правильно: {{ correctAnswerText(it) }}</p>
+                <p class="text-sm text-muted pl-6 whitespace-pre-line">Ваш ответ: {{ userAnswerText(it) }}</p>
+                <p v-if="!answeredCorrectly(it) && hasCorrect(it.q)" class="text-sm text-success pl-6 whitespace-pre-line">Правильно: {{ correctAnswerText(it) }}</p>
               </div>
             </div>
           </div>
@@ -539,6 +604,42 @@ function pollPercent(id: string): number { return pollResults.value[id]?.percent
                     <UIcon v-else-if="revealing && isSelected(opt.id)" name="i-lucide-x" class="size-4 text-error shrink-0" />
                   </span>
                 </button>
+              </div>
+
+              <!-- Соответствие / классификация: каждому элементу — один вариант справа -->
+              <div v-else-if="currentQuestion.type === 'match' || currentQuestion.type === 'classify'" class="flex flex-col gap-3 w-full max-w-2xl p-px">
+                <ol
+                  v-if="currentQuestion.type === 'match'"
+                  class="list-none m-0 p-3 rounded-xl ring-1 ring-default bg-elevated/30 flex flex-col gap-1.5 text-sm text-default"
+                  aria-label="Определения"
+                >
+                  <li v-for="(t, ti) in currentOptions" :key="t.id" class="flex gap-2">
+                    <span class="shrink-0 w-5 font-medium text-primary tabular-nums">{{ ti + 1 }}.</span>
+                    <span>{{ t.text }}</span>
+                  </li>
+                </ol>
+                <p v-if="currentQuestion.type === 'match'" class="text-xs text-dimmed">Выберите для каждого понятия номер подходящего определения.</p>
+                <p v-else class="text-xs text-dimmed">Выберите для каждого утверждения одну категорию.</p>
+                <ul class="list-none m-0 p-0 flex flex-col gap-2.5">
+                  <li v-for="pi in pairItems(currentQuestion)" :key="pi.id" class="rounded-xl ring-1 ring-default px-3 py-2.5 flex flex-col gap-2">
+                    <p class="text-sm font-medium text-highlighted">{{ pi.text }}</p>
+                    <div class="flex flex-wrap gap-2" role="group" :aria-label="pi.text">
+                      <button
+                        v-for="(t, ti) in currentOptions"
+                        :key="t.id"
+                        type="button"
+                        :disabled="currentLocked"
+                        :aria-pressed="pairMap(currentQuestion)[pi.id] === t.id"
+                        :aria-label="currentQuestion.type === 'match' ? `Определение ${ti + 1}` : undefined"
+                        class="rounded-lg ring-1 text-sm text-left transition-colors disabled:cursor-default"
+                        :class="[pairChipClass(pi.id, t.id), currentQuestion.type === 'match' ? 'size-9 text-center font-medium' : 'px-3 py-1.5']"
+                        @click="onPair(pi.id, t.id)"
+                      >
+                        {{ currentQuestion.type === 'match' ? ti + 1 : t.text }}
+                      </button>
+                    </div>
+                  </li>
+                </ul>
               </div>
 
               <!-- Выпадающий список -->

@@ -1,7 +1,9 @@
 """Разбор Тест.docx из архива курса в вопросы модуля тестов.
 
 Правильный ответ в документах выделен красным цветом шрифта (EE0000).
-Таблицы «соотнесите» / «распределите» разворачиваются в вопросы с одним ответом.
+Вопросы с вариантами — тип single. Таблицы «соотнесите» / «подберите» становятся вопросом
+«Соответствие» (match), таблицы «распределите» / «классифицируйте» — «Классификацией» (classify):
+  {'type': 'match'|'classify', 'items': [текст слева], 'options': [текст справа], 'key': [индекс варианта для каждого элемента]}
 """
 import json
 import os
@@ -62,6 +64,7 @@ def parse(path):
     questions, context = [], []
     q = None
     last_table = None
+    last_bold = ''
     title = None
     for el in d.element.body.iterchildren():
         if el.tag == qn('w:tbl'):
@@ -78,8 +81,8 @@ def parse(path):
 
         # Ключ к таблице: «А4 Б3 В2 …» или «А12 Б35 В46».
         if last_table is not None and KEY_RE.match(text.replace(' ', ' ')):
-            questions.extend(expand_table(last_table, parse_key(text), context))
-            last_table, context = None, []
+            questions.append(expand_table(last_table, parse_key(text), last_bold, context))
+            last_table, context, last_bold = None, [], ''
             continue
 
         # Абзац с вариантами (каждый вариант — строка) или один вариант.
@@ -113,41 +116,41 @@ def parse(path):
         if title is None and is_bold(p) and not questions:
             title = text
         q = None if (q is not None and q['options']) else q
-        context.append(text)
+        if is_bold(p):
+            last_bold = text  # заголовок задания: «Соотнесите понятия с определениями:»
+        else:
+            context.append(text)
     return title, questions
 
 
-def expand_table(rows, key, context):
+def expand_table(rows, key, heading, context):
+    """Таблица задания → один вопрос: match (понятие → определение) или classify (утверждение → категория)."""
     head = [h.lower() for h in rows[0]]
     body = rows[1:]
+    title = heading.rstrip(':').strip()
     hint = ' '.join(c for c in context if not c.startswith('Выберите'))
-    out = []
     if 'понятие' in head or 'задача' in head:
-        # Соотнесение: буква → номер определения.
         left = {r[0]: r[1] for r in body if r[0]}
         right = {int(r[2]): r[3] for r in body if r[2].isdigit()}
-        is_task = 'задача' in head
-        for letter, nums in key.items():
-            name = left[letter]
-            title = (f'Задача «{name}»: какой вариант подходит?' if is_task
-                     else f'Что означает понятие «{name}»?')
-            out.append({
-                'title': title,
-                'hint': hint,
-                'options': [{'text': right[n], 'correct': n == nums[0]} for n in sorted(right)],
-            })
-    else:
-        # Распределение: буква категории → номера ситуаций.
-        cats = {r[0]: r[1] for r in body if r[0]}
-        items = {int(r[3]): r[4] for r in body if r[3].isdigit()}
-        answer = {n: letter for letter, nums in key.items() for n in nums}
-        for n in sorted(items):
-            out.append({
-                'title': items[n],
-                'hint': hint,
-                'options': [{'text': cats[c], 'correct': answer[n] == c} for c in cats],
-            })
-    return out
+        nums = sorted(right)
+        letters = [k for k in left if k in key]
+        return {
+            'type': 'match', 'title': title, 'hint': hint,
+            'items': [left[k] for k in letters],
+            'options': [right[n] for n in nums],
+            'key': [nums.index(key[k][0]) for k in letters],
+        }
+    cats = {r[0]: r[1] for r in body if r[0]}
+    items = {int(r[3]): r[4] for r in body if r[3].isdigit()}
+    letters = list(cats)
+    owner = {n: letters.index(letter) for letter, nums_ in key.items() for n in nums_}
+    order = sorted(items)
+    return {
+        'type': 'classify', 'title': title, 'hint': hint,
+        'items': [items[n] for n in order],
+        'options': [cats[c] for c in letters],
+        'key': [owner[n] for n in order],
+    }
 
 
 result = {}
@@ -156,7 +159,12 @@ for folder in sorted(os.listdir(ROOT)):
     if not os.path.exists(f):
         continue
     title, qs = parse(f)
-    bad = [i + 1 for i, q in enumerate(qs) if sum(o['correct'] for o in q['options']) != 1 or len(q['options']) < 2]
+    def broken(q):
+        if q.get('type') in ('match', 'classify'):
+            return len(q['items']) != len(q['key']) or not q['items'] or any(k >= len(q['options']) for k in q['key'])
+        return sum(o['correct'] for o in q['options']) != 1 or len(q['options']) < 2
+
+    bad = [i + 1 for i, q in enumerate(qs) if broken(q)]
     print(folder, 'вопросов:', len(qs), 'проблемных:', bad)
     result[folder] = {'title': title, 'questions': qs}
 json.dump(result, open(OUT, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)

@@ -145,9 +145,18 @@ func AssembleForm(ctx context.Context, pool *pgxpool.Pool, row DBFormRow, viewer
 			return nil, err
 		}
 
+		if IsPairing(qtype) {
+			pq, err := assemblePairingQuestion(ctx, pool, qid, title, hint, qtype, required, scaleMin, scaleMax, scaleMinLabel, scaleMaxLabel)
+			if err != nil {
+				return nil, err
+			}
+			questions = append(questions, pq)
+			continue
+		}
+
 		optRows, err := pool.Query(ctx, `
 			SELECT id, text, is_correct FROM public.test_options
-			WHERE question_id = $1 ORDER BY position, id`, qid)
+			WHERE question_id = $1 AND role = 'option' ORDER BY position, id`, qid)
 		if err != nil {
 			return nil, err
 		}
@@ -202,6 +211,7 @@ func AssembleForm(ctx context.Context, pool *pgxpool.Pool, row DBFormRow, viewer
 			"type":            qtype,
 			"required":        required,
 			"options":         options,
+			"items":           []map[string]any{},
 			"scaleMin":        scaleMin,
 			"scaleMax":        scaleMax,
 			"scaleMinLabel":   strVal(scaleMinLabel),
@@ -417,6 +427,7 @@ func EvaluateAnswers(ctx context.Context, pool *pgxpool.Pool, formRow DBFormRow,
 		var textVal *string
 		var numVal *float64
 		var selected []int64
+		var mapping map[int64]int64
 		answered := false
 
 		switch qtype {
@@ -445,6 +456,13 @@ func EvaluateAnswers(ctx context.Context, pool *pgxpool.Pool, formRow DBFormRow,
 					answered = true
 				}
 			}
+		case "match", "classify":
+			mapping = ParseMapping(val)
+			if len(mapping) > 0 {
+				s := MappingJSON(mapping)
+				textVal = &s
+				answered = true
+			}
 		default:
 			if val != nil && fmt.Sprint(val) != "" {
 				s := fmt.Sprint(val)
@@ -454,7 +472,19 @@ func EvaluateAnswers(ctx context.Context, pool *pgxpool.Pool, formRow DBFormRow,
 		}
 
 		var isCorrect *bool
-		if isTest {
+		// Соответствия считаются по парам, а не одним вопросом.
+		if isTest && IsPairing(qtype) {
+			items, _, err := LoadPairing(ctx, pool, qid)
+			if err != nil {
+				return result, err
+			}
+			if right, total := ScorePairing(items, mapping); total > 0 {
+				ok := right == total
+				isCorrect = &ok
+				result.Scorable += total
+				result.CorrectCount += right
+			}
+		} else if isTest {
 			hasCorrect := false
 			var correctOptIDs []int64
 			cv := q.CorrectValue
@@ -684,7 +714,11 @@ func PersistForm(ctx context.Context, pool *pgxpool.Pool, data map[string]any, v
 			return 0, err
 		}
 
-		if qtype == "single" || qtype == "multiple" || qtype == "dropdown" {
+		if IsPairing(qtype) {
+			if err := persistPairing(ctx, tx, qid, q); err != nil {
+				return 0, err
+			}
+		} else if qtype == "single" || qtype == "multiple" || qtype == "dropdown" {
 			var correctIDs []string
 			if qtype == "multiple" {
 				if arr, ok := correct.([]any); ok {
@@ -918,4 +952,93 @@ func containsInt64(a []int64, v int64) bool {
 		}
 	}
 	return false
+}
+
+
+// assemblePairingQuestion собирает вопрос «Соответствие» / «Классификация» для клиента:
+// options — варианты справа, items — элементы слева, correct — {itemId: targetId}.
+func assemblePairingQuestion(ctx context.Context, pool *pgxpool.Pool, qid int64, title, hint, qtype string,
+	required bool, scaleMin, scaleMax int32, scaleMinLabel, scaleMaxLabel *string) (map[string]any, error) {
+	items, targets, err := LoadPairing(ctx, pool, qid)
+	if err != nil {
+		return nil, err
+	}
+	options := []map[string]any{}
+	for _, t := range targets {
+		options = append(options, map[string]any{"id": strconv.FormatInt(t.ID, 10), "text": t.Text})
+	}
+	outItems := []map[string]any{}
+	correct := map[string]any{}
+	for _, it := range items {
+		id := strconv.FormatInt(it.ID, 10)
+		outItems = append(outItems, map[string]any{"id": id, "text": it.Text})
+		if it.TargetID != nil {
+			correct[id] = strconv.FormatInt(*it.TargetID, 10)
+		}
+	}
+	var correctOut any
+	if len(correct) > 0 {
+		correctOut = correct
+	}
+	return map[string]any{
+		"id":            strconv.FormatInt(qid, 10),
+		"title":         title,
+		"hint":          hint,
+		"type":          qtype,
+		"required":      required,
+		"options":       options,
+		"items":         outItems,
+		"scaleMin":      scaleMin,
+		"scaleMax":      scaleMax,
+		"scaleMinLabel": strVal(scaleMinLabel),
+		"scaleMaxLabel": strVal(scaleMaxLabel),
+		"correct":       correctOut,
+	}, nil
+}
+
+// persistPairing записывает варианты справа (role='target'), затем элементы слева
+// (role='item') со ссылкой на правильный вариант. Клиентские id заменяются на id из БД.
+// Пустые по тексту элементы и варианты пропускаются.
+func persistPairing(ctx context.Context, tx pgx.Tx, qid int64, q map[string]any) error {
+	correct, _ := q["correct"].(map[string]any)
+	targetDB := map[string]int64{}
+
+	opts, _ := q["options"].([]any)
+	pos := 0
+	for _, raw := range opts {
+		opt, ok := raw.(map[string]any)
+		if !ok || strings.TrimSpace(strField(opt, "text")) == "" {
+			continue
+		}
+		var id int64
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO public.test_options (question_id, position, text, is_correct, role)
+			VALUES ($1,$2,$3,false,'target') RETURNING id`, qid, pos, strField(opt, "text")).Scan(&id); err != nil {
+			return err
+		}
+		targetDB[fmt.Sprint(opt["id"])] = id
+		pos++
+	}
+
+	items, _ := q["items"].([]any)
+	pos = 0
+	for _, raw := range items {
+		it, ok := raw.(map[string]any)
+		if !ok || strings.TrimSpace(strField(it, "text")) == "" {
+			continue
+		}
+		var target any
+		if correct != nil {
+			if t, ok := targetDB[fmt.Sprint(correct[fmt.Sprint(it["id"])])]; ok {
+				target = t
+			}
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO public.test_options (question_id, position, text, is_correct, role, target_option_id)
+			VALUES ($1,$2,$3,false,'item',$4)`, qid, pos, strField(it, "text"), target); err != nil {
+			return err
+		}
+		pos++
+	}
+	return nil
 }

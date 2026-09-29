@@ -50,6 +50,7 @@ TOPICS = [
 
 # Подсказки к вопросам из таблиц — текст условия из документа без «бумажных» инструкций.
 HINTS = {
+    'Слева указаны задачи': 'Вариант должен подходить и по сервису, и по сведениям для запроса.',
     'Соотнесите понятия с определениями:': 'Выберите подходящее определение.',
     'Подберите вариант для каждой задачи:': 'Вариант должен подходить и по сервису, и по сведениям для запроса.',
     'Факт, предположение или галлюцинация': (
@@ -108,6 +109,16 @@ for folder, title, files, test_title in TOPICS:
     t = tests[folder]
     qs = []
     for qi, q in enumerate(t['questions']):
+        if q.get('type') in ('match', 'classify'):
+            items = [{'id': f'i{qi}_{k}', 'text': text} for k, text in enumerate(q['items'])]
+            opts = [{'id': f'o{qi}_{j}', 'text': text} for j, text in enumerate(q['options'])]
+            qs.append({
+                'id': f'q{qi}', 'title': q['title'], 'hint': hint_for(q['hint']), 'type': q['type'],
+                'required': True, 'options': opts, 'items': items, 'scaleMin': 1, 'scaleMax': 5,
+                'scaleMinLabel': '', 'scaleMaxLabel': '',
+                'correct': {items[k]['id']: opts[j]['id'] for k, j in enumerate(q['key'])},
+            })
+            continue
         opts = [{'id': f'o{qi}_{oi}', 'text': o['text']} for oi, o in enumerate(q['options'])]
         correct = next(f'o{qi}_{oi}' for oi, o in enumerate(q['options']) if o['correct'])
         qs.append({

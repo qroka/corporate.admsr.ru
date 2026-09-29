@@ -208,8 +208,8 @@ async function openParticipant(p: { id: number; name: string }) {
                 <UIcon v-else-if="a.isCorrect === false" name="i-lucide-x-circle" class="size-4 text-error shrink-0" />
                 <span class="text-sm text-highlighted">{{ i + 1 }}. {{ a.title || 'Без названия' }}</span>
               </div>
-              <p class="text-sm text-muted pl-6">Ответ: {{ a.userAnswer }}</p>
-              <p v-if="a.isCorrect === false && a.correctAnswer" class="text-sm text-success pl-6">Правильно: {{ a.correctAnswer }}</p>
+              <p class="text-sm text-muted pl-6 whitespace-pre-line">Ответ: {{ a.userAnswer }}</p>
+              <p v-if="a.isCorrect === false && a.correctAnswer" class="text-sm text-success pl-6 whitespace-pre-line">Правильно: {{ a.correctAnswer }}</p>
             </div>
           </template>
         </div>
