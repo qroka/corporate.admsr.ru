@@ -110,9 +110,8 @@ function onToggleShowCorrect(value: boolean) {
   form.showCorrectAnswers = value;
 }
 
-// «Разрешить изменять ответ» ↔ «Свободный переход между вопросами»
-watch(() => form.allowChangeAnswer, (v) => { if (v) form.freeNavigation = true; });
-watch(() => form.freeNavigation, (v) => { if (!v) form.allowChangeAnswer = false; });
+// «Свободный переход» больше не настраивается: «Назад» в прохождении есть всегда
+// (ADR-037), что можно менять при возврате — решает allowChangeAnswer.
 
 // Голосование: «Разрешить переголосовать» снимает ограничение времени
 watch(() => form.allowRevote, (v) => { if (v && form.kind === 'poll') form.useTimeLimit = false; });
@@ -329,7 +328,6 @@ function fmtDate(iso?: string): string {
               <UCheckbox v-if="form.kind !== 'poll'" v-model="form.shuffle" label="Перемешивать вопросы" />
               <UCheckbox v-model="form.shuffleOptions" :label="form.kind === 'poll' ? 'Перемешивать кандидатов' : 'Перемешивать варианты ответов'" />
               <UCheckbox v-if="form.kind !== 'poll'" v-model="form.showProgress" label="Показывать прогресс-бар" />
-              <UCheckbox v-if="form.kind !== 'poll'" v-model="form.freeNavigation" label="Свободный переход между вопросами" />
               <UCheckbox v-model="form.anonymous" :disabled="anonymousLocked" label="Анонимные ответы" />
               <UCheckbox
                 v-if="form.kind === 'test'"

@@ -64,7 +64,13 @@ const currentQuestion = computed(() => currentItem.value?.q);
 const currentOptions = computed(() => currentItem.value?.options ?? []);
 const isLastPage = computed(() => page.value === view.value.length && view.value.length > 0);
 
-const canGoBack = computed(() => props.form.freeNavigation && page.value > 1 && !timeUp.value && !revealing.value);
+/**
+ * «Назад» есть всегда: раньше он зависел от «Свободного перехода», а «Далее»
+ * (пропустить вопрос) был всегда — вперёд пропустить можно, вернуться нельзя.
+ * Что можно менять при возврате, решает «Разрешить изменять ответ»: без неё
+ * данный ответ зафиксирован, а пропущенный вопрос остаётся открытым.
+ */
+const canGoBack = computed(() => page.value > 1 && !timeUp.value && !revealing.value);
 
 // ── Ответы ───────────────────────────────────────────────────────────────────
 const answers = reactive<Record<string, unknown>>({});
@@ -210,9 +216,10 @@ function start() {
   startInterval();
   saveSessionNow();
 }
+/** Фиксируем только данный ответ: пропущенный через «Далее» вопрос должен остаться открытым. */
 function lockCurrentIfNeeded() {
   const q = currentQuestion.value;
-  if (q && !props.form.allowChangeAnswer) lockedIds.value.add(q.id);
+  if (q && !props.form.allowChangeAnswer && isAnswered(q)) lockedIds.value.add(q.id);
 }
 function advance() { if (page.value < total.value - 1) { lockCurrentIfNeeded(); page.value++; } }
 function prev() { if (canGoBack.value) page.value--; }
@@ -261,6 +268,8 @@ function attemptFinish() {
 function goToUnanswered() {
   unansweredOpen.value = false;
   reviewActive.value = true;
+  // Страховка: вопрос без ответа не может быть зафиксирован (например, из старой сессии).
+  for (const x of unanswered.value) lockedIds.value.delete(x.q.id);
   const first = unanswered.value[0];
   if (first) page.value = first.page;
 }
@@ -430,7 +439,7 @@ function pollPercent(id: string): number { return pollResults.value[id]?.percent
     </p>
 
     <div class="flex-1 min-h-0 w-full grid place-items-center [container-type:size]">
-      <div class="aspect-[16/10] w-[min(100%,160cqh)] max-w-4xl rounded-2xl ring-1 ring-default bg-default shadow-2xl overflow-hidden flex flex-col">
+      <div class="aspect-[16/10] w-[min(100%,160cqh)] max-w-4xl [@container(orientation:portrait)]:aspect-auto [@container(orientation:portrait)]:w-full [@container(orientation:portrait)]:h-full rounded-2xl ring-1 ring-default bg-default shadow-2xl overflow-hidden flex flex-col">
 
         <div v-if="form.showProgress && page > 0 && !resultsView" class="h-1 bg-elevated shrink-0">
           <div class="h-full bg-primary transition-all" :style="{ width: `${(page / Math.max(view.length, 1)) * 100}%` }" />
@@ -496,7 +505,7 @@ function pollPercent(id: string): number { return pollResults.value[id]?.percent
               </div>
             </div>
 
-            <div class="flex-1 min-h-0 flex flex-col justify-center gap-5 overflow-y-auto px-1 py-1">
+            <div class="flex-1 min-h-0 flex flex-col justify-center-safe gap-5 overflow-y-auto px-1 py-1">
               <div class="flex flex-col gap-2">
                 <h3 class="text-2xl font-medium text-highlighted">
                   {{ currentQuestion.title || 'Без названия' }}
@@ -614,7 +623,7 @@ function pollPercent(id: string): number { return pollResults.value[id]?.percent
             <UButton v-if="canGoBack" color="neutral" variant="ghost" size="md" class="text-dimmed hover:text-default" leading-icon="i-lucide-arrow-left" @click="prev">Назад</UButton>
             <span v-else />
             <UButton v-if="!timeUp && reviewActive && nextUnansweredPage" color="neutral" variant="ghost" size="md" class="text-dimmed hover:text-default" :disabled="revealing" trailing-icon="i-lucide-arrow-right" @click="page = nextUnansweredPage">Далее</UButton>
-            <UButton v-else-if="!timeUp && !isLastPage && !reviewActive" color="neutral" variant="ghost" size="md" class="text-dimmed hover:text-default" :disabled="revealing" trailing-icon="i-lucide-arrow-right" @click="advance">Далее</UButton>
+            <UButton v-else-if="!timeUp && !isLastPage && !reviewActive && !currentLocked" color="neutral" variant="ghost" size="md" class="text-dimmed hover:text-default" :disabled="revealing" trailing-icon="i-lucide-arrow-right" @click="advance">Далее</UButton>
             <span v-else />
           </div>
           <!-- Полоса + счётчик + основная кнопка -->
@@ -622,6 +631,7 @@ function pollPercent(id: string): number { return pollResults.value[id]?.percent
             <span class="text-xs text-dimmed tabular-nums">{{ page }} / {{ view.length }}</span>
             <UButton v-if="timeUp" color="primary" size="md" :icon="finishIcon" @click="finalize">Завершить</UButton>
             <UButton v-else-if="isLastPage || reviewActive" color="primary" size="md" :icon="finishIcon" :disabled="revealing" @click="onFinishClick">{{ finishLabel }}</UButton>
+            <UButton v-else-if="currentLocked" color="primary" size="md" trailing-icon="i-lucide-arrow-right" :disabled="revealing" @click="advance">Дальше</UButton>
             <UButton v-else color="primary" size="md" icon="i-lucide-check" :disabled="!currentQuestion || !isAnswered(currentQuestion) || revealing" @click="onAnswer">Ответить</UButton>
           </div>
         </div>

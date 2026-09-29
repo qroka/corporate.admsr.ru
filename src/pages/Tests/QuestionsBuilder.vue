@@ -32,8 +32,27 @@ function addOption(q: Question) {
   if (!Array.isArray(q.options)) q.options = [];
   q.options.push(createOption());
 }
+/** Вариант отмечен правильным — показываем прямо в карточке вопроса (IMP-45). */
+function isOptionCorrect(q: Question, id: string): boolean {
+  return Array.isArray(q.correct) ? q.correct.includes(id) : q.correct === id;
+}
+/** Клик по маркеру варианта: single/dropdown — выбрать, multiple — переключить. */
+function toggleOptionCorrect(q: Question, id: string) {
+  if (q.type === 'multiple') {
+    const arr = Array.isArray(q.correct) ? [...q.correct] : [];
+    const i = arr.indexOf(id);
+    if (i >= 0) arr.splice(i, 1);
+    else arr.push(id);
+    q.correct = arr;
+  } else {
+    q.correct = q.correct === id ? null : id;
+  }
+}
 function removeOption(q: Question, index: number) {
-  if (q.options.length > 2) q.options.splice(index, 1);
+  if (q.options.length <= 2) return;
+  const [removed] = q.options.splice(index, 1);
+  // Отметка «правильный» не должна пережить удалённый вариант.
+  if (removed && isOptionCorrect(q, removed.id)) toggleOptionCorrect(q, removed.id);
 }
 function optionIcon(t: QType): string {
   if (t === 'single') return 'i-lucide-circle';
@@ -196,8 +215,29 @@ function scaleNumbers(q: Question): number[] {
       <div class="pl-12 flex flex-col gap-2">
         <template v-if="typeHasOptions(q.type)">
           <div v-for="(opt, oi) in q.options" :key="opt.id" class="flex items-center gap-2">
-            <UIcon :name="optionIcon(q.type)" class="size-4 shrink-0 text-dimmed" />
-            <UInput v-model="opt.text" size="md" class="flex-1" :placeholder="`Вариант ${oi + 1}`" />
+            <UTooltip v-if="kind === 'test'" :text="isOptionCorrect(q, opt.id) ? 'Правильный — снять отметку' : 'Отметить правильным'">
+              <UButton
+                :color="isOptionCorrect(q, opt.id) ? 'success' : 'neutral'"
+                variant="ghost"
+                size="xs"
+                square
+                :icon="isOptionCorrect(q, opt.id) ? 'i-lucide-circle-check' : optionIcon(q.type)"
+                :aria-label="isOptionCorrect(q, opt.id) ? `Вариант ${oi + 1} правильный — снять отметку` : `Отметить вариант ${oi + 1} правильным`"
+                :aria-pressed="isOptionCorrect(q, opt.id)"
+                class="shrink-0 -mx-1"
+                :class="isOptionCorrect(q, opt.id) ? '' : 'text-dimmed'"
+                @click="toggleOptionCorrect(q, opt.id)"
+              />
+            </UTooltip>
+            <UIcon v-else :name="optionIcon(q.type)" class="size-4 shrink-0 text-dimmed" />
+            <UInput
+              v-model="opt.text"
+              size="md"
+              class="flex-1"
+              :color="kind === 'test' && isOptionCorrect(q, opt.id) ? 'success' : undefined"
+              :highlight="kind === 'test' && isOptionCorrect(q, opt.id)"
+              :placeholder="`Вариант ${oi + 1}`"
+            />
             <UTooltip text="Удалить вариант">
               <UButton
                 color="error"

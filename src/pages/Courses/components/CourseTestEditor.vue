@@ -80,7 +80,12 @@ function onRemove() {
 </script>
 
 <template>
-  <div class="flex flex-col flex-1 min-h-0 w-full gap-4">
+  <!--
+    Прокручивается вся страница, а не внутренняя область: на невысоком экране
+    закреплённые шапка, шаги и футер оставляли вопросам ~140 px (IMP-44).
+    Закреплён только футер с кнопками.
+  -->
+  <div class="flex flex-col w-full gap-4">
     <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-3 min-w-0">
       <div class="flex flex-col gap-1 min-w-0">
         <h1 class="text-2xl font-medium text-highlighted break-words">{{ headline }}</h1>
@@ -125,7 +130,7 @@ function onRemove() {
     </div>
 
     <!-- Контент шага -->
-    <div class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-1">
+    <div class="min-w-0 overflow-x-hidden p-1">
       <!-- Шаг 1: параметры -->
       <div
         v-show="step === 'settings'"
@@ -170,7 +175,7 @@ function onRemove() {
               <UCheckbox v-model="form.shuffle" label="Перемешивать вопросы" />
               <UCheckbox v-model="form.shuffleOptions" label="Перемешивать варианты ответов" />
               <UCheckbox v-model="form.showProgress" label="Показывать прогресс-бар" />
-              <UCheckbox v-model="form.freeNavigation" label="Свободный переход между вопросами" />
+              <UCheckbox v-model="form.allowChangeAnswer" label="Разрешить менять ответы до завершения" />
             </div>
           </div>
         </div>
@@ -237,7 +242,7 @@ function onRemove() {
     </div>
 
     <!-- Футер навигации -->
-    <div class="shrink-0 flex flex-wrap justify-between items-center gap-3 pt-3 border-t border-default">
+    <div class="sticky bottom-0 z-10 flex flex-wrap justify-between items-center gap-3 pt-3 pb-1 bg-default/95 backdrop-blur border-t border-default">
       <UButton
         v-if="stepIdx > 0"
         color="neutral"
