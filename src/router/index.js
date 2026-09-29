@@ -38,6 +38,8 @@ import CourseResultsPage from '../pages/Courses/admin/CourseResultsPage.vue';
 import MyCoursesPage from '../pages/Courses/employee/MyCoursesPage.vue';
 import CourseEnrollmentPage from '../pages/Courses/employee/CourseEnrollmentPage.vue';
 import CourseTopicPage from '../pages/Courses/employee/CourseTopicPage.vue';
+import NotFoundPage from '../pages/NotFoundPage.vue';
+import CourseMaterialPage from '../pages/Courses/employee/CourseMaterialPage.vue';
 import CourseTestPage from '../pages/Courses/employee/CourseTestPage.vue';
 import CourseResultPage from '../pages/Courses/employee/CourseResultPage.vue';
 import { userNeedsOnboarding } from '../composables/useOnboarding';
@@ -146,8 +148,11 @@ const routes = [
   { path: '/courses/history', redirect: { name: 'courses' } },
   { path: '/courses/:enrollmentId', name: 'course-enrollment', component: CourseEnrollmentPage, meta: { title: 'Обучение' } },
   { path: '/courses/:enrollmentId/topics/:topicId', name: 'course-topic', component: CourseTopicPage, meta: { title: 'Тема' } },
+  { path: '/courses/:enrollmentId/topics/:topicId/materials/:materialId', name: 'course-material', component: CourseMaterialPage, meta: { title: 'Материал' } },
   { path: '/courses/:enrollmentId/tests/:courseTestLinkId', name: 'course-test', component: CourseTestPage, meta: { title: 'Тест' } },
   { path: '/courses/:enrollmentId/result', name: 'course-result', component: CourseResultPage, meta: { title: 'Итоги' } },
+  // Последним: всё, что не совпало выше.
+  { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundPage, meta: { title: 'Страница не найдена' } },
 ];
 
 export const router = createRouter({

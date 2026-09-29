@@ -130,6 +130,8 @@ export default defineConfig({
       '/api/course_admin_participant.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/api/course_admin_attempt.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/api/course_enrollment_reset.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
+      '/api/course_enrollment_cancel.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
+      '/api/course_file.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/api/courses_for_me.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/api/course_enrollment_get.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/api/course_start.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },

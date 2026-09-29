@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"mime"
 	"net/http"
 	"os"
@@ -292,7 +293,15 @@ func (h *CoursesHandler) Update(w http.ResponseWriter, r *http.Request) {
 				_, _ = tx.Exec(ctx, `UPDATE public.course_versions SET completion_rule = $2, updated_at = now() WHERE id = $1`, versionID, v)
 			}
 			if v, ok := body["defaultDeadlineDays"]; ok {
-				_, _ = tx.Exec(ctx, `UPDATE public.course_versions SET default_deadline_days = $2, updated_at = now() WHERE id = $1`, versionID, v)
+				// JSON-число приходит как float64; в integer-колонку пишем целое или NULL
+				// («без срока»), иначе ошибка приведения молча терялась бы в `_, _ =`.
+				var days any
+				if n := toIntDefaultMap(v, 0); n > 0 {
+					days = n
+				}
+				if _, err := tx.Exec(ctx, `UPDATE public.course_versions SET default_deadline_days = $2, updated_at = now() WHERE id = $1`, versionID, days); err != nil {
+					return nil, courses.Err(http.StatusInternalServerError, "Не удалось сохранить срок прохождения")
+				}
 			}
 			if v, ok := body["finalPassingScore"]; ok {
 				_, _ = tx.Exec(ctx, `UPDATE public.course_versions SET final_passing_score = $2, updated_at = now() WHERE id = $1`, versionID, v)
@@ -764,7 +773,13 @@ func (h *CoursesHandler) MaterialsUpload(w http.ResponseWriter, r *http.Request)
 		httpx.Fail(w, http.StatusBadRequest, "Недопустимое расширение файла")
 		return
 	}
-	mimeType := mime.TypeByExtension("." + ext)
+	// Встроенная таблица Go не знает видео, а системная (/etc/mime.types,
+	// реестр Windows) есть не везде — без этого mp4 уходил бы как octet-stream
+	// и не проигрывался во встроенном плеере.
+	mimeType := map[string]string{"mp4": "video/mp4", "webm": "video/webm", "pdf": "application/pdf"}[ext]
+	if mimeType == "" {
+		mimeType = mime.TypeByExtension("." + ext)
+	}
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
 	}
@@ -1005,37 +1020,99 @@ func (h *CoursesHandler) TestsDelete(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// assignTarget — одна цель назначения и её сотрудники на текущий момент.
+type assignTarget struct {
+	kind            string // user | ofo | all
+	id              int64
+	includeChildren bool
+	users           []int64
+}
+
+func (h *CoursesHandler) assignTargets(ctx context.Context, body map[string]any) ([]assignTarget, error) {
+	svc := h.svc()
+	var out []assignTarget
+	if courses.Bool(body["allUsers"]) {
+		all, err := svc.ResolveAllUsers(ctx)
+		if err != nil {
+			return nil, err
+		}
+		// «Всем» перекрывает ОФО: отдельные назначения на подразделения не нужны.
+		out = append(out, assignTarget{kind: "all", users: all})
+	} else {
+		includeChildren := courses.Bool(body["includeChildren"])
+		for _, ofoID := range uniqueInt64FromAny(body["ofoIds"]) {
+			members, err := svc.ResolveOfoUsers(ctx, []int64{ofoID}, includeChildren)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, assignTarget{kind: "ofo", id: ofoID, includeChildren: includeChildren, users: members})
+		}
+	}
+	for _, uid := range uniqueInt64FromAny(body["userIds"]) {
+		out = append(out, assignTarget{kind: "user", id: uid, users: []int64{uid}})
+	}
+	return out, nil
+}
+
 func (h *CoursesHandler) AssignPreview(w http.ResponseWriter, r *http.Request) {
 	h.postSection(w, r, func(ctx context.Context, _ *auth.User, body map[string]any, _ *http.Request) (any, error) {
-		svc := h.svc()
-		userIDs := uniqueInt64FromAny(body["userIds"])
-		ofoIDs := uniqueInt64FromAny(body["ofoIds"])
-		includeChildren := courses.Bool(body["includeChildren"])
-		fromOfo, err := svc.ResolveOfoUsers(ctx, ofoIDs, includeChildren)
+		targets, err := h.assignTargets(ctx, body)
 		if err != nil {
 			return nil, err
 		}
 		seen := map[int64]struct{}{}
-		for _, id := range userIDs {
-			seen[id] = struct{}{}
+		ids := []int64{}
+		fromUsers, fromOfo := 0, 0
+		for _, t := range targets {
+			if t.kind == "user" {
+				fromUsers++
+			} else {
+				fromOfo += len(t.users)
+			}
+			for _, id := range t.users {
+				if _, ok := seen[id]; !ok {
+					seen[id] = struct{}{}
+					ids = append(ids, id)
+				}
+			}
 		}
-		for _, id := range fromOfo {
-			seen[id] = struct{}{}
+		rows, err := h.Pool.Query(ctx, `
+			SELECT id, firstname, surname, lastname, role, ofo FROM public.user_info
+			WHERE id = ANY($1) AND status IS TRUE
+			ORDER BY surname, firstname, id`, ids)
+		if err != nil {
+			return nil, err
 		}
-		var recipients []map[string]any
-		for id := range seen {
-			u, _ := scanOneMap(ctx, h.Pool, `SELECT id, firstname, surname, lastname, role, ofo FROM public.user_info WHERE id = $1 AND status IS TRUE`, id)
-			if u == nil {
-				continue
+		defer rows.Close()
+		recipients := []map[string]any{}
+		withoutOfo := 0
+		for rows.Next() {
+			u, err := scanRowToMap(rows)
+			if err != nil {
+				return nil, err
+			}
+			ofo := strings.TrimSpace(fmt.Sprint(u["ofo"]))
+			if u["ofo"] == nil || ofo == "" || ofo == "-1" {
+				withoutOfo++
 			}
 			recipients = append(recipients, map[string]any{
-				"id": id, "fio": courses.UserFio(u), "role": u["role"], "ofo": u["ofo"],
+				"id": u["id"], "fio": courses.UserFio(u), "role": u["role"], "ofo": u["ofo"],
 			})
 		}
-		return map[string]any{"count": len(recipients), "recipients": recipients, "fromUsers": len(userIDs), "fromOfo": len(fromOfo)}, nil
+		return map[string]any{
+			"count": len(recipients), "recipients": recipients,
+			"fromUsers": fromUsers, "fromOfo": fromOfo, "withoutOfo": withoutOfo,
+		}, nil
 	})
 }
 
+// Assign — POST /api/course_assign.php.
+//
+// Body: courseId|versionId; userIds[] и/или ofoIds[] (+ includeChildren) или
+// allUsers: true; опц. startsAt, deadlineAt (дата) | deadlineDays, comment.
+// На каждую цель — строка course_assignments; сотрудник получает одну запись,
+// даже если попал в несколько целей. Назначения на ОФО и «всем» постоянные —
+// опоздавшие получают курс при входе (ADR-036).
 func (h *CoursesHandler) Assign(w http.ResponseWriter, r *http.Request) {
 	h.postSection(w, r, func(ctx context.Context, user *auth.User, body map[string]any, req *http.Request) (any, error) {
 		svc := h.svc()
@@ -1053,106 +1130,92 @@ func (h *CoursesHandler) Assign(w http.ResponseWriter, r *http.Request) {
 		if fmt.Sprint(version["status"]) != "published" {
 			return nil, courses.Err(http.StatusConflict, "Назначать можно только опубликованную версию")
 		}
-		userIDs := uniqueInt64FromAny(body["userIds"])
-		ofoIDs := uniqueInt64FromAny(body["ofoIds"])
-		if len(userIDs) == 0 && len(ofoIDs) == 0 {
-			return nil, courses.Err(http.StatusBadRequest, "Укажите userIds и/или ofoIds")
+		targets, err := h.assignTargets(ctx, body)
+		if err != nil {
+			return nil, err
 		}
-		includeChildren := courses.Bool(body["includeChildren"])
-		startsAt := body["startsAt"]
-		deadlineAt := body["deadlineAt"]
-		var days *int
-		if deadlineAt == nil {
+		if len(targets) == 0 {
+			return nil, courses.Err(http.StatusBadRequest, "Укажите сотрудников, подразделения или «Всем сотрудникам»")
+		}
+
+		base := courses.Assignment{VersionID: versionID}
+		if t := parseRFC3339(body["startsAt"]); t != nil {
+			base.StartsAt = t
+		}
+		if t := parseRFC3339(body["deadlineAt"]); t != nil {
+			base.DeadlineAt = t
+		} else {
+			days := 0
 			if v, ok := body["deadlineDays"]; ok {
-				d := toIntDefaultMap(v, 0)
-				days = &d
+				days = toIntDefaultMap(v, 0)
 			} else if version["defaultDeadlineDays"] != nil {
-				d := toIntDefaultMap(version["defaultDeadlineDays"], 0)
-				days = &d
+				days = toIntDefaultMap(version["defaultDeadlineDays"], 0)
+			}
+			if days > 0 {
+				base.DeadlineDays = &days
 			}
 		}
 		comment := body["comment"]
-		var assignmentIDs []int64
-		created, skipped := 0, 0
+
 		tx, err := h.Pool.Begin(ctx)
 		if err != nil {
 			return nil, err
 		}
 		defer tx.Rollback(ctx)
-		resolveDeadline := func(sa any) any {
-			if deadlineAt != nil {
-				return deadlineAt
+		now := time.Now()
+		var assignmentIDs, createdIDs []int64
+		seen := map[int64]struct{}{}
+		skipped := 0
+		for _, t := range targets {
+			a := base
+			if err := tx.QueryRow(ctx, `
+				INSERT INTO public.course_assignments
+					(course_version_id, target_type, target_id, starts_at, deadline_at, deadline_days, assigned_by, comment, include_children)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+				versionID, t.kind, t.id, a.StartsAt, a.DeadlineAt, a.DeadlineDays, user.ID, comment, t.includeChildren,
+			).Scan(&a.ID); err != nil {
+				return nil, courses.MigrationError(err)
 			}
-			if days == nil || *days <= 0 {
-				return nil
-			}
-			base := time.Now()
-			if s, ok := sa.(string); ok && s != "" {
-				if t, err := time.Parse(time.RFC3339, s); err == nil {
-					base = t
-				}
-			}
-			d := base.Add(time.Duration(*days) * 24 * time.Hour).Format(time.RFC3339)
-			return d
-		}
-		for _, uid := range userIDs {
-			da := resolveDeadline(startsAt)
-			var aid int64
-			_ = tx.QueryRow(ctx, `
-				INSERT INTO public.course_assignments (course_version_id, target_type, target_id, starts_at, deadline_at, assigned_by, comment, include_children)
-				VALUES ($1,'user',$2,$3,$4,$5,$6,false) RETURNING id`, versionID, uid, startsAt, da, user.ID, comment).Scan(&aid)
-			assignmentIDs = append(assignmentIDs, aid)
-			var exist int64
-			if tx.QueryRow(ctx, `SELECT id FROM public.course_enrollments WHERE user_id=$1 AND course_version_id=$2 AND status <> 'cancelled' LIMIT 1`, uid, versionID).Scan(&exist) == nil {
-				skipped++
-				continue
-			}
-			var eid int64
-			_ = tx.QueryRow(ctx, `
-				INSERT INTO public.course_enrollments (assignment_id, course_version_id, user_id, status, starts_at, deadline_at)
-				VALUES ($1,$2,$3,'not_started',$4,$5) RETURNING id`, aid, versionID, uid, startsAt, da).Scan(&eid)
-			_ = svc.EnsureTopicProgressRows(ctx, eid, versionID)
-			created++
-		}
-		fromOfo, _ := svc.ResolveOfoUsers(ctx, ofoIDs, includeChildren)
-		for _, ofoID := range ofoIDs {
-			da := resolveDeadline(startsAt)
-			var aid int64
-			_ = tx.QueryRow(ctx, `
-				INSERT INTO public.course_assignments (course_version_id, target_type, target_id, starts_at, deadline_at, assigned_by, comment, include_children)
-				VALUES ($1,'ofo',$2,$3,$4,$5,$6,$7) RETURNING id`, versionID, ofoID, startsAt, da, user.ID, comment, includeChildren).Scan(&aid)
-			assignmentIDs = append(assignmentIDs, aid)
-			for _, mid := range fromOfo {
-				skip := false
-				for _, u := range userIDs {
-					if u == mid {
-						skip = true
-						break
-					}
-				}
-				if skip {
+			assignmentIDs = append(assignmentIDs, a.ID)
+			for _, uid := range t.users {
+				if _, dup := seen[uid]; dup {
 					continue
 				}
-				var exist int64
-				if tx.QueryRow(ctx, `SELECT id FROM public.course_enrollments WHERE user_id=$1 AND course_version_id=$2 AND status <> 'cancelled' LIMIT 1`, mid, versionID).Scan(&exist) == nil {
+				seen[uid] = struct{}{}
+				eid, err := courses.Enroll(ctx, tx, a, uid, now, false)
+				if err != nil {
+					return nil, err
+				}
+				if eid == 0 {
 					skipped++
 					continue
 				}
-				var eid int64
-				_ = tx.QueryRow(ctx, `
-					INSERT INTO public.course_enrollments (assignment_id, course_version_id, user_id, status, starts_at, deadline_at)
-					VALUES ($1,$2,$3,'not_started',$4,$5) RETURNING id`, aid, versionID, mid, startsAt, da).Scan(&eid)
-				_ = svc.EnsureTopicProgressRows(ctx, eid, versionID)
-				created++
+				createdIDs = append(createdIDs, eid)
 			}
 		}
 		if err := tx.Commit(ctx); err != nil {
 			return nil, courses.Err(http.StatusInternalServerError, "Ошибка назначения")
 		}
+		// Строки прогресса — после коммита: из транзакции записи ещё не видны пулу.
+		for _, eid := range createdIDs {
+			_ = svc.EnsureTopicProgressRows(ctx, eid, versionID)
+		}
 		uid := user.ID
-		courses.Audit(ctx, h.Pool, &uid, "course.assign", "course_version", &versionID, map[string]any{"assignments": assignmentIDs, "enrollments": created, "skipped": skipped}, req)
-		return map[string]any{"assignmentIds": assignmentIDs, "enrollmentsCreated": created, "skipped": skipped}, nil
+		courses.Audit(ctx, h.Pool, &uid, "course.assign", "course_version", &versionID, map[string]any{"assignments": assignmentIDs, "enrollments": len(createdIDs), "skipped": skipped}, req)
+		return map[string]any{"assignmentIds": assignmentIDs, "enrollmentsCreated": len(createdIDs), "skipped": skipped}, nil
 	})
+}
+
+func parseRFC3339(v any) *time.Time {
+	s, ok := v.(string)
+	if !ok || strings.TrimSpace(s) == "" {
+		return nil
+	}
+	t, err := time.Parse(time.RFC3339, strings.TrimSpace(s))
+	if err != nil {
+		return nil
+	}
+	return &t
 }
 
 func (h *CoursesHandler) AdminResults(w http.ResponseWriter, r *http.Request) {
@@ -1171,11 +1234,10 @@ func (h *CoursesHandler) AdminResults(w http.ResponseWriter, r *http.Request) {
 			args = append(args, v)
 			n++
 		}
-		if st, ok := body["status"].(string); ok && st != "" {
-			where = append(where, fmt.Sprintf("e.status = $%d", n))
-			args = append(args, st)
-			n++
-		}
+		// Фильтр по статусу применяется только к списку: сводка показывает все
+		// статусы по остальным фильтрам, иначе клик по карточке обнулял соседние.
+		statusFilter, _ := body["status"].(string)
+		statusFilter = strings.TrimSpace(statusFilter)
 		if ofoID, err := tests.ToInt64Public(body["ofoId"]); err == nil && ofoID > 0 {
 			ids, _ := svc.OfoDescendants(ctx, []int64{ofoID})
 			if len(ids) == 0 {
@@ -1196,6 +1258,16 @@ func (h *CoursesHandler) AdminResults(w http.ResponseWriter, r *http.Request) {
 			n++
 		}
 		wsql := strings.Join(where, " AND ")
+		aggArgs := append([]any{}, args...)
+		matchedSQL := "COUNT(*)"
+		if statusFilter != "" {
+			wsql += fmt.Sprintf(" AND e.status = $%d", n)
+			args = append(args, statusFilter)
+			matchedSQL = fmt.Sprintf("COUNT(*) FILTER (WHERE e.status = $%d)", len(aggArgs)+1)
+			aggArgs = append(aggArgs, statusFilter)
+			n++
+		}
+		aggWsql := strings.Join(where, " AND ")
 		limit := toIntDefaultMap(body["limit"], 50)
 		if limit > 5000 {
 			limit = 5000
@@ -1209,7 +1281,7 @@ func (h *CoursesHandler) AdminResults(w http.ResponseWriter, r *http.Request) {
 		}
 		var agg map[string]any
 		row, err := scanOneMap(ctx, h.Pool, fmt.Sprintf(`
-			SELECT COUNT(*) AS total,
+			SELECT COUNT(*) AS total, %s AS matched,
 			       COUNT(*) FILTER (WHERE e.status = 'not_started') AS not_started,
 			       COUNT(*) FILTER (WHERE e.status = 'in_progress') AS in_progress,
 			       COUNT(*) FILTER (WHERE e.status = 'completed') AS completed,
@@ -1220,10 +1292,10 @@ func (h *CoursesHandler) AdminResults(w http.ResponseWriter, r *http.Request) {
 			FROM public.course_enrollments e
 			JOIN public.course_versions v ON v.id = e.course_version_id
 			JOIN public.course_courses c ON c.id = v.course_id
-			JOIN public.user_info u ON u.id = e.user_id WHERE %s`, wsql), args...)
+			JOIN public.user_info u ON u.id = e.user_id WHERE %s`, matchedSQL, aggWsql), aggArgs...)
 		if err == nil {
 			agg = map[string]any{
-				"total": toIntDefaultMap(row["total"], 0), "notStarted": toIntDefaultMap(row["not_started"], 0),
+				"total": toIntDefaultMap(row["total"], 0), "matched": toIntDefaultMap(row["matched"], 0), "notStarted": toIntDefaultMap(row["not_started"], 0),
 				"inProgress": toIntDefaultMap(row["in_progress"], 0), "completed": toIntDefaultMap(row["completed"], 0),
 				"failed": toIntDefaultMap(row["failed"], 0), "overdue": toIntDefaultMap(row["overdue"], 0),
 				"cancelled": toIntDefaultMap(row["cancelled"], 0), "avgScore": row["avg_score"],
@@ -1547,9 +1619,57 @@ func (h *CoursesHandler) EnrollmentReset(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+// EnrollmentCancel — POST /api/course_enrollment_cancel.php {enrollmentId}.
+//
+// Снимает курс с одного сотрудника: запись получает статус cancelled и
+// пропадает из «Моего обучения». Прогресс не удаляется. Завершённый курс не
+// отменяется — для повторного прохождения есть «Обнулить результат». В PHP
+// была только отмена целого назначения (course_assignment_cancel.php), а
+// экран результатов работает с участниками — поэтому отмена поштучная.
+func (h *CoursesHandler) EnrollmentCancel(w http.ResponseWriter, r *http.Request) {
+	h.postSection(w, r, func(ctx context.Context, user *auth.User, body map[string]any, req *http.Request) (any, error) {
+		enrollmentID, err := tests.ToInt64Public(body["enrollmentId"])
+		if err != nil || enrollmentID <= 0 {
+			return nil, courses.Err(http.StatusBadRequest, "Не передан enrollmentId")
+		}
+		enr, err := scanOneMap(ctx, h.Pool, `SELECT * FROM public.course_enrollments WHERE id = $1`, enrollmentID)
+		if errors.Is(err, pgx.ErrNoRows) || enr == nil {
+			return nil, courses.Err(http.StatusNotFound, "Запись не найдена")
+		}
+		svc := h.svc()
+		version, _ := svc.GetVersion(ctx, tests.ToInt64Must(enr["course_version_id"]))
+		if version == nil {
+			return nil, courses.Err(http.StatusNotFound, "Версия курса не найдена")
+		}
+		if _, _, err := courses.RequireCourseAdmin(ctx, h.Pool, h.Auth, req, tests.ToInt64Must(version["courseId"])); err != nil {
+			return nil, err
+		}
+		switch fmt.Sprint(enr["status"]) {
+		case "cancelled":
+			return nil, courses.Err(http.StatusConflict, "Назначение уже отменено")
+		case "completed":
+			return nil, courses.Err(http.StatusConflict, "Курс уже пройден — отменить нельзя")
+		}
+		if _, err := h.Pool.Exec(ctx, `
+			UPDATE public.course_enrollments SET status = 'cancelled', updated_at = now()
+			WHERE id = $1 AND status NOT IN ('cancelled', 'completed')`, enrollmentID); err != nil {
+			return nil, courses.Err(http.StatusInternalServerError, "Не удалось отменить назначение")
+		}
+		uid := user.ID
+		courses.Audit(ctx, h.Pool, &uid, "course.enrollment.cancel", "course_enrollment", &enrollmentID,
+			map[string]any{"previousStatus": fmt.Sprint(enr["status"])}, req)
+		enr, _ = scanOneMap(ctx, h.Pool, `SELECT * FROM public.course_enrollments WHERE id = $1`, enrollmentID)
+		return map[string]any{"enrollment": courses.MapEnrollment(enr, nil, nil)}, nil
+	})
+}
+
 func (h *CoursesHandler) ForMe(w http.ResponseWriter, r *http.Request) {
 	h.post(w, r, func(ctx context.Context, user *auth.User, _ map[string]any, _ *http.Request) (any, error) {
 		svc := h.svc()
+		// Курсы, назначенные «всем» или на ОФО сотрудника после его последнего входа.
+		if _, err := svc.SyncStandingAssignments(ctx, user.ID); err != nil {
+			log.Printf("courses: sync standing assignments for user %d: %v", user.ID, err)
+		}
 		svc.MarkOverdue(ctx)
 		rows, err := h.Pool.Query(ctx, `
 			SELECT e.*, c.id AS course_id, c.title AS course_title, c.category,

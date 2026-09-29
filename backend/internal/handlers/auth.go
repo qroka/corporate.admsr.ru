@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"corporate.admsr.ru/backend/internal/auth"
+	"corporate.admsr.ru/backend/internal/courses"
 	"corporate.admsr.ru/backend/internal/config"
 	"corporate.admsr.ru/backend/internal/httpx"
 )
@@ -87,6 +89,10 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, _ = h.Pool.Exec(ctx, `UPDATE public.user_info SET auth = true, last_activity = now() WHERE id = $1`, user.ID)
+	// Курсы, назначенные «всем» или на ОФО, пока сотрудник не входил (ADR-036).
+	if _, err := (&courses.Service{Pool: h.Pool}).SyncStandingAssignments(ctx, user.ID); err != nil {
+		log.Printf("login: sync standing assignments for user %d: %v", user.ID, err)
+	}
 
 	isAdmin := user.UserGroup == "admin"
 	var sessionToken *string

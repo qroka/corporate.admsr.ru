@@ -61,6 +61,17 @@ const BREADCRUMB_PARENTS: Record<string, ParentCrumb[]> = {
       params: (p) => ({ enrollmentId: String(p.enrollmentId) }),
     },
   ],
+  'course-material': [
+    { name: 'courses' },
+    {
+      name: 'course-enrollment',
+      params: (p) => ({ enrollmentId: String(p.enrollmentId) }),
+    },
+    {
+      name: 'course-topic',
+      params: (p) => ({ enrollmentId: String(p.enrollmentId), topicId: String(p.topicId) }),
+    },
+  ],
   'course-test': [
     { name: 'courses' },
     {
@@ -196,6 +207,7 @@ const BREADCRUMB_ICONS: Record<string, string> = {
   courses: 'i-lucide-graduation-cap',
   'course-enrollment': 'i-lucide-graduation-cap',
   'course-topic': 'i-lucide-book-open',
+  'course-material': 'i-lucide-file-text',
   'course-test': 'i-lucide-clipboard-list',
   'course-result': 'i-lucide-award',
   'admin-courses': 'i-lucide-graduation-cap',

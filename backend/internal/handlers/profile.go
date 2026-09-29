@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"corporate.admsr.ru/backend/internal/auth"
+	"corporate.admsr.ru/backend/internal/courses"
 	"corporate.admsr.ru/backend/internal/httpx"
 )
 
@@ -150,6 +152,10 @@ func (h *Profile) post(w http.ResponseWriter, r *http.Request, cur *auth.User) {
 	if err != nil {
 		httpx.Fail(w, http.StatusInternalServerError, "Ошибка подключения к БД")
 		return
+	}
+	// Выбрал или сменил ОФО — сразу выдать курсы, назначенные на подразделение.
+	if _, err := (&courses.Service{Pool: h.Pool}).SyncStandingAssignments(r.Context(), id); err != nil {
+		log.Printf("profile: sync standing assignments for user %d: %v", id, err)
 	}
 
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{

@@ -34,6 +34,8 @@ const form = reactive({
   sequentialProgress: true,
   requireFinalTest: true,
   generateCertificate: false,
+  /** Срок прохождения по умолчанию — подставляется при назначении, если дату не выбрали. */
+  defaultDeadlineDays: null as number | null,
 });
 
 const isEditable = computed(() => store.version.value?.status !== 'archived');
@@ -54,6 +56,7 @@ async function load() {
       form.sequentialProgress = v.sequentialProgress !== false;
       form.requireFinalTest = v.requireFinalTest !== false;
       form.generateCertificate = v.generateCertificate === true;
+      form.defaultDeadlineDays = Number(v.defaultDeadlineDays) > 0 ? Number(v.defaultDeadlineDays) : null;
     }
   } catch (e: any) {
     loadError.value = e?.message || 'Не удалось загрузить курс';
@@ -83,6 +86,8 @@ async function onSubmit() {
       sequentialProgress: form.sequentialProgress,
       requireFinalTest: form.requireFinalTest,
       generateCertificate: form.generateCertificate,
+      // Пустое поле UInputNumber даёт null или NaN — оба значат «без срока».
+      defaultDeadlineDays: Number(form.defaultDeadlineDays) > 0 ? Math.round(Number(form.defaultDeadlineDays)) : null,
     });
     toast.add({ title: 'Настройки сохранены', color: 'success', icon: 'i-lucide-check' });
     await router.push({ name: 'admin-course-workspace', params: { courseId: courseId.value } });
@@ -180,6 +185,24 @@ async function onSubmit() {
               v-model="form.sequentialProgress"
               label="Темы открываются по порядку"
               :disabled="!isEditable"
+            />
+          </UFormField>
+
+          <UFormField
+            label="Срок прохождения по умолчанию"
+            name="defaultDeadlineDays"
+            hint="Необязательно"
+            description="Сколько дней даётся с момента назначения. Подставляется, если при назначении не выбрана дата «Пройти до». Пусто — без срока."
+          >
+            <UInputNumber
+              v-model="form.defaultDeadlineDays"
+              :min="0"
+              :max="3650"
+              :step="1"
+              placeholder="Без срока"
+              :disabled="!isEditable"
+              class="w-44"
+              :format-options="{ maximumFractionDigits: 0 }"
             />
           </UFormField>
 

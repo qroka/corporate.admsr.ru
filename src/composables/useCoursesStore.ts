@@ -379,6 +379,14 @@ export function useCoursesStore() {
     return unwrap(res, 'Не удалось обнулить результат');
   }
 
+  async function cancelEnrollment(enrollmentId: number) {
+    const res = await apiSessionFetch('/api/course_enrollment_cancel.php', {
+      method: 'POST',
+      json: { enrollmentId },
+    });
+    return unwrap(res, 'Не удалось отменить назначение');
+  }
+
   // Employee
   async function loadMyCourses() {
     loading.value = true;
@@ -565,6 +573,7 @@ export function useCoursesStore() {
     loadParticipant,
     loadAttemptAnswers,
     resetEnrollment,
+    cancelEnrollment,
     loadMyCourses,
     getEnrollment,
     startCourse,

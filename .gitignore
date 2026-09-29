@@ -13,6 +13,8 @@ src/route-map.d.ts
 
 # Public uploads / generated images
 public/img/
+# Файлы материалов курсов на локальном стенде (UPLOAD_DIR=public в backend/.env)
+public/courses/
 
 # Logs (корневой каталог, не src/components/logs/)
 /logs/

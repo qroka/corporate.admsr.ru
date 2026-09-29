@@ -118,3 +118,18 @@ export function notStartedYet(startsAt?: string | null): boolean {
   const t = new Date(startsAt).getTime();
   return !Number.isNaN(t) && t > Date.now();
 }
+
+/**
+ * Когда сотрудник последний раз занимался курсом: «сегодня в 14:05»,
+ * «вчера», «5 дней назад», иначе дата. Пусто — ещё не заходил в курс.
+ */
+export function formatLastActivity(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const days = Math.round((startOfDay(new Date()) - startOfDay(d)) / 86_400_000);
+  if (days <= 0) return `сегодня в ${d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+  if (days === 1) return 'вчера';
+  if (days < 7) return `${days} ${plural(days, DAY_FORMS)} назад`;
+  return formatDate(iso);
+}

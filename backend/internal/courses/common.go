@@ -553,10 +553,14 @@ func (s *Service) RequireEnrollmentAccess(ctx context.Context, enrollmentID int6
 	if err != nil {
 		return nil, err
 	}
-	if tests.ToInt64Must(enr["user_id"]) == user.ID {
+	if adminOK && auth.IsAdmin(user) {
 		return enr, nil
 	}
-	if adminOK && auth.IsAdmin(user) {
+	// Отменённое назначение пропадает из «Моего обучения» — и по прямой ссылке тоже.
+	if fmt.Sprint(enr["status"]) == "cancelled" {
+		return nil, Err(http.StatusNotFound, "Назначение отменено")
+	}
+	if tests.ToInt64Must(enr["user_id"]) == user.ID {
 		return enr, nil
 	}
 	return nil, Err(http.StatusForbidden, "Нет доступа к этой записи")

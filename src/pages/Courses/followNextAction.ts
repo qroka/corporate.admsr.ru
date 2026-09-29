@@ -41,6 +41,10 @@ export async function followCourseNextAction(
     return;
   }
 
+  // Следующий материал — ведём на страницу его темы, а не сразу в материал:
+  // сотрудник сначала видит, что это за тема и что в ней (решение владельца
+  // 2026-09-29). Внутри темы к следующему материалу ведут сами страницы темы
+  // и материала.
   if (topicId > 0 && (type === 'material' || type === 'topic' || type === 'complete_topic')) {
     await router.push({
       name: 'course-topic',

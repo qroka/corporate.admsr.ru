@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
 import { useUsersData } from '../../../composables/useUsersData';
@@ -46,15 +46,35 @@ const userItems = computed(() =>
     .sort((a, b) => a.label.localeCompare(b.label, 'ru')),
 );
 
-/** Корневые ОФО — как в фильтре результатов (только названия, без категорий). */
+/** Значение пункта «Все сотрудники» в списке ОФО (id подразделений положительные). */
+const ALL_STAFF = 0;
+
+/** «Все сотрудники» + корневые ОФО — как в фильтре результатов (только названия, без категорий). */
 const ofoItems = computed(() => {
   const items: { label: string; value: number }[] = [];
   const cats = [...categories.value].sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
   for (const cat of cats) {
     for (const u of rootUnitsOf(cat.id)) items.push({ label: u.name, value: u.id });
   }
-  return items.sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+  items.sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+  return [[{ label: 'Все сотрудники', value: ALL_STAFF, icon: 'i-lucide-users' }], items];
 });
+
+const allStaff = computed(() => ofoIds.value.includes(ALL_STAFF));
+const unitIds = computed(() => ofoIds.value.filter((id) => id !== ALL_STAFF));
+
+/** «Все сотрудники» и конкретные ОФО взаимоисключающие: последний выбор побеждает. */
+watch(ofoIds, (next, prev) => {
+  const added = next.filter((id) => !prev.includes(id));
+  if (added.includes(ALL_STAFF) && next.length > 1) ofoIds.value = [ALL_STAFF];
+  else if (next.includes(ALL_STAFF) && added.length) ofoIds.value = next.filter((id) => id !== ALL_STAFF);
+});
+
+const ofoDescription = computed(() =>
+  allStaff.value
+    ? 'Курс получат все сотрудники, в том числе ещё не входившие на портал. Кто войдёт впервые позже — получит курс при входе.'
+    : 'Кто придёт в выбранное подразделение позже (или впервые войдёт и выберет его), получит курс при входе.',
+);
 
 const hasRecipients = computed(() => selectedUsers.value.length > 0 || ofoIds.value.length > 0);
 
@@ -74,7 +94,7 @@ const deadlineError = computed(() => {
 const deadlineHint = computed(() => {
   if (deadlineDate.value) return 'Курс считается просроченным со следующего дня.';
   if (defaultDays.value) {
-    return `Если не указать — ${defaultDays.value} ${plural(defaultDays.value, ['день', 'дня', 'дней'])} с начала (настройка курса).`;
+    return `Если не указать — ${defaultDays.value} ${plural(defaultDays.value, ['день', 'дня', 'дней'])} с момента, когда сотрудник получил курс (настройка курса).`;
   }
   return 'Необязательно. Без срока курс не станет просроченным.';
 });
@@ -96,7 +116,8 @@ function payload() {
     courseId: courseId.value,
     versionId: store.version.value?.id,
     userIds: selectedUsers.value,
-    ofoIds: ofoIds.value,
+    ofoIds: unitIds.value,
+    allUsers: allStaff.value,
     includeChildren: includeChildren.value,
     startsAt: toIsoOrNull(startsAt.value),
     // null → сервер применит срок по умолчанию из версии, если он задан
@@ -169,6 +190,8 @@ const previewList = computed<any[]>(() => {
   return p.recipients || p.users || p.items || [];
 });
 const previewCount = computed(() => Number(preview.value?.count ?? previewList.value.length));
+/** Сколько получателей ещё не выбрали ОФО — как правило, это те, кто не входил. */
+const previewWithoutOfo = computed(() => Number((preview.value as any)?.withoutOfo ?? 0));
 
 function recipientName(r: any) {
   return r.fio || r.fullName || r.name || r.login || `Сотрудник ${r.userId || r.id}`;
@@ -232,14 +255,14 @@ function recipientName(r: any) {
             />
           </UFormField>
 
-          <UFormField label="Подразделения (ОФО)">
+          <UFormField label="Подразделения (ОФО)" :description="ofoIds.length ? ofoDescription : undefined">
             <USelectMenu
               v-model="ofoIds"
               :items="ofoItems"
               multiple
               value-key="value"
               label-key="label"
-              placeholder="Выберите ОФО"
+              placeholder="Выберите ОФО или «Все сотрудники»"
               size="lg"
               color="neutral"
               class="w-full"
@@ -248,7 +271,7 @@ function recipientName(r: any) {
             />
           </UFormField>
 
-          <UFormField v-if="ofoIds.length">
+          <UFormField v-if="unitIds.length">
             <UCheckbox v-model="includeChildren" label="Включая вложенные подразделения" />
           </UFormField>
         </section>
@@ -285,7 +308,9 @@ function recipientName(r: any) {
             К курсу
           </UButton>
         </div>
-        <p v-if="!hasRecipients" class="text-sm text-muted -mt-2">Выберите хотя бы одного сотрудника или подразделение.</p>
+        <p v-if="!hasRecipients" class="text-sm text-muted -mt-2">
+          Выберите сотрудников, подразделение или «Все сотрудники».
+        </p>
       </div>
     </div>
 
@@ -298,6 +323,12 @@ function recipientName(r: any) {
     >
       <template #body>
         <div class="flex flex-col gap-3">
+          <p v-if="allStaff" class="text-sm text-muted">
+            Назначение постоянное: новые сотрудники получат курс при первом входе.
+            <template v-if="previewWithoutOfo">
+              Из получателей {{ previewWithoutOfo }} ещё не выбрали подразделение — скорее всего, не входили на портал.
+            </template>
+          </p>
           <p v-if="deadlineDate" class="text-sm text-muted">
             Срок: до {{ formatDate(toIsoOrNull(deadlineDate, true)) }} включительно.
           </p>

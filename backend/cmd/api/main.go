@@ -117,6 +117,8 @@ func main() {
 	mux.HandleFunc("/api/course_admin_participant.php", coursesH.AdminParticipant)
 	mux.HandleFunc("/api/course_admin_attempt.php", coursesH.AdminAttemptAnswers)
 	mux.HandleFunc("/api/course_enrollment_reset.php", coursesH.EnrollmentReset)
+	mux.HandleFunc("/api/course_enrollment_cancel.php", coursesH.EnrollmentCancel)
+	mux.HandleFunc("/api/course_file.php", coursesH.File)
 	mux.HandleFunc("/api/courses_for_me.php", coursesH.ForMe)
 	mux.HandleFunc("/api/course_enrollment_get.php", coursesH.EnrollmentGet)
 	mux.HandleFunc("/api/course_start.php", coursesH.Start)

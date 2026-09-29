@@ -1,21 +1,24 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { useCoursesStore } from '../../../composables/useCoursesStore';
-import { useAppToast } from '../../../composables/useAppToast';
 import {
   useBreadcrumbCurrentLabel,
   useBreadcrumbLabelsByRoute,
 } from '../../../composables/usePortalNavigation';
-import { newsEditorHtmlClass } from '../../../composables/newsEditorHtmlClass';
 import CourseStatusBadge from '../components/CourseStatusBadge.vue';
 import { followCourseNextAction, isActionableStep } from '../followNextAction';
 import { formatSeconds } from '../courseDuration';
+import { materialKindIcon, materialKindLabel, materialViewKind } from '../courseMaterialView';
 
+/**
+ * Оглавление темы: список материалов (каждый открывается на своей странице —
+ * `CourseMaterialPage`), прогресс и следующий шаг. Время здесь не считается —
+ * heartbeat живёт на странице материала.
+ */
 const route = useRoute();
 const router = useRouter();
 const store = useCoursesStore();
-const { toast } = useAppToast();
 const breadcrumbLabel = useBreadcrumbCurrentLabel();
 const breadcrumbByRoute = useBreadcrumbLabelsByRoute();
 
@@ -26,23 +29,10 @@ const loading = ref(true);
 const loadError = ref<string | null>(null);
 /**
  * Два независимых источника. `context` — курс и список тем (из записи на курс),
- * `topicData` — ответ темы. Раньше они жили в одном объекте, и обновление темы
- * после отметки материала стирало список тем: пропадала кнопка «Дальше».
+ * `topicData` — ответ темы.
  */
 const context = ref<{ courseTitle: string; topics: any[] } | null>(null);
 const topicData = ref<any>(null);
-const completingId = ref<number | null>(null);
-
-const activeMaterialId = ref<number | null>(null);
-const lastActivityAt = ref(Date.now());
-/** Засчитанные секунды из ответов heartbeat — показываем без перезагрузки темы. */
-const liveSeconds = ref<Record<number, number>>({});
-/** Секунды темы, засчитанные heartbeat'ом после последней загрузки темы. */
-const liveTopicSeconds = ref(0);
-watch(topicData, () => {
-  liveTopicSeconds.value = 0;
-});
-let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
 const topic = computed(() => topicData.value?.topic || null);
 const materials = computed<any[]>(() => topic.value?.materials || []);
@@ -73,53 +63,18 @@ function isDone(m: any) {
   return matStatus(m) === 'completed';
 }
 
-function minSeconds(m: any) {
-  return Math.max(0, Number(m.minimumActiveSeconds || 0));
-}
-
-function activeSeconds(m: any) {
-  return Math.max(Number(liveSeconds.value[m.id] || 0), Number(m.progress?.activeSeconds || 0));
-}
-
-function timeMet(m: any) {
-  return minSeconds(m) === 0 || activeSeconds(m) >= minSeconds(m);
-}
-
-function isExternal(m: any) {
-  return m.type !== 'rich_text';
+function materialRoute(m: any) {
+  return {
+    name: 'course-material',
+    params: { enrollmentId: enrollmentId.value, topicId: topicId.value, materialId: m.id },
+  };
 }
 
 /** Строка про время — только у материалов с требованием по времени. */
 function timeLine(m: any) {
-  const min = minSeconds(m);
+  const min = Math.max(0, Number(m.minimumActiveSeconds || 0));
   if (!min || isDone(m) || isReview.value) return '';
-  const got = activeSeconds(m);
-  if (got >= min) return 'Время набрано — можно отметить изученным';
-  return `Нужно ${formatSeconds(min)} · засчитано ${formatSeconds(got) || '0 с'}`;
-}
-
-function timePercent(m: any) {
-  const min = minSeconds(m);
-  return min ? Math.min(100, Math.round((activeSeconds(m) / min) * 100)) : 100;
-}
-
-function openLabel(m: any) {
-  if (m.type === 'rich_text') {
-    if (activeMaterialId.value === m.id) return 'Свернуть';
-    return isReview.value || isDone(m) ? 'Читать снова' : 'Читать';
-  }
-  return m.type === 'link' ? 'Открыть ссылку' : 'Открыть файл';
-}
-
-function openIcon(m: any) {
-  if (m.type === 'rich_text') return activeMaterialId.value === m.id ? 'i-lucide-chevron-up' : 'i-lucide-book-open';
-  return m.type === 'link' ? 'i-lucide-external-link' : 'i-lucide-file-down';
-}
-
-function typeIcon(m: any) {
-  if (m.type === 'rich_text') return 'i-lucide-file-text';
-  if (m.type === 'link') return 'i-lucide-link';
-  return 'i-lucide-paperclip';
+  return `Не меньше ${formatSeconds(min)}`;
 }
 
 const requiredMaterials = computed(() => materials.value.filter((m) => m.isRequired !== false));
@@ -142,7 +97,7 @@ const stuckHere = computed(() => {
 const topicTimeLeft = computed(() => {
   if (!stuckHere.value || nextAction.value?.type !== 'topic') return 0;
   const min = Number(topic.value?.minimumActiveSeconds || 0);
-  const got = Number(topic.value?.progress?.activeSeconds || 0) + liveTopicSeconds.value;
+  const got = Number(topic.value?.progress?.activeSeconds || 0);
   return Math.max(0, min - got);
 });
 
@@ -158,6 +113,17 @@ const forward = computed<null | { label: string; icon: string; run: () => void }
   }
   const a = nextAction.value;
   if (!isActionableStep(a)) return null;
+  // Следующий шаг — материал этой темы: ведём прямо на него.
+  if (stuckHere.value && a.type === 'material') {
+    const m = materials.value.find((x) => Number(x.id) === Number(a.materialId));
+    if (!m) return null;
+    const started = materials.value.some(isDone);
+    return {
+      label: started ? `Продолжить: «${m.title}»` : 'Начать изучение',
+      icon: 'i-lucide-arrow-right',
+      run: () => void router.push(materialRoute(m)),
+    };
+  }
   if (stuckHere.value && a.type !== 'topic_test') return null;
   // complete_topic на этой же теме — сервер вот-вот её закроет; ссылка «на себя» бессмысленна.
   if (a.type === 'complete_topic' && Number(a.topicId) === topicId.value) return null;
@@ -193,8 +159,6 @@ const showFooter = computed(() => !loading.value && !loadError.value && Boolean(
 async function loadAll() {
   loading.value = true;
   loadError.value = null;
-  activeMaterialId.value = null;
-  liveSeconds.value = {};
   try {
     const [t, enrollment] = await Promise.all([
       store.getTopic(enrollmentId.value, topicId.value),
@@ -213,102 +177,13 @@ async function loadAll() {
   }
 }
 
-/** Обновляем только тему — контекст курса не трогаем. */
-async function refreshTopic() {
-  try {
-    topicData.value = await store.getTopic(enrollmentId.value, topicId.value);
-  } catch {
-    /* оставляем текущее состояние: действие уже прошло на сервере */
-  }
-}
-
-function onActivity() {
-  lastActivityAt.value = Date.now();
-}
-
-/**
- * Файл и ссылка открываются в другой вкладке, поэтому для них фокус портала
- * не требуем — иначе время не засчитывалось вовсе. Текст читается здесь же:
- * для него прежнее правило «вкладка активна и было действие за 30 с».
- * От накрутки защищает сервер: паузы длиннее 90 с он не засчитывает.
- */
-function shouldBeat(m: any) {
-  if (isExternal(m)) return true;
-  const focused = document.visibilityState === 'visible' && document.hasFocus();
-  return focused && Date.now() - lastActivityAt.value <= 30_000;
-}
-
-async function tickHeartbeat() {
-  const id = activeMaterialId.value;
-  if (!id || isReview.value) return;
-  const m = materials.value.find((x) => x.id === id);
-  // Изученный материал тоже считает время, пока не набран минимум темы —
-  // иначе тема с минимумом больше суммы материалов застревала навсегда.
-  if (!m || (isDone(m) && topicTimeLeft.value <= 0) || !shouldBeat(m)) return;
-  try {
-    const res = (await store.heartbeat({ enrollmentId: enrollmentId.value, materialId: id })) as any;
-    if (res?.activeSeconds != null) {
-      liveSeconds.value = { ...liveSeconds.value, [id]: Number(res.activeSeconds) };
-    }
-    liveTopicSeconds.value += Number(res?.addedSeconds || 0);
-    if (res?.topicCompleted) {
-      toast.add({ title: 'Тема пройдена', color: 'success', icon: 'i-lucide-check' });
-      await refreshTopic();
-    }
-  } catch {
-    /* сеть мигнула — следующий тик досчитает */
-  }
-}
-
-async function openMaterial(m: any) {
-  if (m.type === 'rich_text' && activeMaterialId.value === m.id) {
-    activeMaterialId.value = null;
-    return;
-  }
-  // Окно открываем сразу, до запроса: после await браузер может счесть его всплывающим.
-  const url = m.type === 'link' ? m.externalUrl : m.fileUrl;
-  if (isExternal(m) && url) window.open(url, '_blank', 'noopener');
-  activeMaterialId.value = m.id;
-  lastActivityAt.value = Date.now();
-  try {
-    await store.openMaterial(enrollmentId.value, m.id);
-  } catch (e: any) {
-    toast.add({ title: 'Не удалось открыть материал', description: e?.message, color: 'error', icon: 'i-lucide-x' });
-  }
-}
-
-async function completeMaterial(m: any) {
-  completingId.value = m.id;
-  try {
-    await store.completeMaterial(enrollmentId.value, m.id);
-    toast.add({ title: 'Материал изучен', color: 'success', icon: 'i-lucide-check' });
-    await refreshTopic();
-  } catch (e: any) {
-    toast.add({ title: 'Не удалось отметить', description: e?.message, color: 'error', icon: 'i-lucide-x' });
-  } finally {
-    completingId.value = null;
-  }
-}
-
-onMounted(async () => {
-  await loadAll();
-  window.addEventListener('mousemove', onActivity);
-  window.addEventListener('keydown', onActivity);
-  window.addEventListener('scroll', onActivity, true);
-  window.addEventListener('click', onActivity);
-  heartbeatTimer = setInterval(() => void tickHeartbeat(), 15_000);
-});
+onMounted(loadAll);
 
 watch(topicId, (id, prev) => {
   if (id && id !== prev) void loadAll();
 });
 
 onUnmounted(() => {
-  if (heartbeatTimer) clearInterval(heartbeatTimer);
-  window.removeEventListener('mousemove', onActivity);
-  window.removeEventListener('keydown', onActivity);
-  window.removeEventListener('scroll', onActivity, true);
-  window.removeEventListener('click', onActivity);
   breadcrumbLabel.value = null;
   const next = { ...breadcrumbByRoute.value };
   delete next['course-enrollment'];
@@ -375,63 +250,35 @@ onUnmounted(() => {
           />
 
           <ul v-else class="flex flex-col gap-2 list-none p-0 m-0 min-w-0">
-            <li
-              v-for="m in materials"
-              :key="m.id"
-              class="rounded-panel bg-elevated p-4 flex flex-col gap-3 min-w-0"
-              :class="activeMaterialId === m.id ? 'ring-2 ring-inset ring-primary/40' : ''"
-            >
-              <div class="flex items-start gap-3 min-w-0">
-                <UIcon :name="typeIcon(m)" class="size-5 mt-0.5 shrink-0 text-muted" aria-hidden="true" />
+            <li v-for="(m, i) in materials" :key="m.id" class="min-w-0">
+              <RouterLink
+                :to="materialRoute(m)"
+                class="group rounded-panel bg-elevated p-4 flex items-center gap-3 min-w-0 transition-colors hover:bg-accented/60 focus-visible:outline-2 focus-visible:outline-primary"
+              >
+                <span
+                  class="size-9 shrink-0 rounded-full flex items-center justify-center"
+                  :class="isDone(m) ? 'bg-success/15 text-success' : 'bg-default text-muted'"
+                  aria-hidden="true"
+                >
+                  <UIcon :name="isDone(m) ? 'i-lucide-check' : materialKindIcon(materialViewKind(m))" class="size-5" />
+                </span>
                 <div class="flex-1 min-w-0 flex flex-col gap-1">
-                  <p class="font-medium text-highlighted break-words">{{ m.title }}</p>
-                  <p v-if="m.description" class="text-sm text-muted break-words">{{ m.description }}</p>
+                  <p class="font-medium text-highlighted break-words">
+                    <span class="text-muted tabular-nums">{{ i + 1 }}.</span> {{ m.title }}
+                  </p>
                   <div class="flex items-center gap-x-2 gap-y-1 flex-wrap text-xs text-muted">
-                    <CourseStatusBadge :status="matStatus(m)" />
+                    <span>{{ materialKindLabel(materialViewKind(m), m) }}</span>
+                    <CourseStatusBadge v-if="!isReview" :status="matStatus(m)" />
                     <span v-if="m.isRequired === false">Необязательный</span>
-                    <span v-if="timeLine(m)" :class="timeMet(m) ? 'text-success' : ''">{{ timeLine(m) }}</span>
+                    <span v-if="timeLine(m)">{{ timeLine(m) }}</span>
                   </div>
                 </div>
-              </div>
-
-              <UProgress
-                v-if="timeLine(m) && !timeMet(m)"
-                :model-value="timePercent(m)"
-                size="xs"
-                color="neutral"
-                :aria-label="timeLine(m)"
-              />
-
-              <div
-                v-if="m.type === 'rich_text' && m.contentHtml && activeMaterialId === m.id"
-                :class="['rounded-lg bg-default p-3 sm:p-4 text-default min-w-0 overflow-x-auto', newsEditorHtmlClass]"
-                v-html="m.contentHtml"
-              />
-
-              <p
-                v-if="isExternal(m) && activeMaterialId === m.id && !isDone(m) && minSeconds(m) && !isReview"
-                class="text-xs text-muted"
-              >
-                Время засчитывается, пока материал открыт и эта вкладка не закрыта.
-              </p>
-
-              <div class="flex flex-wrap gap-2">
-                <UButton color="neutral" variant="soft" size="sm" :icon="openIcon(m)" @click="openMaterial(m)">
-                  {{ openLabel(m) }}
-                </UButton>
-                <UButton
-                  v-if="!isReview && !isDone(m)"
-                  color="primary"
-                  size="sm"
-                  icon="i-lucide-check"
-                  :loading="completingId === m.id"
-                  :disabled="!timeMet(m)"
-                  :title="timeMet(m) ? undefined : 'Сначала наберите нужное время изучения'"
-                  @click="completeMaterial(m)"
-                >
-                  Отметить изученным
-                </UButton>
-              </div>
+                <UIcon
+                  name="i-lucide-chevron-right"
+                  class="size-5 shrink-0 text-dimmed group-hover:text-default"
+                  aria-hidden="true"
+                />
+              </RouterLink>
             </li>
           </ul>
         </section>
