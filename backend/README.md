@@ -42,7 +42,10 @@ curl -s http://127.0.0.1:8080/api/health.php
 | `forms.php`, `forms_list/publish/submit/report/archive/delete` | ✓ |
 | `courses_*`, `course_*` (LMS, ~33 эндпоинта) | ✓ |
 
-Ещё на PHP: прочие редкие скрипты (`course_file.php` и т.п., если не используются SPA).
+`course_file.php` (файлы материалов, с `Range`) и `course_enrollment_cancel.php` (отмена назначения
+участнику) — в Go с 2026-09-28.
+
+Ещё на PHP: прочие редкие скрипты (`course_assignment_cancel.php`, `course_history.php` и т.п.), SPA их не вызывает.
 
 ## Прод: nginx allowlist
 

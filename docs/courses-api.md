@@ -76,11 +76,12 @@
 
 | Endpoint | Auth | Body | `data` |
 |----------|------|------|--------|
-| `course_assign_preview.php` | admin | опц. userIds[], ofoIds[], includeChildren | `{ count, recipients[], fromUsers, fromOfo }` |
-| `course_assign.php` | admin | courseId\|versionId; **userIds** и/или **ofoIds**; опц. includeChildren, startsAt, deadlineAt, deadlineDays, comment (только published) | `{ assignmentIds[], enrollmentsCreated, skipped }` |
-| `course_assignment_cancel.php` | admin | **assignmentId** | `{ assignmentId, cancelledEnrollments }` |
+| `course_assign_preview.php` | admin | опц. userIds[], ofoIds[], includeChildren, **allUsers** | `{ count, recipients[], fromUsers, fromOfo, withoutOfo }` |
+| `course_assign.php` | admin | courseId\|versionId; **userIds** и/или **ofoIds** или **allUsers: true**; опц. includeChildren, startsAt, deadlineAt, deadlineDays, comment (только published). Назначения ofo/all постоянные (ADR-036); без V12 — 503 | `{ assignmentIds[], enrollmentsCreated, skipped }` |
+| `course_assignment_cancel.php` | admin | **assignmentId** | `{ assignmentId, cancelledEnrollments }` — **только PHP**, портал не вызывает |
+| `course_enrollment_cancel.php` | раздел `courses` + категория курса | **enrollmentId** | `{ enrollment }`; 409 для `completed`/`cancelled`. **Go** (`EnrollmentCancel`), ADR-035 |
 | `course_assignments_list.php` | admin | опц. courseId, versionId, activeOnly | `{ items[] }` |
-| `course_admin_results.php` | admin | опц. courseId, versionId, status, ofoId, q, limit (≤200), offset | `{ aggregates, items[], limit, offset }` |
+| `course_admin_results.php` | admin | опц. courseId, versionId, status, ofoId, q, limit (≤200), offset | `{ aggregates, items[], limit, offset }`; `aggregates` считаются **без** фильтра `status` (по остальным), `aggregates.matched` — сколько строк под фильтром статуса |
 | `course_admin_participant.php` | admin | **enrollmentId** | `{ enrollment, version, user, topics[], materials[], attempts[], completion }` |
 
 ---
@@ -107,7 +108,9 @@
 
 | Endpoint | Method | Auth | Параметры | Ответ |
 |----------|--------|------|-----------|-------|
-| `course_file.php` | **GET** | user† | query: `materialId` **или** `path` (`courses/{courseId}/…`) | binary stream |
+| `course_file.php` | **GET**/HEAD | редактор раздела `courses` или неотменённый enrollment на версию | query: `materialId` **или** `path` (`courses/{courseId}/…`) | файл, `Content-Disposition: inline`; поддерживает `Range` (206) — перемотка видео |
+
+С 2026-09-28 отдаётся **Go** (`backend/internal/handlers/course_file.go`, `http.ServeContent`). Авторизация — по cookie `corp_session`: `<iframe>`/`<video>` не умеют слать заголовок `Authorization`.
 
 ---
 

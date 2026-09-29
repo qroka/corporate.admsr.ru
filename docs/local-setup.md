@@ -136,8 +136,8 @@ curl -s http://127.0.0.1:8080/api/health.php
 | Тестов фронтенда (Vitest/Playwright) | `npm test` — заглушка |
 | CI (`.github/workflows`, `.gitlab-ci.yml`) | Проверки запускаются только вручную |
 
-Единственный автоматический набор проверок — Go-тесты (`backend/internal/handlers/`,
-9 тест-функций). См. [quality-and-deploy.md](quality-and-deploy.md).
+Единственный автоматический набор проверок — Go-тесты (`backend/internal/`,
+12 тест-функций в `internal/handlers` и `internal/courses`). См. [quality-and-deploy.md](quality-and-deploy.md).
 
 ## Локальная БД в Docker
 

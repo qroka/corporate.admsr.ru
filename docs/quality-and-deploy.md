@@ -7,7 +7,7 @@
 | Сборка фронтенда | `npm run build` | ✅ единственная проверка фронта |
 | Компиляция Go | `cd backend && go build ./...` | ✅ |
 | Статический анализ Go | `cd backend && go vet ./...` | ✅ |
-| Тесты Go | `cd backend && go test ./...` | ✅ 9 тест-функций в `internal/handlers` |
+| Тесты Go | `cd backend && go test ./...` | ✅ 12 тест-функций в `internal/handlers` и `internal/courses` |
 | Smoke схемы курсов | `npm run test:courses` | требует PHP + доступ к БД |
 | Проверка типов TS | — | ❌ `tsconfig.json` отсутствует |
 | Линт | — | ❌ не настроен |

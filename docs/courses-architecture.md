@@ -100,9 +100,10 @@ cs_try_complete_enrollment → course_completions + status=completed
 
 ## 5. Назначение (assign)
 
-- Цели: `target_type` = `user` | `ofo`.
+- Цели: `target_type` = `user` | `ofo` | `all` (все активные учётные записи, в том числе без ОФО; V12).
 - ОФО: опционально `include_children` — рекурсия по `ofo_unit.parent_id`.
-- На **опубликованную** версию создаются assignment + enrollment на каждого активного пользователя.
+- На **опубликованную** версию создаются assignment (по одному на цель) + enrollment на каждого активного пользователя (одна запись, даже если он попал в несколько целей).
+- `ofo` и `all` — **постоянные**: `courses.Service.SyncStandingAssignments` (`backend/internal/courses/assign.go`) досоздаёт записи при входе, сохранении профиля и в `courses_for_me` (ADR-036). Срок: общий `deadline_at` назначения или `deadline_days` от момента выдачи.
 - Один активный enrollment на пару `(user_id, course_version_id)` (уникальный индекс без `cancelled`).
 
 ---
@@ -122,7 +123,7 @@ cs_try_complete_enrollment → course_completions + status=completed
 ## 7. Файлы материалов
 
 - Загрузка: `course_materials_upload.php` → каталог `/var/lib/corporate-app/uploads/courses/{courseId}/` (fallback: `uploads/courses/` в корне проекта).
-- Выдача: `GET course_file.php` (сессия + доступ: админ или enrollment на версию материала).
+- Выдача: `GET course_file.php` — Go (`course_file.go`), сессия по cookie + доступ: редактор раздела «Обучение» или неотменённый enrollment на версию материала; `Range` поддерживается (видео).
 - Прямой nginx alias для `/courses/` **не** обязателен — доступ через PHP.
 
 ---
@@ -132,7 +133,7 @@ cs_try_complete_enrollment → course_completions + status=completed
 | Роль | Префикс | Примеры |
 |------|---------|---------|
 | Админ | `/admin/courses` | список, workspace, темы, материалы, тесты, publish, assign, results |
-| Сотрудник | `/courses` | мои курсы, enrollment, тема, тест, результат, history |
+| Сотрудник | `/courses` | мои курсы, enrollment, тема (оглавление), материал (`…/topics/:topicId/materials/:materialId`), тест, результат |
 
 См. `src/router/index.js`, страницы в `src/pages/Courses/`.
 

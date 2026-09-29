@@ -17,7 +17,7 @@ Soft refs на `user_info` / `ofo_unit` — **без жёстких FK** (как
 | 3 | `course_topics` | Темы версии |
 | 4 | `course_materials` | Материалы темы |
 | 5 | `course_test_links` | Связь с `test_forms` |
-| 6 | `course_assignments` | Назначения (user / ofo) |
+| 6 | `course_assignments` | Назначения (user / ofo / all) |
 | 7 | `course_enrollments` | Записи сотрудников |
 | 8 | `course_topic_progress` | Прогресс по темам |
 | 9 | `course_material_progress` | Прогресс по материалам |
@@ -142,14 +142,15 @@ FK: `topic_id` → `course_topics` **ON DELETE CASCADE**. Soft-delete: `deleted_
 | Поле | Смысл |
 |------|--------|
 | `course_version_id` | FK → versions |
-| `target_type` | `user` \| `ofo` |
-| `target_id` | soft id пользователя или ОФО |
+| `target_type` | `user` \| `ofo` \| `all` (V12) |
+| `target_id` | soft id пользователя или ОФО; `0` для `all` |
 | `starts_at`, `deadline_at` | |
+| `deadline_days` | срок «N дней» от выдачи курса сотруднику (V12); при нём `deadline_at` пуст |
 | `assigned_by` | soft |
 | `include_children` | для ofo |
 | `cancelled_at` | отмена назначения |
 
-**Индексы:** version, (`target_type`, `target_id`).
+**Индексы:** version, (`target_type`, `target_id`), частичный по действующим (`cancelled_at IS NULL`, V12).
 
 ---
 

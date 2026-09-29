@@ -55,6 +55,7 @@
 | `V9__course_certificate.sql` | `course_versions.generate_certificate boolean` |
 | `V10__portal_services.sql` | `portal_services` + сид трёх внутренних сервисов |
 | `V11__news_reactions.sql` | `news_reactions (news_id, user_id, reaction)` — реакции сотрудников на новости |
+| `V12__course_assign_all.sql` | `course_assignments`: `target_type = 'all'`, колонка `deadline_days`, индекс действующих назначений |
 
 ## Ключевые группы таблиц
 

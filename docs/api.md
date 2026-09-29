@@ -58,18 +58,18 @@ PHP-реализацию (или в 404, если PHP-файла нет).
 | Тесты (легаси-модуль) | `tests_list/save/publish/unpublish/delete/direct/submit/stats/participant/by_token.php` | `tests_routes.go` |
 | Попытки тестов | `tests_attempt_start/save/get/finish.php` | `tests_routes.go`, `attempt_review.go` |
 | Формы (второй модуль) | `forms.php`, `forms_list/publish/submit/report/archive/delete.php` | `forms.go` |
-| LMS | `courses_list/get/create/update/delete/publish/unpublish/for_me.php`, `course_topics_*`, `course_materials_*`, `course_tests_*`, `course_assign*`, `course_admin_*`, `course_enrollment_*`, `course_start/topic_get/material_open/material_heartbeat/material_complete/next_action/result.php` | `courses.go` |
+| LMS | `courses_list/get/create/update/delete/publish/unpublish/for_me.php`, `course_topics_*`, `course_materials_*`, `course_tests_*`, `course_assign*`, `course_admin_*`, `course_enrollment_*`, `course_start/topic_get/material_open/material_heartbeat/material_complete/next_action/result.php`, `course_file.php` (GET, файлы материалов) | `courses.go` |
 
 ### Только PHP (Go-реализации нет)
 
-`auth_context.php`, `course_file.php`, `course_history.php`,
+`auth_context.php`, `course_history.php`,
 `course_assignment_cancel.php`, `course_assignments_list.php`,
 `course_materials_order.php`, `courses_archive.php`, `courses_duplicate.php`,
 `courses_readiness.php`. **[ПОДТВЕРЖДЕНО]**
 
 Из них фронтенд не вызывает ни один (проверено grep'ом по `src/`).
-`course_file.php` упомянут в `README.md` как способ выдачи материалов курса.
-**[ПОДТВЕРЖДЕНО, что вызова из SPA нет]**
+**[ПОДТВЕРЖДЕНО, что вызова из SPA нет]** `course_file.php` перенесён в Go 2026-09-28 —
+страница материала показывает файлы через него.
 
 ### Только Go (PHP-файла нет)
 
