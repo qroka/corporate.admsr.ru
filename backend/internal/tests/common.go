@@ -472,17 +472,19 @@ func EvaluateAnswers(ctx context.Context, pool *pgxpool.Pool, formRow DBFormRow,
 		}
 
 		var isCorrect *bool
-		// Соответствия считаются по парам, а не одним вопросом.
 		if isTest && IsPairing(qtype) {
 			items, _, err := LoadPairing(ctx, pool, qid)
 			if err != nil {
 				return result, err
 			}
 			if right, total := ScorePairing(items, mapping); total > 0 {
+				// Один вопрос — один балл: верно, только если верны все соответствия.
 				ok := right == total
 				isCorrect = &ok
-				result.Scorable += total
-				result.CorrectCount += right
+				result.Scorable++
+				if ok {
+					result.CorrectCount++
+				}
 			}
 		} else if isTest {
 			hasCorrect := false

@@ -109,7 +109,7 @@ func MappingJSON(m map[int64]int64) string {
 }
 
 // ScorePairing — сколько соответствий верно из тех, у которых правильный ответ задан.
-// Каждое соответствие весит как отдельный вопрос: за «7 из 7» и «5 из 7» баллы разные.
+// В балл вопроса идёт только «все верны» (right == total): один вопрос — один балл.
 func ScorePairing(items []PairItem, m map[int64]int64) (correct, total int) {
 	for _, it := range items {
 		if it.TargetID == nil {

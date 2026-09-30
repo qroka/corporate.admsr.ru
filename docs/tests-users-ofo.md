@@ -100,7 +100,7 @@ test_forms
 | `match` | Соответствие: понятие → определение | `test_options.target_option_id` у элемента (ADR-039) |
 | `classify` | Классификация: утверждение → категория | то же |
 
-`match` / `classify` хранятся в `test_options` (V13): `role='item'` — элемент слева, `role='target'` — вариант справа (определение / категория), `target_option_id` — правильный вариант; у обычных вариантов `role='option'`. Ответ — JSON `{itemId: targetId}` в `test_answers.text_value`. На клиенте: `Question.items` (слева), `options` (справа), `correct` = `{itemId: targetId}`; сервер отдаёт сотруднику форму без `correct` (`StripCorrect`). У `match` определения всегда перемешиваются и каждое подходит одному понятию (можно добавить лишние); у `classify` категории повторяются. В опросе доступна только `classify`, ключ не нужен.
+`match` / `classify` хранятся в `test_options` (V13): `role='item'` — элемент слева, `role='target'` — вариант справа (определение / категория), `target_option_id` — правильный вариант; у обычных вариантов `role='option'`. Ответ — JSON `{itemId: targetId}` в `test_answers.text_value`. На клиенте: `Question.items` (слева), `options` (справа), `correct` = `{itemId: targetId}`; сервер отдаёт сотруднику форму без `correct` (`StripCorrect`). Сотрудник раскладывает карточки перетаскиванием (`TestRunner.vue`, `vuedraggable`). У `match` определения всегда перемешиваются и каждое подходит одному понятию (можно добавить лишние); у `classify` категории повторяются. В опросе доступна только `classify`, ключ не нужен.
 На фронте модель вопроса: `src/pages/Tests/questionTypes.ts` (`QType`, `Question`, `correct`).
 
 #### Аудитория
@@ -214,7 +214,7 @@ test_forms
 2. Выбор (`single` / `dropdown` / `multiple`): точное совпадение множества выбранных option id (для multiple — сравнение отсортированных наборов).
 3. Текст / yesno: сравнение без регистра, с trim.
 4. Scale / number: числовое равенство.
-4а. `match` / `classify`: каждое соответствие — отдельный балл (`tests.ScorePairing`): «5 из 7 верно» даёт 5 из 7, а не 0 или 1; в `test_answers.is_correct` — «верны все». Нет ключа (опрос) — не оценивается.
+4а. `match` / `classify`: один вопрос — один балл, засчитывается, только если верны все соответствия (`tests.ScorePairing`); частично верный ответ — 0. Нет ключа (опрос) — не оценивается.
 5. Итог:
 
 ```
