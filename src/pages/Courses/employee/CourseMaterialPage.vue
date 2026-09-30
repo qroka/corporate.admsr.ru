@@ -416,12 +416,14 @@ onUnmounted(() => {
               variant="soft"
               icon="i-lucide-external-link"
               :href="fileUrl"
+              external
               target="_blank"
               rel="noopener"
             >
               Открыть
             </UButton>
-            <UButton color="neutral" variant="soft" icon="i-lucide-download" :href="fileUrl" :download="fileName">
+            <!-- external: иначе ULink отдаёт «/api/...» во Vue Router и открывается 404 SPA -->
+            <UButton color="neutral" variant="soft" icon="i-lucide-download" :href="fileUrl" external :download="fileName">
               Скачать
             </UButton>
           </div>
