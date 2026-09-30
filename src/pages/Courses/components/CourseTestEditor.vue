@@ -231,7 +231,7 @@ function onRemove() {
 
         <div
           v-else
-          class="rounded-xl ring-1 ring-default bg-elevated/20 p-3 sm:p-4 h-[min(70dvh,42rem)] min-h-[24rem] flex flex-col"
+          class="rounded-xl ring-1 ring-default bg-elevated/20 p-3 sm:p-4 flex flex-col"
         >
           <TestRunner
             v-if="step === 'preview'"

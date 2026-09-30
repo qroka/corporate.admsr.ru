@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, reactive, ref, watch } from 'vue';
+import draggable from 'vuedraggable';
 import { useTestsStore } from '../../composables/useTestsStore';
 import { pairingCorrect, typeIsPairing, type PairingMap, type Question } from './questionTypes';
 import { type TestForm } from './testForm';
@@ -125,33 +126,6 @@ function isSelected(optId: string): boolean {
   const q = currentQuestion.value!;
   const v = answers[q.id];
   return Array.isArray(v) ? v.includes(optId) : v === optId;
-}
-
-// Соответствие / классификация: элементу слева выбирается один вариант справа.
-function onPair(itemId: string, targetId: string) {
-  if (currentLocked.value) return;
-  const q = currentQuestion.value!;
-  const next = { ...pairMap(q) };
-  if (next[itemId] === targetId) {
-    delete next[itemId]; // повторный клик снимает выбор
-  } else {
-    // В «Соответствии» определение подходит одному понятию — занятое освобождаем.
-    if (q.type === 'match') for (const k of Object.keys(next)) if (next[k] === targetId) delete next[k];
-    next[itemId] = targetId;
-  }
-  answers[q.id] = next;
-}
-function pairChipClass(itemId: string, targetId: string): string {
-  const q = currentQuestion.value!;
-  const chosen = pairMap(q)[itemId] === targetId;
-  const key = pairingCorrect(q)[itemId];
-  if (revealing.value && key) {
-    if (key === targetId) return 'ring-success bg-success/10 text-success';
-    if (chosen) return 'ring-error bg-error/10 text-error';
-    return 'ring-default text-muted';
-  }
-  if (chosen) return 'ring-primary bg-primary/10 text-highlighted';
-  return 'ring-default text-muted hover:bg-elevated';
 }
 
 // ── Правильные ответы (тесты) ─────────────────────────────────────────────────
@@ -286,6 +260,81 @@ const resultsView = ref<null | 'review' | 'poll' | 'score'>(null); // финал
 const pollResults = ref<Record<string, { count: number; percent: number }>>({});
 let lastDuration = 0;
 
+// Соответствие / классификация: карточки перетаскиваются между зонами.
+// zones: 'pool' — ещё не разложенные; у classify остальные ключи — id категорий (в них утверждения),
+// у match — id понятий (в каждой не больше одного определения). Ответ собираем из zones.
+type Card = { id: string; text: string };
+const POOL = 'pool';
+const zones = reactive<Record<string, Card[]>>({ [POOL]: [] });
+
+function buildZones() {
+  const q = currentQuestion.value;
+  if (!q || !typeIsPairing(q.type)) return;
+  const m = pairMap(q);
+  for (const k of Object.keys(zones)) delete zones[k];
+  const items = pairItems(q);
+  if (q.type === 'classify') {
+    zones[POOL] = items.filter((i) => !m[i.id]).map((i) => ({ id: i.id, text: i.text }));
+    for (const o of currentOptions.value) {
+      zones[o.id] = items.filter((i) => m[i.id] === o.id).map((i) => ({ id: i.id, text: i.text }));
+    }
+  } else {
+    const used = new Set(Object.values(m));
+    zones[POOL] = currentOptions.value.filter((o) => !used.has(o.id)).map((o) => ({ id: o.id, text: o.text }));
+    for (const it of items) {
+      const o = currentOptions.value.find((x) => x.id === m[it.id]);
+      zones[it.id] = o ? [{ id: o.id, text: o.text }] : [];
+    }
+  }
+}
+watch([() => currentQuestion.value?.id, page, resultsView], buildZones, { immediate: true });
+
+function commitZones() {
+  const q = currentQuestion.value;
+  if (!q) return;
+  const next: PairingMap = {};
+  if (q.type === 'classify') {
+    for (const o of currentOptions.value) for (const c of zones[o.id] ?? []) next[c.id] = o.id;
+  } else {
+    for (const it of pairItems(q)) {
+      const c = zones[it.id]?.[0];
+      if (c) next[it.id] = c.id;
+    }
+  }
+  answers[q.id] = next;
+}
+function onZoneChange(zoneKey: string, evt: { added?: { element: Card } }) {
+  const q = currentQuestion.value;
+  if (q?.type === 'match' && zoneKey !== POOL && (zones[zoneKey]?.length ?? 0) > 1) {
+    // В ячейке одно определение: новое остаётся, прежнее возвращается к остальным.
+    const keep = evt.added?.element ?? zones[zoneKey][zones[zoneKey].length - 1];
+    zones[POOL].push(...zones[zoneKey].filter((c) => c.id !== keep.id));
+    zones[zoneKey] = [keep];
+  }
+  commitZones();
+}
+/** Нажатие на разложенную карточку возвращает её к остальным. */
+function returnToPool(zoneKey: string, cardId: string) {
+  if (currentLocked.value) return;
+  const card = zones[zoneKey]?.find((c) => c.id === cardId);
+  if (!card) return;
+  zones[zoneKey] = zones[zoneKey].filter((c) => c.id !== cardId);
+  zones[POOL].push(card);
+  commitZones();
+}
+function cardClass(cardId: string, zoneKey: string): string {
+  const base = 'rounded-lg ring-1 px-3 py-2 text-sm flex items-center gap-2 select-none transition-colors ';
+  const q = currentQuestion.value;
+  const interactive = currentLocked.value ? 'cursor-default' : 'cursor-grab active:cursor-grabbing';
+  if (q && revealing.value && zoneKey !== POOL) {
+    const key = pairingCorrect(q);
+    const ok = q.type === 'classify' ? key[cardId] === zoneKey : key[zoneKey] === cardId;
+    return base + interactive + (ok ? ' ring-success bg-success/10 text-success' : ' ring-error bg-error/10 text-error');
+  }
+  return base + interactive + (zoneKey === POOL ? ' ring-default bg-default text-default hover:bg-elevated' : ' ring-primary bg-primary/10 text-highlighted');
+}
+
+
 const unanswered = computed(() => view.value.map((it, i) => ({ q: it.q, page: i + 1 })).filter((x) => !isAnswered(x.q)));
 const hasRequiredUnanswered = computed(() => unanswered.value.some((x) => x.q.required));
 const nextUnansweredPage = computed(() => unanswered.value.find((x) => x.page > page.value)?.page ?? null);
@@ -321,13 +370,6 @@ const clientScoreInfo = computed(() => {
   let scorable = 0, correct = 0;
   for (const it of view.value) {
     if (!hasCorrect(it.q)) continue;
-    if (typeIsPairing(it.q.type)) {
-      // Каждое соответствие весит как отдельный вопрос — как на сервере.
-      const key = pairingCorrect(it.q);
-      const m = pairMap(it.q);
-      for (const item of pairItems(it.q)) if (key[item.id]) { scorable++; if (m[item.id] === key[item.id]) correct++; }
-      continue;
-    }
     scorable++;
     if (answeredCorrectly(it)) correct++;
   }
@@ -497,22 +539,23 @@ function pollPercent(id: string): number { return pollResults.value[id]?.percent
 </script>
 
 <template>
-  <div class="flex flex-col h-full min-h-0">
+  <div class="flex flex-col w-full min-h-full justify-center">
     <p v-if="previewHint" class="text-xs text-dimmed mb-2 flex items-center justify-center gap-1.5 shrink-0">
       <UIcon name="i-lucide-eye" class="size-3.5" />
       Так тест увидит сотрудник
     </p>
 
-    <div class="flex-1 min-h-0 w-full grid place-items-center [container-type:size]">
-      <div class="aspect-[16/10] w-[min(100%,160cqh)] max-w-4xl [@container(orientation:portrait)]:aspect-auto [@container(orientation:portrait)]:w-full [@container(orientation:portrait)]:h-full rounded-2xl ring-1 ring-default bg-default shadow-2xl overflow-hidden flex flex-col">
+    <!-- Окно растёт по высоте содержимого (без внутренней прокрутки); скроллится страница. -->
+    <div class="w-full flex justify-center">
+      <div class="w-full max-w-4xl min-h-[26rem] rounded-2xl ring-1 ring-default bg-default shadow-2xl flex flex-col">
 
         <div v-if="form.showProgress && page > 0 && !resultsView" class="h-1 bg-elevated shrink-0">
           <div class="h-full bg-primary transition-all" :style="{ width: `${(page / Math.max(view.length, 1)) * 100}%` }" />
         </div>
 
-        <div class="flex-1 min-h-0 overflow-hidden">
+        <div class="flex-1 flex flex-col">
           <!-- Титульник -->
-          <div v-if="page === 0 && !resultsView" class="h-full flex flex-col items-center justify-center text-center gap-4 px-10 py-6">
+          <div v-if="page === 0 && !resultsView" class="flex-1 flex flex-col items-center justify-center text-center gap-4 px-10 py-6">
             <UBadge color="primary" variant="subtle" size="lg">{{ kindLabels[form.kind] }}</UBadge>
             <h2 class="text-3xl font-semibold text-highlighted leading-tight line-clamp-2">{{ form.title || 'Без названия' }}</h2>
             <p v-if="form.description" class="text-muted max-w-xl line-clamp-4 whitespace-pre-line">{{ form.description }}</p>
@@ -526,12 +569,12 @@ function pollPercent(id: string): number { return pollResults.value[id]?.percent
           </div>
 
           <!-- Финал: разбор теста -->
-          <div v-else-if="resultsView === 'review'" class="h-full flex flex-col px-8 py-6 gap-3">
+          <div v-else-if="resultsView === 'review'" class="flex-1 flex flex-col px-8 py-6 gap-3">
             <div class="flex items-center justify-between gap-3 shrink-0">
               <p class="text-lg font-semibold text-highlighted">Ваши ответы</p>
               <UBadge :color="passed === false ? 'error' : 'success'" variant="subtle" size="lg" class="tabular-nums">{{ scoreInfo.correct }}/{{ scoreInfo.scorable }} · {{ scoreInfo.percent }}%</UBadge>
             </div>
-            <div class="flex-1 min-h-0 overflow-y-auto flex flex-col gap-3 px-1 py-1">
+            <div class="flex flex-col gap-3 px-1 py-1">
               <div v-for="(it, i) in view" :key="it.q.id" class="rounded-xl ring-1 p-3 flex flex-col gap-1" :class="answeredCorrectly(it) ? 'ring-success/40 bg-success/5' : 'ring-error/40 bg-error/5'">
                 <div class="flex items-center gap-2">
                   <UIcon :name="answeredCorrectly(it) ? 'i-lucide-check-circle-2' : 'i-lucide-x-circle'" :class="answeredCorrectly(it) ? 'text-success' : 'text-error'" class="size-4 shrink-0" />
@@ -544,7 +587,7 @@ function pollPercent(id: string): number { return pollResults.value[id]?.percent
           </div>
 
           <!-- Финал: результат теста (процент) -->
-          <div v-else-if="resultsView === 'score'" class="h-full flex flex-col items-center justify-center text-center gap-4 px-10">
+          <div v-else-if="resultsView === 'score'" class="flex-1 flex flex-col items-center justify-center text-center gap-4 px-10 py-8">
             <div class="size-24 rounded-full flex items-center justify-center ring-4" :class="passed === false ? 'ring-error/30 bg-error/10' : 'ring-success/30 bg-success/10'">
               <span class="text-3xl font-bold tabular-nums" :class="passed === false ? 'text-error' : 'text-success'">{{ scoreInfo.percent }}%</span>
             </div>
@@ -561,7 +604,7 @@ function pollPercent(id: string): number { return pollResults.value[id]?.percent
           </div>
 
           <!-- Страница вопроса -->
-          <div v-else-if="currentQuestion" class="h-full flex flex-col px-10 py-6">
+          <div v-else-if="currentQuestion" class="flex-1 flex flex-col px-10 py-6">
             <div class="flex items-center justify-between gap-3 shrink-0">
               <p class="text-sm text-dimmed tabular-nums">{{ isPoll ? 'Голосование' : `Вопрос ${page} из ${view.length}` }}</p>
               <div class="flex items-center gap-1.5 text-sm tabular-nums" :class="timeUp || timeLow ? 'text-error font-medium' : 'text-dimmed'">
@@ -570,7 +613,7 @@ function pollPercent(id: string): number { return pollResults.value[id]?.percent
               </div>
             </div>
 
-            <div class="flex-1 min-h-0 flex flex-col justify-center-safe gap-5 overflow-y-auto px-1 py-1">
+            <div class="flex-1 flex flex-col justify-center gap-5 px-1 py-1">
               <div class="flex flex-col gap-2">
                 <h3 class="text-2xl font-medium text-highlighted">
                   {{ currentQuestion.title || 'Без названия' }}
@@ -606,40 +649,94 @@ function pollPercent(id: string): number { return pollResults.value[id]?.percent
                 </button>
               </div>
 
-              <!-- Соответствие / классификация: каждому элементу — один вариант справа -->
-              <div v-else-if="currentQuestion.type === 'match' || currentQuestion.type === 'classify'" class="flex flex-col gap-3 w-full max-w-2xl p-px">
-                <ol
-                  v-if="currentQuestion.type === 'match'"
-                  class="list-none m-0 p-3 rounded-xl ring-1 ring-default bg-elevated/30 flex flex-col gap-1.5 text-sm text-default"
-                  aria-label="Определения"
+              <!-- Соответствие / классификация: карточки перетаскиваются -->
+              <div v-else-if="currentQuestion.type === 'match' || currentQuestion.type === 'classify'" class="flex flex-col gap-4 w-full">
+                <p class="text-xs text-dimmed">
+                  {{ currentQuestion.type === 'match'
+                    ? 'Перетащите определения к подходящим понятиям.'
+                    : 'Перетащите утверждения в подходящие категории.' }}
+                  Ошиблись — перетащите заново или нажмите на карточку, чтобы вернуть её.
+                </p>
+
+                <!-- Карточки, которые ещё не разложены -->
+                <draggable
+                  v-model="zones[POOL]"
+                  :group="{ name: 'pairing' }"
+                  item-key="id"
+                  :disabled="currentLocked"
+                  ghost-class="opacity-40"
+                  :delay="120"
+                  :delay-on-touch-only="true"
+                  class="flex flex-wrap gap-2 min-h-14 rounded-xl border border-dashed border-default p-2"
+                  @change="onZoneChange(POOL, $event)"
                 >
-                  <li v-for="(t, ti) in currentOptions" :key="t.id" class="flex gap-2">
-                    <span class="shrink-0 w-5 font-medium text-primary tabular-nums">{{ ti + 1 }}.</span>
-                    <span>{{ t.text }}</span>
-                  </li>
-                </ol>
-                <p v-if="currentQuestion.type === 'match'" class="text-xs text-dimmed">Выберите для каждого понятия номер подходящего определения.</p>
-                <p v-else class="text-xs text-dimmed">Выберите для каждого утверждения одну категорию.</p>
-                <ul class="list-none m-0 p-0 flex flex-col gap-2.5">
-                  <li v-for="pi in pairItems(currentQuestion)" :key="pi.id" class="rounded-xl ring-1 ring-default px-3 py-2.5 flex flex-col gap-2">
-                    <p class="text-sm font-medium text-highlighted">{{ pi.text }}</p>
-                    <div class="flex flex-wrap gap-2" role="group" :aria-label="pi.text">
-                      <button
-                        v-for="(t, ti) in currentOptions"
-                        :key="t.id"
-                        type="button"
-                        :disabled="currentLocked"
-                        :aria-pressed="pairMap(currentQuestion)[pi.id] === t.id"
-                        :aria-label="currentQuestion.type === 'match' ? `Определение ${ti + 1}` : undefined"
-                        class="rounded-lg ring-1 text-sm text-left transition-colors disabled:cursor-default"
-                        :class="[pairChipClass(pi.id, t.id), currentQuestion.type === 'match' ? 'size-9 text-center font-medium' : 'px-3 py-1.5']"
-                        @click="onPair(pi.id, t.id)"
-                      >
-                        {{ currentQuestion.type === 'match' ? ti + 1 : t.text }}
-                      </button>
+                  <template #item="{ element }">
+                    <div :class="cardClass(element.id, POOL)">
+                      <UIcon name="i-lucide-grip-vertical" class="size-4 shrink-0 text-dimmed" aria-hidden="true" />
+                      <span>{{ element.text }}</span>
                     </div>
-                  </li>
-                </ul>
+                  </template>
+                  <template #footer>
+                    <p v-if="!zones[POOL]?.length" class="text-xs text-dimmed self-center px-1">Все карточки разложены</p>
+                  </template>
+                </draggable>
+
+                <!-- Соответствие: строка «понятие → ячейка для определения» -->
+                <div v-if="currentQuestion.type === 'match'" class="flex flex-col gap-2">
+                  <div v-for="pi in pairItems(currentQuestion)" :key="pi.id" class="grid grid-cols-1 sm:grid-cols-[2fr_3fr] gap-2 items-stretch">
+                    <div class="rounded-xl bg-elevated px-4 py-3 text-sm font-medium text-highlighted flex items-center">{{ pi.text }}</div>
+                    <draggable
+                      v-model="zones[pi.id]"
+                      :group="{ name: 'pairing' }"
+                      item-key="id"
+                      :disabled="currentLocked"
+                      ghost-class="opacity-40"
+                      :delay="120"
+                      :delay-on-touch-only="true"
+                      class="min-h-14 rounded-xl border border-dashed border-default p-2 flex flex-col gap-2 justify-center transition-colors"
+                      :class="zones[pi.id]?.length ? 'border-solid' : ''"
+                      @change="onZoneChange(pi.id, $event)"
+                    >
+                      <template #item="{ element }">
+                        <div :class="cardClass(element.id, pi.id)" @click="returnToPool(pi.id, element.id)">
+                          <UIcon name="i-lucide-grip-vertical" class="size-4 shrink-0 text-dimmed" aria-hidden="true" />
+                          <span>{{ element.text }}</span>
+                        </div>
+                      </template>
+                      <template #footer>
+                        <p v-if="!zones[pi.id]?.length" class="text-xs text-dimmed text-center">Перетащите сюда</p>
+                      </template>
+                    </draggable>
+                  </div>
+                </div>
+
+                <!-- Классификация: колонки-категории -->
+                <div v-else class="grid grid-cols-1 gap-3" :class="currentOptions.length >= 3 ? 'md:grid-cols-3' : 'md:grid-cols-2'">
+                  <div v-for="cat in currentOptions" :key="cat.id" class="flex flex-col gap-2 rounded-xl bg-elevated p-3">
+                    <p class="text-sm font-semibold text-highlighted">{{ cat.text }}</p>
+                    <draggable
+                      v-model="zones[cat.id]"
+                      :group="{ name: 'pairing' }"
+                      item-key="id"
+                      :disabled="currentLocked"
+                      ghost-class="opacity-40"
+                      :delay="120"
+                      :delay-on-touch-only="true"
+                      class="min-h-20 flex-1 rounded-lg border border-dashed border-default p-2 flex flex-col gap-2"
+                      @change="onZoneChange(cat.id, $event)"
+                    >
+                      <template #item="{ element }">
+                        <div :class="cardClass(element.id, cat.id)" @click="returnToPool(cat.id, element.id)">
+                          <UIcon name="i-lucide-grip-vertical" class="size-4 shrink-0 text-dimmed" aria-hidden="true" />
+                          <span>{{ element.text }}</span>
+                        </div>
+                      </template>
+                      <template #footer>
+                        <p v-if="!zones[cat.id]?.length" class="text-xs text-dimmed text-center my-auto">Перетащите сюда</p>
+                      </template>
+                    </draggable>
+                  </div>
+                </div>
               </div>
 
               <!-- Выпадающий список -->

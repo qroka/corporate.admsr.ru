@@ -423,7 +423,7 @@ function fmtDate(iso?: string): string {
       </div>
 
       <!-- ШАГ 3: Предпросмотр -->
-      <TestRunner v-if="step === 'preview'" :form="form" preview-hint class="h-full" @finish="onPreviewFinish" />
+      <TestRunner v-if="step === 'preview'" :form="form" preview-hint @finish="onPreviewFinish" />
       </div>
 
       <!-- Навигация по шагам (неподвижный футер) -->
@@ -492,10 +492,10 @@ function fmtDate(iso?: string): string {
       v-model:open="runOpen"
       fullscreen
       :title="runForm?.title || 'Прохождение'"
-      :ui="{ content: 'flex flex-col', body: 'flex-1 min-h-0 p-4 sm:p-6' }"
+      :ui="{ content: 'flex flex-col', body: 'flex-1 min-h-0 overflow-y-auto p-4 sm:p-6' }"
     >
       <template #body>
-        <TestRunner v-if="runOpen && runForm" :form="runForm" persist-session class="h-full" @finish="onDraftRunFinish" />
+        <TestRunner v-if="runOpen && runForm" :form="runForm" persist-session @finish="onDraftRunFinish" />
       </template>
     </UModal>
 

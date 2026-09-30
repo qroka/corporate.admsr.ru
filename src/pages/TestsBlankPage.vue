@@ -348,10 +348,10 @@ function openStats(f: TestForm) {
       v-model:open="runOpen"
       fullscreen
       :title="runForm?.title || 'Прохождение'"
-      :ui="{ content: 'flex flex-col', body: 'flex-1 min-h-0 p-4 sm:p-6' }"
+      :ui="{ content: 'flex flex-col', body: 'flex-1 min-h-0 overflow-y-auto p-4 sm:p-6' }"
     >
       <template #body>
-        <TestRunner v-if="runOpen && runForm" :form="runForm" persist-session record class="h-full" @finish="onRunFinish" />
+        <TestRunner v-if="runOpen && runForm" :form="runForm" persist-session record @finish="onRunFinish" />
       </template>
     </UModal>
 

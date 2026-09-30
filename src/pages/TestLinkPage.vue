@@ -92,7 +92,7 @@ function onFinish() { completionOpen.value = true; }
       <span class="font-semibold text-highlighted">Корпоративный портал — прохождение</span>
     </div>
 
-    <div class="flex-1 min-h-0 p-4 sm:p-6">
+    <div class="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6">
       <div v-if="loading" class="h-full grid place-items-center text-muted text-sm">Загрузка…</div>
 
       <div v-else-if="error" class="h-full grid place-items-center text-center">
@@ -112,7 +112,7 @@ function onFinish() { completionOpen.value = true; }
       </div>
 
       <!-- Прохождение -->
-      <TestRunner v-else-if="showRunner && form" :form="form" :submit="onSubmit" persist-session class="h-full" @finish="onFinish" />
+      <TestRunner v-else-if="showRunner && form" :form="form" :submit="onSubmit" persist-session @finish="onFinish" />
 
       <!-- Лендинг для неавторизованного -->
       <div v-else-if="form" class="h-full grid place-items-center">

@@ -194,7 +194,7 @@ async function onRetake() {
 </script>
 
 <template>
-  <UMain class="flex flex-1 flex-col w-full min-w-0 h-full min-h-0 gap-3 overflow-x-hidden">
+  <UMain class="flex flex-1 flex-col w-full min-w-0 h-full min-h-0 gap-3 overflow-x-hidden overflow-y-auto">
     <h1 class="sr-only">{{ form.title || 'Прохождение теста' }}</h1>
 
     <div v-if="loading || retaking" class="flex flex-col gap-3 flex-1">
