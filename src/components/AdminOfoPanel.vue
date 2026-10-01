@@ -94,6 +94,9 @@ let positionsSeq = 0;
 const selected = computed(() => (selectedId.value != null ? unitById.value.get(selectedId.value) ?? null : null));
 const selectedParentPath = computed(() => (selected.value ? parentLabel(selected.value) : ''));
 const selectedChildren = computed(() => (selected.value ? childrenOf(selected.value.id) : []));
+const selectedParent = computed(() =>
+  selected.value?.parent_id != null ? unitById.value.get(selected.value.parent_id) ?? null : null,
+);
 
 function subtreeIds(unitId: number): Set<number> {
   const ids = new Set<number>([unitId]);
@@ -278,6 +281,17 @@ watch(selectedId, (id, prev) => {
     >
       <template #body>
         <div v-if="selected" class="flex flex-col gap-6">
+          <UButton
+            v-if="selectedParent"
+            color="neutral"
+            variant="link"
+            icon="i-lucide-arrow-left"
+            class="self-start -mb-3 px-0"
+            @click="selectedId = selectedParent.id"
+          >
+            {{ selectedParent.name }}
+          </UButton>
+
           <div class="grid gap-3" :class="selectedChildren.length ? 'grid-cols-3' : 'grid-cols-2'">
             <div class="rounded-panel bg-elevated p-3">
               <div class="text-2xl font-semibold text-highlighted tabular-nums">{{ selected.user_count ?? 0 }}</div>

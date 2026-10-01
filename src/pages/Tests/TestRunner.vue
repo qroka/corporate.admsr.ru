@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onUnmounted, reactive, ref, watch } from 'vue';
 import draggable from 'vuedraggable';
 import { useTestsStore } from '../../composables/useTestsStore';
 import { pairingCorrect, typeIsPairing, type PairingMap, type Question } from './questionTypes';
@@ -266,8 +266,12 @@ let lastDuration = 0;
 type Card = { id: string; text: string };
 const POOL = 'pool';
 const zones = reactive<Record<string, Card[]>>({ [POOL]: [] });
+// Клавиатура: Enter/Пробел на карточке из общего набора выбирает её, затем «Положить сюда» в нужной зоне.
+const picked = ref<string | null>(null);
+const pickedCard = computed(() => (picked.value ? zones[POOL]?.find((c) => c.id === picked.value) ?? null : null));
 
 function buildZones() {
+  picked.value = null;
   const q = currentQuestion.value;
   if (!q || !typeIsPairing(q.type)) return;
   const m = pairMap(q);
@@ -313,6 +317,12 @@ function onZoneChange(zoneKey: string, evt: { added?: { element: Card } }) {
   }
   commitZones();
 }
+function focusCard(zoneKey: string, cardId: string) {
+  nextTick(() => {
+    const key = `${zoneKey}|${cardId}`;
+    ([...document.querySelectorAll<HTMLElement>('[data-card-key]')].find((e) => e.dataset.cardKey === key))?.focus();
+  });
+}
 /** Нажатие на разложенную карточку возвращает её к остальным. */
 function returnToPool(zoneKey: string, cardId: string) {
   if (currentLocked.value) return;
@@ -321,11 +331,28 @@ function returnToPool(zoneKey: string, cardId: string) {
   zones[zoneKey] = zones[zoneKey].filter((c) => c.id !== cardId);
   zones[POOL].push(card);
   commitZones();
+  focusCard(POOL, cardId);
+}
+function togglePick(cardId: string) {
+  if (currentLocked.value) return;
+  picked.value = picked.value === cardId ? null : cardId;
+}
+/** Выбранную с клавиатуры карточку кладём в зону — как при перетаскивании. */
+function placePicked(zoneKey: string) {
+  const card = pickedCard.value;
+  if (!card || currentLocked.value) return;
+  zones[POOL] = zones[POOL].filter((c) => c.id !== card.id);
+  zones[zoneKey] = [...(zones[zoneKey] ?? []), card];
+  picked.value = null;
+  onZoneChange(zoneKey, { added: { element: card } });
+  focusCard(zoneKey, card.id);
 }
 function cardClass(cardId: string, zoneKey: string): string {
   const base = 'rounded-lg ring-1 px-3 py-2 text-sm flex items-center gap-2 select-none transition-colors ';
   const q = currentQuestion.value;
-  const interactive = currentLocked.value ? 'cursor-default' : 'cursor-grab active:cursor-grabbing';
+  const interactive = (currentLocked.value ? 'cursor-default' : 'cursor-grab active:cursor-grabbing')
+    + ' focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary'
+    + (zoneKey === POOL && picked.value === cardId ? ' ring-2 ring-primary' : '');
   if (q && revealing.value && zoneKey !== POOL) {
     const key = pairingCorrect(q);
     const ok = q.type === 'classify' ? key[cardId] === zoneKey : key[zoneKey] === cardId;
@@ -656,6 +683,10 @@ function pollPercent(id: string): number { return pollResults.value[id]?.percent
                     ? 'Перетащите определения к подходящим понятиям.'
                     : 'Перетащите утверждения в подходящие категории.' }}
                   Ошиблись — перетащите заново или нажмите на карточку, чтобы вернуть её.
+                  С клавиатуры: Enter на карточке выбирает её, затем нажмите «Положить сюда» в нужной ячейке.
+                </p>
+                <p class="sr-only" aria-live="polite">
+                  {{ pickedCard ? `Выбрана карточка: ${pickedCard.text}. Перейдите к нужной ячейке и нажмите «Положить сюда».` : '' }}
                 </p>
 
                 <!-- Карточки, которые ещё не разложены -->
@@ -671,7 +702,15 @@ function pollPercent(id: string): number { return pollResults.value[id]?.percent
                   @change="onZoneChange(POOL, $event)"
                 >
                   <template #item="{ element }">
-                    <div :class="cardClass(element.id, POOL)">
+                    <div
+                      :class="cardClass(element.id, POOL)"
+                      :data-card-key="`${POOL}|${element.id}`"
+                      :role="currentLocked ? undefined : 'button'"
+                      :tabindex="currentLocked ? undefined : 0"
+                      :aria-pressed="currentLocked ? undefined : picked === element.id"
+                      @keydown.enter.prevent="togglePick(element.id)"
+                      @keydown.space.prevent="togglePick(element.id)"
+                    >
                       <UIcon name="i-lucide-grip-vertical" class="size-4 shrink-0 text-dimmed" aria-hidden="true" />
                       <span>{{ element.text }}</span>
                     </div>
@@ -698,13 +737,35 @@ function pollPercent(id: string): number { return pollResults.value[id]?.percent
                       @change="onZoneChange(pi.id, $event)"
                     >
                       <template #item="{ element }">
-                        <div :class="cardClass(element.id, pi.id)" @click="returnToPool(pi.id, element.id)">
+                        <div
+                          :class="cardClass(element.id, pi.id)"
+                          :data-card-key="`${pi.id}|${element.id}`"
+                          :role="currentLocked ? undefined : 'button'"
+                          :tabindex="currentLocked ? undefined : 0"
+                          :aria-label="currentLocked ? undefined : `Вернуть карточку: ${element.text}`"
+                          @click="returnToPool(pi.id, element.id)"
+                          @keydown.enter.prevent="returnToPool(pi.id, element.id)"
+                          @keydown.space.prevent="returnToPool(pi.id, element.id)"
+                        >
                           <UIcon name="i-lucide-grip-vertical" class="size-4 shrink-0 text-dimmed" aria-hidden="true" />
                           <span>{{ element.text }}</span>
                         </div>
                       </template>
                       <template #footer>
                         <p v-if="!zones[pi.id]?.length" class="text-xs text-dimmed text-center">Перетащите сюда</p>
+                        <UButton
+                          v-if="pickedCard"
+                          type="button"
+                          size="xs"
+                          color="primary"
+                          variant="subtle"
+                          icon="i-lucide-corner-down-left"
+                          class="self-center"
+                          :aria-label="`Положить «${pickedCard.text}» к понятию «${pi.text}»`"
+                          @click="placePicked(pi.id)"
+                        >
+                          Положить сюда
+                        </UButton>
                       </template>
                     </draggable>
                   </div>
@@ -726,13 +787,35 @@ function pollPercent(id: string): number { return pollResults.value[id]?.percent
                       @change="onZoneChange(cat.id, $event)"
                     >
                       <template #item="{ element }">
-                        <div :class="cardClass(element.id, cat.id)" @click="returnToPool(cat.id, element.id)">
+                        <div
+                          :class="cardClass(element.id, cat.id)"
+                          :data-card-key="`${cat.id}|${element.id}`"
+                          :role="currentLocked ? undefined : 'button'"
+                          :tabindex="currentLocked ? undefined : 0"
+                          :aria-label="currentLocked ? undefined : `Вернуть карточку: ${element.text}`"
+                          @click="returnToPool(cat.id, element.id)"
+                          @keydown.enter.prevent="returnToPool(cat.id, element.id)"
+                          @keydown.space.prevent="returnToPool(cat.id, element.id)"
+                        >
                           <UIcon name="i-lucide-grip-vertical" class="size-4 shrink-0 text-dimmed" aria-hidden="true" />
                           <span>{{ element.text }}</span>
                         </div>
                       </template>
                       <template #footer>
                         <p v-if="!zones[cat.id]?.length" class="text-xs text-dimmed text-center my-auto">Перетащите сюда</p>
+                        <UButton
+                          v-if="pickedCard"
+                          type="button"
+                          size="xs"
+                          color="primary"
+                          variant="subtle"
+                          icon="i-lucide-corner-down-left"
+                          class="self-center"
+                          :aria-label="`Положить «${pickedCard.text}» в категорию «${cat.text}»`"
+                          @click="placePicked(cat.id)"
+                        >
+                          Положить сюда
+                        </UButton>
                       </template>
                     </draggable>
                   </div>

@@ -188,9 +188,11 @@ function openLightbox(e?: Event) {
             variant="solid"
             class="shrink-0 bg-inverted text-inverted hover:bg-inverted/90"
             :icon="subscribed ? 'i-lucide-check' : 'i-lucide-plus'"
-            :label="subscribed ? 'Вы подписаны' : 'Подписаться'"
+            :aria-label="subscribed ? 'Вы подписаны' : 'Подписаться'"
             @click.stop="toggleSubscribe"
-          />
+          >
+            <span class="hidden sm:inline">{{ subscribed ? 'Вы подписаны' : 'Подписаться' }}</span>
+          </UButton>
         </div>
 
         <div class="flex min-h-0 flex-1 flex-col gap-1.5">

@@ -72,8 +72,9 @@ async function onSubmit(event: FormSubmitEvent<Schema>) {
 </script>
 
 <template>
-  <div class="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-(--ui-bg) px-4 py-11">
-    <div class="flex w-full flex-col items-center gap-6">
+  <!-- Корень приложения — h-dvh overflow-hidden: страница скроллит себя, my-auto — центр без обрезки (как в OnboardingPage). -->
+  <div class="relative flex h-full min-h-0 flex-col items-center overflow-y-auto bg-(--ui-bg) px-4 py-11">
+    <div class="my-auto flex w-full flex-col items-center gap-6">
       <!-- Заголовок -->
       <div class="flex flex-col items-center gap-1 text-center">
         <p

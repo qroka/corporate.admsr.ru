@@ -10,9 +10,6 @@ import { newsEditorSlideoverUi } from '../../../composables/newsEditorSlideoverU
 import { useAdminCoursePortalBreadcrumbs } from '../useAdminCoursePortalBreadcrumbs';
 import { activeTimeHint, minutesToSeconds, secondsToMinutes } from '../courseDuration';
 
-/** Поле ввода — на всю высоту рамки, иначе клик ниже первой строки не ставит курсор. */
-const materialEditorUi = { ...newsEditorSlideoverUi, base: `${newsEditorSlideoverUi.base} min-h-44` };
-
 const route = useRoute();
 const router = useRouter();
 const store = useCoursesStore();
@@ -322,7 +319,7 @@ async function onSubmit() {
             content-type="html"
             :extensions="newsEditorExtensions"
             :handlers="newsEditorHandlers"
-            :ui="materialEditorUi"
+            :ui="newsEditorSlideoverUi"
             placeholder="Текст материала…"
             class="w-full min-h-56 rounded-lg border border-accented overflow-hidden"
           >
