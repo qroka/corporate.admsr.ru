@@ -154,6 +154,8 @@ const portalFeatures = [
 ];
 
 
+/** ОФО уже задано (остался пустым только аватар или должность) — менять его на портале нельзя. */
+const ofoAlreadySet = computed(() => !!profile.value && !isOfoUnset(profile.value.ofo));
 const selectedOfoLabel = computed(() => pathLabel(form.ofoId));
 
 // ── Внешний вид ──────────────────────────────────────────────────────────────
@@ -237,11 +239,6 @@ async function finishOnboarding() {
       ofo: String(form.ofoId ?? ''),
       role: form.role,
       avatar_url: form.avatarUrl,
-      firstname: p.firstname,
-      surname: p.surname,
-      lastname: p.lastname,
-      phone: p.phone,
-      email: p.email,
     });
 
     if (!ok) {
@@ -491,6 +488,7 @@ onMounted(async () => {
                 <UserWorkFields
                   v-model:ofo-id="form.ofoId"
                   v-model:role="form.role"
+                  :ofo-locked="ofoAlreadySet"
                   required
                   size="xl"
                   ofo-help="Категория — заголовок, раскройте и выберите подразделение."

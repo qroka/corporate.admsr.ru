@@ -25,6 +25,9 @@ func TestEndpointsRequireSessionBeforeTouchingDB(t *testing.T) {
 	authSvc := &auth.Service{Pool: nil}
 	usersH := &Users{Pool: nil, Auth: authSvc}
 	profileH := &Profile{Pool: nil, Auth: authSvc}
+	wallH := &ProfileWall{Pool: nil, Auth: authSvc}
+	extrasH := &ProfileExtras{Pool: nil, Auth: authSvc}
+	avatarH := &ProfileAvatar{Pool: nil, Auth: authSvc}
 	formsH := &FormsHandler{Pool: nil, Auth: authSvc}
 	ofoH := &OFO{Pool: nil, Auth: authSvc}
 
@@ -40,6 +43,12 @@ func TestEndpointsRequireSessionBeforeTouchingDB(t *testing.T) {
 		{"users update", http.MethodPut, "/api/users.php?id=1", `{"user_group":"admin"}`, nil, usersH.ServeHTTP},
 		{"profile read", http.MethodGet, "/api/profile.php?id=1", "", nil, profileH.ServeHTTP},
 		{"profile write", http.MethodPost, "/api/profile.php", `{"id":1,"role":"x"}`, nil, profileH.ServeHTTP},
+		{"wall read", http.MethodGet, "/api/profile_wall.php?userId=1", "", nil, wallH.ServeHTTP},
+		{"wall create", http.MethodPost, "/api/profile_wall.php", `{"action":"create","userId":1,"content":"x"}`, nil, wallH.ServeHTTP},
+		{"wall delete", http.MethodPost, "/api/profile_wall.php", `{"action":"delete","id":1}`, nil, wallH.ServeHTTP},
+		{"avatar upload", http.MethodPost, "/api/profile_avatar.php", `{}`, nil, avatarH.ServeHTTP},
+		{"wish add", http.MethodPost, "/api/profile_extras.php", `{"action":"wish_add","text":"x"}`, nil, extrasH.ServeHTTP},
+		{"award add", http.MethodPost, "/api/profile_extras.php", `{"action":"award_add","userId":1,"title":"x","awardedOn":"2026-10-01"}`, nil, extrasH.ServeHTTP},
 		{"forms create", http.MethodPost, "/api/forms.php", `{}`, nil, formsH.Forms},
 		{"forms read", http.MethodGet, "/api/forms.php?id=0f9f9c4a-5a2c-4d4e-8b9a-2b1c3d4e5f60", "", nil, formsH.Forms},
 		{"forms update", http.MethodPut, "/api/forms.php?id=0f9f9c4a-5a2c-4d4e-8b9a-2b1c3d4e5f60", `{}`, nil, formsH.Forms},

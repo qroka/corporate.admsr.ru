@@ -2,7 +2,6 @@ import { computed, ref, watch, type Ref } from 'vue';
 import type { CommandPaletteGroup, CommandPaletteItem } from '@nuxt/ui';
 import { useNewsData } from './useNewsData';
 import { useUsersData } from './useUsersData';
-import { useAppToast } from './useAppToast';
 import { apiSessionFetch } from './useAuthSession';
 import { usePortalServices } from './usePortalServices';
 
@@ -237,7 +236,7 @@ function kindLabel(kind?: string) {
   return ({ test: 'Тест', survey: 'Опрос', poll: 'Голосование' } as Record<string, string>)[String(kind ?? '')] ?? 'Форма';
 }
 
-function buildContentGroups(q: string, toast: ReturnType<typeof useAppToast>['toast']): CommandPaletteGroup[] {
+function buildContentGroups(q: string): CommandPaletteGroup[] {
   const groups: CommandPaletteGroup[] = [];
   const { news } = useNewsData();
   const { users } = useUsersData();
@@ -252,16 +251,7 @@ function buildContentGroups(q: string, toast: ReturnType<typeof useAppToast>['to
       description: [u.role, u.email, u.phone].filter(Boolean).join(' · ') || u.login,
       icon: 'i-lucide-user',
       avatar: u.avatar_url ? { src: u.avatar_url, alt: u.fullName } : undefined,
-      onSelect(e?: Event) {
-        e?.preventDefault?.();
-        const lines = [u.email, u.phone, u.role].filter(Boolean);
-        toast.add({
-          title: u.fullName,
-          description: lines.join(' · ') || 'Контакты не указаны',
-          icon: 'i-lucide-user',
-          color: 'neutral',
-        });
-      },
+      to: `/profile/${u.id}`,
     });
     if (people.length >= PER_GROUP) break;
   }
@@ -400,7 +390,6 @@ function buildContentGroups(q: string, toast: ReturnType<typeof useAppToast>['to
  * галерея, формы, сервисы, курсы, документация (как в CMDB — клиентский индекс по контенту).
  */
 export function usePortalGlobalSearch(searchTerm: Ref<string>, open: Ref<boolean>) {
-  const { toast } = useAppToast();
 
   watch(
     open,
@@ -422,7 +411,7 @@ export function usePortalGlobalSearch(searchTerm: Ref<string>, open: Ref<boolean
     ];
 
     if (q.length >= MIN_QUERY) {
-      result.push(...buildContentGroups(q, toast));
+      result.push(...buildContentGroups(q));
     }
 
     return result;

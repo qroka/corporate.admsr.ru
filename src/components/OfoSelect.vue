@@ -2,7 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { useOfoTree, type OfoUnit } from '../composables/useOfoTree';
 
-const props = defineProps<{ modelValue: number | null }>();
+const props = defineProps<{ modelValue: number | null; disabled?: boolean }>();
 const emit = defineEmits<{ (e: 'update:modelValue', v: number | null): void }>();
 
 const { categories, units, loading, error, ensureLoaded, rootUnitsOf, childrenOf, hasChildren, unitById, pathLabel } = useOfoTree();
@@ -77,6 +77,7 @@ watch(open, (v) => { if (v) expandPathTo(props.modelValue); });
       color="neutral"
       variant="outline"
       size="xl"
+      :disabled="disabled"
       trailing-icon="i-lucide-chevron-down"
       class="w-full justify-between"
     >

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"image"
+	"image/color"
 	"image/jpeg"
 	_ "image/png"
 	"os"
@@ -114,4 +115,64 @@ func writeJPEG(path string, img image.Image, quality int) error {
 	}
 	defer f.Close()
 	return jpeg.Encode(f, img, &jpeg.Options{Quality: quality})
+}
+
+// AvatarsUploadsURL — публичный префикс загруженных сотрудниками аватаров.
+// Лежит внутри /img/FullPic/avatars/ (там же стандартные аватары), поэтому
+// отдаётся тем же правилом статики, что и остальные картинки.
+const AvatarsUploadsURL = "/img/FullPic/avatars/uploads/"
+
+const (
+	avatarSize      = 512
+	avatarMaxPixels = 40_000_000 // защита от «бомб»: ~6300×6300
+)
+
+// SaveAvatar обрезает картинку по центру до квадрата 512×512 и пишет JPEG
+// `<userID>-<случайное>.jpg`. Прозрачность заливается белым — JPEG её не хранит.
+// Возвращает публичный URL.
+func SaveAvatar(imgRoot string, userID int64, raw []byte) (string, error) {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(raw))
+	if err != nil {
+		return "", fmt.Errorf("decode config: %w", err)
+	}
+	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width*cfg.Height > avatarMaxPixels {
+		return "", fmt.Errorf("image too large: %dx%d", cfg.Width, cfg.Height)
+	}
+	img, err := imaging.Decode(bytes.NewReader(raw), imaging.AutoOrientation(true))
+	if err != nil {
+		return "", fmt.Errorf("decode: %w", err)
+	}
+	square := imaging.Fill(img, avatarSize, avatarSize, imaging.Center, imaging.Lanczos)
+	flat := imaging.New(avatarSize, avatarSize, color.White)
+	flat = imaging.Overlay(flat, square, image.Pt(0, 0), 1.0)
+
+	base, err := RandomName()
+	if err != nil {
+		return "", err
+	}
+	name := fmt.Sprintf("%d-%s.jpg", userID, base)
+	dir := filepath.Join(imgRoot, "FullPic", "avatars", "uploads")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	if err := writeJPEG(filepath.Join(dir, name), flat, 88); err != nil {
+		return "", err
+	}
+	return AvatarsUploadsURL + name, nil
+}
+
+// RemoveUploadedAvatar удаляет файл прежнего загруженного аватара. Трогает
+// только `/img/FullPic/avatars/uploads/<userID>-<hex>.jpg` этого же
+// пользователя — любой другой URL (стандартный аватар, чужой файл, внешний
+// адрес) игнорируется.
+func RemoveUploadedAvatar(imgRoot string, userID int64, url string) {
+	prefix := AvatarsUploadsURL + fmt.Sprintf("%d-", userID)
+	if !strings.HasPrefix(url, prefix) {
+		return
+	}
+	name := strings.TrimPrefix(url, AvatarsUploadsURL)
+	if name == "" || strings.ContainsAny(name, `/\`) || !strings.HasSuffix(name, ".jpg") {
+		return
+	}
+	_ = os.Remove(filepath.Join(imgRoot, "FullPic", "avatars", "uploads", name))
 }

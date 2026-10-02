@@ -43,14 +43,14 @@ PHP-реализацию (или в 404, если PHP-файла нет).
 
 ## Каталог эндпоинтов
 
-### Обслуживаются Go (79)
+### Обслуживаются Go (82)
 
 | Группа | Эндпоинты | Хендлер |
 |--------|-----------|---------|
 | Здоровье | `health.php` | `health.go` |
 | Аутентификация | `auth.php`, `logout.php`, `check-auth.php`, `heartbeat.php`, `session_bootstrap.php` | `auth.go` |
 | Контент | `news.php`, `events.php`, `gallery.php`, `gallery_base.php`, `Upload/upload.php` | `news.go`, `events.go`, `gallery.go` |
-| Люди | `users.php`, `profile.php`, `feedback.php`, `birthdays.php` | `users.go`, `profile.go`, `feedback.go`, `birthdays.go` |
+| Люди | `users.php`, `profile.php`, `profile_wall.php`, `profile_extras.php`, `profile_avatar.php`, `feedback.php`, `birthdays.php` | `users.go`, `profile.go`, `profile_wall.go`, `profile_extras.go`, `profile_avatar.go`, `feedback.go`, `birthdays.go` |
 | ОФО | `ofo.php`, `ofo_seats.php`, `ofo_tree.php`, `ofo_positions.php` | `ofo.go` |
 | Отсутствия | `absence_journal.php` | `absence.go` |
 | Портал | `portal_groups.php`, `portal_my_permissions.php`, `portal_services.php` | `portal.go`, `portal_services.go` |
@@ -93,7 +93,10 @@ PHP-реализацию (или в 404, если PHP-файла нет).
 | `birthdays.php` | авторизованный | секция `birthdays` |
 | `absence_journal.php` | `requireUser` | `requireUser` + секция `absence_journal` **или** своя запись (`DELETE` — своя активная) |
 | `users.php` | `requireAdmin` | `requireAdmin` |
-| `profile.php` | `requireUser` | владелец записи либо админ |
+| `profile.php` | `requireUser`; `?view=page` добавляет `ofoName`, `birthday` (из xlsx дней рождения по ФИО), `about`, `interests`, `colleagues`, `courses` (завершённые; `enrollmentId` — только владельцу), `absences` (последние 5), `wishes`, `awards` | владелец записи либо админ; пишет только `avatar_url`, `about`, `interests` (в `profile_about`) и — **один раз** — `ofo` и `role` (пока ОФО не задано / должность пуста). ФИО, телефон и почта из тела **игнорируются** (ADR-041); неприсланные поля не трогаются |
+| `profile_avatar.php` | — | `requireUser`, только себе (личность из сессии): multipart, поле `avatar`, JPEG/PNG/WebP до 5 МБ → квадрат 512×512 JPEG в `/img/FullPic/avatars/uploads/<id>-<hex>.jpg`, сразу становится аватаром; прежний загруженный файл удаляется |
+| `profile_extras.php` | — | `requireUser`; `wish_add` — только себе, `wish_delete` — автор или админ, `award_add` / `award_delete` — только админ (`user_group = admin`) |
+| `profile_wall.php` | `requireUser` (`?userId=` — стена, `?action=reactors`) | `requireUser`; `action`: `create` — любой на любую стену, `update` — только автор, `delete` — автор, владелец стены или админ, `react` — любой |
 | `feedback.php` | — | `requireUser` |
 | `ofo*.php` | `requireUser` | `requireUser` |
 | `portal_groups.php` | `requireUser` / `requireAdmin` | `requireAdmin` |

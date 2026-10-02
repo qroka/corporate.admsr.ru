@@ -1,14 +1,15 @@
 <script setup lang="ts">
 /**
- * Реакции на новость: чипы с количеством (моя реакция подсвечена), «+» — выбор
+ * Реакции на новость или запись на стене профиля (target): чипы с количеством (моя реакция подсвечена), «+» — выбор
  * из всех реакций. Подсказка над чипом показывает, кто отреагировал.
  * readonly — киоск и гости: только просмотр.
  */
 import { computed, ref } from 'vue';
 import {
   NEWS_REACTIONS,
-  useNewsReactions,
+  useReactions,
   type NewsReactionKey,
+  type ReactionTarget,
 } from '../composables/useNewsReactions';
 
 const props = withDefaults(
@@ -16,11 +17,12 @@ const props = withDefaults(
     newsId: string | number;
     readonly?: boolean;
     size?: 'xs' | 'sm';
+    target?: ReactionTarget;
   }>(),
-  { readonly: false, size: 'xs' },
+  { readonly: false, size: 'xs', target: 'news' },
 );
 
-const { reactionsOf, countOf, isMine, toggle, loadReactors, reactorsOf } = useNewsReactions();
+const { reactionsOf, countOf, isMine, toggle, loadReactors, reactorsOf } = useReactions(props.target);
 
 const pickerOpen = ref(false);
 

@@ -18,10 +18,12 @@ const props = withDefaults(
     role: string;
     required?: boolean;
     disabled?: boolean;
+    /** ОФО уже задано — на портале его не меняют (ADR-041), выбор заблокирован. */
+    ofoLocked?: boolean;
     size?: 'md' | 'lg' | 'xl';
     ofoHelp?: string;
   }>(),
-  { required: false, disabled: false, size: 'lg', ofoHelp: undefined },
+  { required: false, disabled: false, ofoLocked: false, size: 'lg', ofoHelp: undefined },
 );
 
 const emit = defineEmits<{
@@ -81,7 +83,7 @@ const ofoHelpText = computed(() => (ofoError.value ? String(ofoError.value) : pr
 
 <template>
   <UFormField label="ОФО" name="ofoId" :required="required" :help="ofoHelpText">
-    <OfoSelect :model-value="ofoId" @update:model-value="onOfoChange" />
+    <OfoSelect :model-value="ofoId" :disabled="disabled || ofoLocked" @update:model-value="onOfoChange" />
   </UFormField>
 
   <UFormField label="Должность" name="role" :required="required">

@@ -84,7 +84,7 @@ const routes = [
   { path: '/gallery', name: 'gallery', component: GalleryPage, meta: { title: 'Фотогалерея' } },
   { path: '/gallery/:albumId', name: 'gallery-album', component: GalleryAlbumPage, meta: { title: 'Альбом' } },
   { path: '/calendar', name: 'calendar', component: CalendarPage, meta: { title: 'Календарь' } },
-  { path: '/profile', name: 'profile', component: ProfilePage, meta: { title: 'Профиль' } },
+  { path: '/profile/:id(\\d+)?', name: 'profile', component: ProfilePage, meta: { title: 'Профиль' } },
   { path: '/absence-journal', name: 'absence-journal', component: AbsenceJournalPage, meta: { title: 'Журнал отсутствия' } },
   { path: '/applications', name: 'applications', component: ApplicationsPage, meta: { title: 'Заявки' } },
   { path: '/documentation', name: 'documentation', component: DocumentationPage, meta: { title: 'Документация' } },

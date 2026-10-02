@@ -1,166 +1,164 @@
-import { computed, ref } from 'vue';
+import { ref } from 'vue';
+import { apiSessionFetch } from './useAuthSession';
+import { seedWallReactions } from './useNewsReactions';
 
+/**
+ * Стена профиля — на сервере (/api/profile_wall.php, таблица wall_posts, V14).
+ * Писать на стену может любой вошедший сотрудник; править — автор; удалять —
+ * автор, владелец стены или администратор (права считает сервер: canEdit/canDelete).
+ * Текст простой, без HTML — выводить как текст, не через v-html.
+ */
 export type WallPost = {
-  id: string;
-  userId: number;
-  authorName: string;
-  authorAvatar: string;
+  id: number;
+  ownerId: number;
+  author: { id: number; name: string; avatar_url: string };
   content: string;
   createdAt: string;
+  updatedAt: string | null;
+  canEdit: boolean;
+  canDelete: boolean;
 };
 
-const STORAGE_KEY = 'profile-wall-posts:v2';
+export const WALL_POST_MAX_LENGTH = 4000;
+const PAGE_SIZE = 10;
 
-function normalizePost(raw: unknown): WallPost | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const r = raw as Record<string, unknown>;
-  if (!r.id || !r.createdAt) return null;
-
-  let content = String(r.content ?? '');
-  const images = Array.isArray(r.images) ? r.images.filter((i) => typeof i === 'string') as string[] : [];
-
-  if (images.length && !content.includes('<img')) {
-    const imgs = images.map((src) => `<p><img src="${src}" alt="" /></p>`).join('');
-    content = content && !content.includes('<') ? `<p>${content}</p>${imgs}` : content ? `${content}${imgs}` : imgs;
-  } else if (content && !content.includes('<')) {
-    content = `<p>${content}</p>`;
+// Записи до появления сервера лежали только в браузере автора — их никто, кроме него, не видел.
+if (typeof window !== 'undefined') {
+  try {
+    window.localStorage.removeItem('profile-wall-posts:v2');
+    window.localStorage.removeItem('profile-wall-posts:v1');
+  } catch {
+    /* хранилище недоступно */
   }
+}
 
+function normalize(raw: any): WallPost {
+  seedWallReactions(raw?.id, raw?.reactions);
   return {
-    id: String(r.id),
-    userId: Number(r.userId) || 0,
-    authorName: String(r.authorName ?? 'Сотрудник'),
-    authorAvatar: String(r.authorAvatar ?? ''),
-    content,
-    createdAt: String(r.createdAt),
+    id: Number(raw?.id) || 0,
+    ownerId: Number(raw?.ownerId) || 0,
+    author: {
+      id: Number(raw?.author?.id) || 0,
+      name: String(raw?.author?.name ?? 'Сотрудник'),
+      avatar_url: String(raw?.author?.avatar_url ?? ''),
+    },
+    content: String(raw?.content ?? ''),
+    createdAt: String(raw?.createdAt ?? ''),
+    updatedAt: raw?.updatedAt ? String(raw.updatedAt) : null,
+    canEdit: Boolean(raw?.canEdit),
+    canDelete: Boolean(raw?.canDelete),
   };
 }
 
-function readPosts(): WallPost[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      const legacy = localStorage.getItem('profile-wall-posts:v1');
-      if (legacy) {
-        const parsed = JSON.parse(legacy);
-        const migrated = (Array.isArray(parsed) ? parsed : [])
-          .map(normalizePost)
-          .filter((p): p is WallPost => p != null);
-        writePosts(migrated);
-        localStorage.removeItem('profile-wall-posts:v1');
-        return migrated;
-      }
-      return [];
-    }
-    const parsed = JSON.parse(raw);
-    return (Array.isArray(parsed) ? parsed : [])
-      .map(normalizePost)
-      .filter((p): p is WallPost => p != null);
-  } catch {
-    return [];
-  }
-}
-
-function writePosts(posts: WallPost[]) {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(posts));
-}
-
-function newId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-const posts = ref<WallPost[]>(readPosts());
-
 export function useProfileWall() {
-  const loaded = ref(false);
+  const ownerId = ref(0);
+  const posts = ref<WallPost[]>([]);
+  const total = ref(0);
+  const loading = ref(false);
+  const loadingMore = ref(false);
+  const error = ref('');
+  let seq = 0;
 
-  function ensureLoaded() {
-    if (loaded.value) return;
-    posts.value = readPosts();
-    loaded.value = true;
-  }
-
-  function reload() {
-    posts.value = readPosts();
-    loaded.value = true;
-  }
-
-  function createPost(payload: {
-    userId: number;
-    authorName: string;
-    authorAvatar: string;
-    content: string;
-  }) {
-    const post: WallPost = {
-      id: newId(),
-      userId: payload.userId,
-      authorName: payload.authorName,
-      authorAvatar: payload.authorAvatar,
-      content: payload.content.trim(),
-      createdAt: new Date().toISOString(),
+  async function fetchPage(offset: number) {
+    const json = await apiSessionFetch<any>(
+      `/api/profile_wall.php?userId=${ownerId.value}&limit=${PAGE_SIZE}&offset=${offset}`,
+    );
+    if (!json?.success) throw new Error(json?.message || 'Не удалось загрузить стену');
+    const data = json.data as any;
+    return {
+      items: Array.isArray(data?.items) ? data.items.map(normalize) : [],
+      total: Number(data?.total) || 0,
     };
+  }
+
+  /** Загрузить стену сотрудника с начала. */
+  async function load(userId: number) {
+    const my = ++seq;
+    ownerId.value = userId;
+    posts.value = [];
+    total.value = 0;
+    error.value = '';
+    if (!userId) return;
+    loading.value = true;
+    try {
+      const page = await fetchPage(0);
+      if (my !== seq) return;
+      posts.value = page.items;
+      total.value = page.total;
+    } catch (e) {
+      if (my === seq) error.value = e instanceof Error ? e.message : 'Не удалось загрузить стену';
+    } finally {
+      if (my === seq) loading.value = false;
+    }
+  }
+
+  async function loadMore() {
+    if (loadingMore.value || posts.value.length >= total.value) return;
+    const my = seq;
+    loadingMore.value = true;
+    try {
+      const page = await fetchPage(posts.value.length);
+      if (my !== seq) return;
+      const known = new Set(posts.value.map((p) => p.id));
+      posts.value = [...posts.value, ...page.items.filter((p: WallPost) => !known.has(p.id))];
+      total.value = page.total;
+    } finally {
+      if (my === seq) loadingMore.value = false;
+    }
+  }
+
+  async function create(content: string): Promise<WallPost> {
+    const json = await apiSessionFetch<any>('/api/profile_wall.php', {
+      method: 'POST',
+      json: { action: 'create', userId: ownerId.value, content },
+    });
+    if (!json?.success) throw new Error(json?.message || 'Не удалось опубликовать запись');
+    const post = normalize(json.data);
     posts.value = [post, ...posts.value];
-    writePosts(posts.value);
+    total.value += 1;
     return post;
   }
 
-  function deletePost(id: string) {
+  async function update(id: number, content: string) {
+    const json = await apiSessionFetch<any>('/api/profile_wall.php', {
+      method: 'POST',
+      json: { action: 'update', id, content },
+    });
+    if (!json?.success) throw new Error(json?.message || 'Не удалось сохранить запись');
+    const post = normalize(json.data);
+    posts.value = posts.value.map((p) => (p.id === id ? post : p));
+  }
+
+  async function remove(id: number) {
+    const json = await apiSessionFetch<any>('/api/profile_wall.php', {
+      method: 'POST',
+      json: { action: 'delete', id },
+    });
+    if (!json?.success) throw new Error(json?.message || 'Не удалось удалить запись');
     posts.value = posts.value.filter((p) => p.id !== id);
-    writePosts(posts.value);
+    total.value = Math.max(0, total.value - 1);
   }
 
-  function updatePost(id: string, payload: { content: string }) {
-    const content = payload.content.trim();
-    posts.value = posts.value.map((p) =>
-      p.id === id ? { ...p, content } : p,
-    );
-    writePosts(posts.value);
-  }
-
-  const sortedPosts = computed(() =>
-    [...posts.value].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-  );
-
-  return {
-    posts,
-    sortedPosts,
-    ensureLoaded,
-    reload,
-    createPost,
-    deletePost,
-    updatePost,
-  };
+  return { posts, total, loading, loadingMore, error, load, loadMore, create, update, remove };
 }
 
+/** «только что», «5 мин. назад», «вчера в 23:49», «8 ноября в 20:02», с годом — если не текущий. */
 export function formatWallDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const diffMin = Math.floor(diffMs / 60_000);
+  const diffMin = Math.floor((now.getTime() - d.getTime()) / 60_000);
   if (diffMin < 1) return 'только что';
   if (diffMin < 60) return `${diffMin} мин. назад`;
-  const diffH = Math.floor(diffMin / 60);
-  if (diffH < 24) return `${diffH} ч. назад`;
-  return d.toLocaleDateString('ru-RU', {
+  const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((startOfDay(now) - startOfDay(d)) / 86_400_000);
+  if (days === 0) return `сегодня в ${time}`;
+  if (days === 1) return `вчера в ${time}`;
+  const date = d.toLocaleDateString('ru-RU', {
     day: 'numeric',
     month: 'long',
-    hour: '2-digit',
-    minute: '2-digit',
+    ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),
   });
-}
-
-export function wallPostPlainText(html: string): string {
-  return String(html || '')
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-export function isWallContentEmpty(html: string): boolean {
-  const plain = wallPostPlainText(html);
-  if (plain) return false;
-  return !String(html || '').includes('<img');
+  return `${date} в ${time}`;
 }

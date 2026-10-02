@@ -578,3 +578,28 @@ func (h *Birthdays) saveManifest(m map[string]any) error {
 	}
 	return os.WriteFile(h.manifestPath(), data, 0o644)
 }
+
+// BirthdayOf — день и месяц рождения по ФИО «Фамилия Имя Отчество» из тех же
+// xlsx, что отдаёт /api/birthdays.php. ok=false — в файлах человека нет.
+func (h *Birthdays) BirthdayOf(fio string) (month, day int, ok bool) {
+	if h == nil {
+		return 0, 0, false
+	}
+	want := normFIO(fio)
+	if want == "" {
+		return 0, 0, false
+	}
+	matches, _ := filepath.Glob(filepath.Join(h.dir(), "*.xlsx"))
+	for _, file := range matches {
+		parsed, err := parseBirthdayFile(file)
+		if err != nil || parsed == nil {
+			continue
+		}
+		for _, e := range parsed.Entries {
+			if normFIO(e.FIO) == want && e.Month >= 1 && e.Day >= 1 {
+				return e.Month, e.Day, true
+			}
+		}
+	}
+	return 0, 0, false
+}

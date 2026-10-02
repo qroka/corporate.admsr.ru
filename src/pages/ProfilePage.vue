@@ -1,797 +1,518 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
-import type { DropdownMenuItem } from '@nuxt/ui';
+/**
+ * Профиль сотрудника в компоновке старого ВКонтакте (цвета и шрифт — из темы портала):
+ * слева аватар, действия и коллеги по подразделению; справа имя, анкета, «Информация»
+ * и стена. /profile — своя страница, /profile/:id — страница коллеги. Писать на стене
+ * может любой вошедший сотрудник (ADR-040).
+ */
+import { computed, nextTick, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
+import { apiSessionFetch, getAuthUser } from '../composables/useAuthSession';
 import { useAppToast } from '../composables/useAppToast';
-import UserWorkFields from '../components/UserWorkFields.vue';
-import { defaultAvatarUrl } from '../composables/useOnboarding';
-import { userShortName, userFullName } from '../utils/userName';
 import { useProfileDisplay } from '../composables/useProfileDisplay';
-import {
-  FONT_OPTIONS,
-  NEUTRAL_COLOR_LABELS,
-  NEUTRAL_COLORS,
-  PRIMARY_COLOR_LABELS,
-  PRIMARY_COLORS,
-  RADIUS_OPTIONS,
-} from '../composables/useUiTheme';
-import {
-  currentFontLabel,
-  currentRadiusLabel,
-  patchAppTheme,
-  randomAppTheme,
-  resetAppTheme,
-  useAppConfig,
-} from '../composables/useAppConfig';
-import { avatarUrlFromFilename, PROFILE_AVATAR_FILENAMES } from '../constants/profileAvatars';
-import { useProfileWall, wallPostPlainText, type WallPost } from '../composables/useProfileWall';
+import { useSectionAccess } from '../composables/useSectionAccess';
+import { currentRole } from '../stores/role';
+import { useProfileWall, WALL_POST_MAX_LENGTH, type WallPost } from '../composables/useProfileWall';
+import { isUploadedAvatar, userAvatarSrc, userFullName } from '../utils/userName';
+import { plural } from './Courses/courseDuration';
+import ProfileSection from '../components/profile/ProfileSection.vue';
 import ProfileWallPost from '../components/profile/ProfileWallPost.vue';
-import ProfileCreatePost from '../components/profile/ProfileCreatePost.vue';
+import ProfileEditSlideover, { type ProfileEditState } from '../components/profile/ProfileEditSlideover.vue';
+import ProfileWishes, { type Wish } from '../components/profile/ProfileWishes.vue';
+import ProfileAwards, { type Award } from '../components/profile/ProfileAwards.vue';
 
-const { profileSaved, error } = useAppToast();
+type Colleague = { id: number; firstname: string; surname: string; avatar_url: string };
+type CompletedCourse = { courseId: number; title: string; completedAt: string | null; score: number | null; enrollmentId?: number };
+type Absence = { id: number; start: string; end: string | null; reason: string; active: boolean };
+type ProfileData = {
+  id: number;
+  firstname: string;
+  surname: string;
+  lastname: string;
+  phone: string;
+  email: string;
+  ofo: string;
+  ofoName: string;
+  role: string;
+  avatar_url: string;
+  birthday: { month: number; day: number } | null;
+  about: string;
+  interests: string;
+  colleagues: { total: number; items: Colleague[] };
+  courses: { total: number; items: CompletedCourse[] };
+  absences: Absence[];
+  wishes: Wish[];
+  awards: Award[];
+};
 
+const route = useRoute();
+const { success, error: errorToast } = useAppToast();
+const { setAvatarSrc } = useProfileDisplay();
+const { isSuperAdmin, ensureLoaded: ensureAccessLoaded } = useSectionAccess();
+void ensureAccessLoaded();
+/** Награды выдаёт администратор портала в режиме «Администратор» (сервер проверяет группу сам). */
+const canManageAwards = computed(() => isSuperAdmin.value && currentRole.value === 'admin');
 
-type PageView = 'wall' | 'edit';
-const pageView = ref<PageView>('wall');
+const myId = computed(() => Number((getAuthUser() as { id?: number } | null)?.id) || 0);
+const profileId = computed(() => Number(route.params.id) || myId.value);
+const isOwn = computed(() => profileId.value > 0 && profileId.value === myId.value);
 
-const { displayName, subtitle, avatarSrc, setAvatarSrc, setDisplayName, setSubtitle } = useProfileDisplay();
-const avatarPickerOpen = ref(false);
-const avatarFilenames = PROFILE_AVATAR_FILENAMES;
-
-const currentUserId = ref(0);
-
-// --- Wall ---
-const {
-  sortedPosts,
-  ensureLoaded: ensureWallLoaded,
-  createPost,
-  deletePost,
-  updatePost,
-} = useProfileWall();
-ensureWallLoaded();
-
-const postEditorOpen = ref(false);
-const editingPost = ref<WallPost | null>(null);
-const wallSearch = ref('');
-const wallSearchOpen = ref(false);
-
-const filteredPosts = computed(() => {
-  const q = wallSearch.value.trim().toLowerCase();
-  if (!q) return sortedPosts.value;
-  return sortedPosts.value.filter((p) => {
-    const plain = wallPostPlainText(p.content).toLowerCase();
-    return plain.includes(q) || p.authorName.toLowerCase().includes(q);
-  });
-});
-
-function toggleWallSearch() {
-  wallSearchOpen.value = !wallSearchOpen.value;
-  if (!wallSearchOpen.value) wallSearch.value = '';
-}
-
-function openCreatePost() {
-  editingPost.value = null;
-  postEditorOpen.value = true;
-}
-
-function openEditPost(post: WallPost) {
-  editingPost.value = post;
-  postEditorOpen.value = true;
-}
-
-function onPostSubmit(payload: { content: string; postId?: string }) {
-  if (payload.postId) {
-    updatePost(payload.postId, { content: payload.content });
-    editingPost.value = null;
-    return;
-  }
-  if (!currentUserId.value) return;
-  createPost({
-    userId: currentUserId.value,
-    authorName: displayName.value || 'Сотрудник',
-    authorAvatar: avatarSrc.value,
-    content: payload.content,
-  });
-  editingPost.value = null;
-}
-
-// --- Theme dropdown ---
-const colors = PRIMARY_COLORS;
-const neutrals = NEUTRAL_COLORS;
-const appConfig = useAppConfig();
-
-const themeMenuItems = computed<DropdownMenuItem[][]>(() => [
-  [
-    {
-      label: 'Основной',
-      slot: 'chip',
-      chip: appConfig.ui.colors.primary,
-      content: { align: 'center', collisionPadding: 16 },
-      children: colors.map((c) => ({
-        label: PRIMARY_COLOR_LABELS[c],
-        chip: c,
-        slot: 'chip',
-        checked: appConfig.ui.colors.primary === c,
-        type: 'checkbox' as const,
-        onUpdateChecked: (checked: boolean) => {
-          if (checked) patchAppTheme({ primary: c });
-        },
-        onSelect: (e: Event) => {
-          e.preventDefault();
-        },
-      })),
-    },
-    {
-      label: 'Нейтральный',
-      slot: 'chip',
-      chip: appConfig.ui.colors.neutral,
-      content: { align: 'end', collisionPadding: 16 },
-      children: neutrals.map((c) => ({
-        label: NEUTRAL_COLOR_LABELS[c],
-        chip: c,
-        slot: 'chip',
-        type: 'checkbox' as const,
-        checked: appConfig.ui.colors.neutral === c,
-        onUpdateChecked: (checked: boolean) => {
-          if (checked) patchAppTheme({ neutral: c });
-        },
-        onSelect: (e: Event) => {
-          e.preventDefault();
-        },
-      })),
-    },
-    {
-      label: 'Шрифт',
-      icon: 'i-lucide-type',
-      kbds: [currentFontLabel()],
-      content: { align: 'end', collisionPadding: 16 },
-      children: FONT_OPTIONS.map((font) => ({
-        label: font.label,
-        type: 'checkbox' as const,
-        checked: appConfig.ui.font === font.id,
-        onUpdateChecked: (checked: boolean) => {
-          if (checked) patchAppTheme({ font: font.id });
-        },
-        onSelect: (e: Event) => {
-          e.preventDefault();
-        },
-      })),
-    },
-    {
-      label: 'Скругление',
-      icon: 'i-lucide-radius',
-      kbds: [currentRadiusLabel()],
-      content: { align: 'end', collisionPadding: 16 },
-      children: RADIUS_OPTIONS.map((radius) => ({
-        label: radius.label,
-        type: 'checkbox' as const,
-        checked: appConfig.ui.radius === radius.id,
-        onUpdateChecked: (checked: boolean) => {
-          if (checked) patchAppTheme({ radius: radius.id });
-        },
-        onSelect: (e: Event) => {
-          e.preventDefault();
-        },
-      })),
-    },
-  ],
-  [
-    {
-      label: 'Случайная тема',
-      icon: 'i-lucide-dices',
-      onSelect: (e: Event) => {
-        e.preventDefault();
-        randomAppTheme();
-      },
-    },
-    {
-      label: 'Сбросить',
-      icon: 'i-lucide-rotate-ccw',
-      onSelect: (e: Event) => {
-        e.preventDefault();
-        resetAppTheme();
-      },
-    },
-  ],
-]);
-function selectAvatar(filename: string) {
-  setAvatarSrc(avatarUrlFromFilename(filename));
-  avatarPickerOpen.value = false;
-}
-
-const profileLoading = ref(false);
-const profileSaving = ref(false);
-
-const accountForm = reactive({
-  firstName: '',
-  lastName: '',
-  patronymic: '',
-  phone: '',
-  email: '',
-  ofoId: null as number | null,
-  role: '',
-});
+// ── Анкета ──────────────────────────────────────────────────────────────────
+const profile = ref<ProfileData | null>(null);
+const loading = ref(false);
+const loadError = ref('');
+const notFound = ref(false);
+let loadSeq = 0;
 
 async function loadProfile() {
-  const raw = localStorage.getItem('auth-user');
-  if (!raw) return;
-  const user = JSON.parse(raw) as { id: number };
-  if (!user?.id) return;
-  currentUserId.value = user.id;
-
-  profileLoading.value = true;
+  const id = profileId.value;
+  const my = ++loadSeq;
+  loading.value = true;
+  loadError.value = '';
+  notFound.value = false;
   try {
-    const res = await fetch(`/api/profile.php?id=${user.id}`);
-    const data = await res.json();
-    if (!data.success) return;
-
-    const p = data.data;
-    accountForm.firstName  = p.firstname ?? '';
-    accountForm.lastName   = p.surname   ?? '';
-    accountForm.patronymic = p.lastname  ?? '';
-    accountForm.phone      = p.phone     ?? '';
-    accountForm.email      = p.email     ?? '';
-    const ofoNum = Number(p.ofo);
-    accountForm.ofoId      = (p.ofo != null && Number.isFinite(ofoNum) && ofoNum > 0) ? ofoNum : null;
-    accountForm.role       = p.role      ?? '';
-
-    // Всегда с сервера: пустое значение не должно оставлять прежнее.
-    setAvatarSrc(p.avatar_url || defaultAvatarUrl());
-    setSubtitle(p.role || '');
-    setDisplayName(userShortName(p));
-  } finally {
-    profileLoading.value = false;
-  }
-}
-
-async function onUpdateAccount() {
-  const raw = localStorage.getItem('auth-user');
-  if (!raw) return;
-  const user = JSON.parse(raw) as { id: number };
-  if (!user?.id) return;
-
-  profileSaving.value = true;
-  try {
-    const res = await fetch('/api/profile.php', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id:         user.id,
-        firstname:  accountForm.firstName,
-        surname:    accountForm.lastName,
-        lastname:   accountForm.patronymic,
-        phone:      accountForm.phone,
-        email:      accountForm.email,
-        ofo:        String(accountForm.ofoId ?? ''),
-        role:       accountForm.role,
-        avatar_url: avatarSrc.value,
-      }),
-    });
-    const data = await res.json().catch(() => null);
-    // Раньше отказ сервера молча обрывал сохранение — форма просто не закрывалась.
-    if (!res.ok || !data?.success) {
-      error('Не удалось сохранить профиль', data?.message || `Ошибка ${res.status}`);
+    const res = await apiSessionFetch<any>(`/api/profile.php?id=${id}&view=page`);
+    if (my !== loadSeq) return;
+    if (!res?.success) {
+      if (/не найден/i.test(res?.message ?? '')) notFound.value = true;
+      else loadError.value = res?.message || 'Не удалось загрузить профиль';
+      profile.value = null;
       return;
     }
-
-    const names = { surname: accountForm.lastName, firstname: accountForm.firstName, lastname: accountForm.patronymic };
-    setDisplayName(userShortName(names));
-    setSubtitle(accountForm.role);
-    // Снимок пользователя из входа тоже обновляем — его читают другие экраны.
-    try {
-      const snap = JSON.parse(localStorage.getItem('auth-user') || 'null');
-      if (snap && snap.id === user.id) {
-        snap.fio = userFullName(names);
-        snap.ofo = accountForm.ofoId != null ? String(accountForm.ofoId) : '';
-        snap.role = accountForm.role;
-        localStorage.setItem('auth-user', JSON.stringify(snap));
-      }
-    } catch {
-      /* снимок не критичен */
-    }
-    profileSaved();
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('ui:user-profile-updated'));
-    }
-    pageView.value = 'wall';
+    const p = res.data as any;
+    profile.value = {
+      id: Number(p.id),
+      firstname: p.firstname ?? '',
+      surname: p.surname ?? '',
+      lastname: p.lastname ?? '',
+      phone: p.phone ?? '',
+      email: p.email ?? '',
+      ofo: String(p.ofo ?? ''),
+      ofoName: p.ofoName ?? '',
+      role: p.role ?? '',
+      avatar_url: p.avatar_url ?? '',
+      birthday: p.birthday?.month && p.birthday?.day ? { month: Number(p.birthday.month), day: Number(p.birthday.day) } : null,
+      about: p.about ?? '',
+      interests: p.interests ?? '',
+      colleagues: {
+        total: Number(p.colleagues?.total) || 0,
+        items: Array.isArray(p.colleagues?.items) ? p.colleagues.items : [],
+      },
+      courses: {
+        total: Number(p.courses?.total) || 0,
+        items: Array.isArray(p.courses?.items) ? p.courses.items : [],
+      },
+      absences: Array.isArray(p.absences) ? p.absences : [],
+      wishes: Array.isArray(p.wishes) ? p.wishes : [],
+      awards: Array.isArray(p.awards) ? p.awards : [],
+    };
   } catch {
-    error('Не удалось сохранить профиль', 'Проверьте подключение к сети и попробуйте ещё раз.');
+    if (my === loadSeq) loadError.value = 'Проверьте подключение к сети и попробуйте ещё раз.';
   } finally {
-    profileSaving.value = false;
+    if (my === loadSeq) loading.value = false;
   }
 }
 
-const profileInfoLines = computed(() => {
-  const lines: { icon: string; text: string }[] = [];
-  if (accountForm.role) lines.push({ icon: 'i-lucide-briefcase', text: accountForm.role });
-  if (accountForm.phone) lines.push({ icon: 'i-lucide-phone', text: accountForm.phone });
-  if (accountForm.email) lines.push({ icon: 'i-lucide-mail', text: accountForm.email });
-  return lines;
+const fullName = computed(() => userFullName(profile.value) || 'Сотрудник');
+
+const BIRTH_MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+
+const infoRows = computed(() => {
+  const p = profile.value;
+  if (!p) return [];
+  const rows: { label: string; value: string; href?: string }[] = [];
+  if (p.role) rows.push({ label: 'Должность', value: p.role });
+  if (p.ofoName) rows.push({ label: 'Подразделение', value: p.ofoName });
+  if (p.birthday) rows.push({ label: 'День рождения', value: `${p.birthday.day} ${BIRTH_MONTHS[p.birthday.month - 1] ?? ''}` });
+  if (p.phone) rows.push({ label: 'Телефон', value: p.phone, href: `tel:${p.phone.replace(/[^\d+]/g, '')}` });
+  if (p.email) rows.push({ label: 'Эл. почта', value: p.email, href: `mailto:${p.email}` });
+  return rows;
 });
 
-onMounted(() => {
-  void loadProfile();
+const hasAbout = computed(() => !!(profile.value?.about || profile.value?.interests));
+
+// ── Редактирование своей страницы ────────────────────────────────────────────
+// Правятся только аватар, «О себе» и «Интересы»: остальное на портале не меняется (ADR-041).
+const editOpen = ref(false);
+const editInitial = computed<ProfileEditState>(() => ({
+  avatarUrl: userAvatarSrc(profile.value),
+  about: profile.value?.about ?? '',
+  interests: profile.value?.interests ?? '',
+}));
+
+function onProfileSaved(s: ProfileEditState) {
+  if (profile.value) profile.value = { ...profile.value, avatar_url: s.avatarUrl, about: s.about.trim(), interests: s.interests.trim() };
+  setAvatarSrc(s.avatarUrl);
+  window.dispatchEvent(new Event('ui:user-profile-updated'));
+}
+
+/** Фото уже сохранено сервером — обновляем страницу и шапку, не дожидаясь «Сохранить». */
+function onAvatarUploaded(url: string) {
+  if (profile.value) profile.value = { ...profile.value, avatar_url: url };
+  setAvatarSrc(url);
+  window.dispatchEvent(new Event('ui:user-profile-updated'));
+}
+
+// ── Блоки: желания, награды, курсы, отсутствия ───────────────────────────────
+function patchProfile(patch: Partial<ProfileData>) {
+  if (profile.value) profile.value = { ...profile.value, ...patch };
+}
+
+const shortDate = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+
+function absenceLabel(a: Absence): string {
+  const from = new Date(a.start).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  if (a.active) return `Сейчас отсутствует с ${from}`;
+  const to = a.end ? new Date(a.end).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : '';
+  return to && to !== from ? `${from} — ${to}` : from;
+}
+
+// ── Стена ───────────────────────────────────────────────────────────────────
+const wall = useProfileWall();
+const { posts, total, loading: wallLoading, loadingMore, error: wallError } = wall;
+
+const draft = ref('');
+const posting = ref(false);
+const composer = ref<{ textareaRef?: HTMLTextAreaElement } | null>(null);
+const canPost = computed(() => {
+  const text = draft.value.trim();
+  return !!text && text.length <= WALL_POST_MAX_LENGTH && !posting.value;
 });
+
+async function submitPost() {
+  if (!canPost.value) return;
+  posting.value = true;
+  try {
+    await wall.create(draft.value.trim());
+    draft.value = '';
+  } catch (e) {
+    errorToast('Запись не опубликована', e instanceof Error ? e.message : undefined);
+  } finally {
+    posting.value = false;
+  }
+}
+
+async function savePost(id: number, content: string) {
+  try {
+    await wall.update(id, content);
+  } catch (e) {
+    errorToast('Запись не сохранена', e instanceof Error ? e.message : undefined);
+    throw e;
+  }
+}
+
+async function loadMorePosts() {
+  try {
+    await wall.loadMore();
+  } catch (e) {
+    errorToast('Не удалось загрузить записи', e instanceof Error ? e.message : undefined);
+  }
+}
+
+async function focusComposer() {
+  await nextTick();
+  const el = composer.value?.textareaRef;
+  el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el?.focus({ preventScroll: true });
+}
+
+const deleting = reactive<{ post: WallPost | null; busy: boolean }>({ post: null, busy: false });
+const deleteOpen = computed({
+  get: () => !!deleting.post,
+  set: (v: boolean) => {
+    if (!v && !deleting.busy) deleting.post = null;
+  },
+});
+
+async function confirmDelete() {
+  const post = deleting.post;
+  if (!post) return;
+  deleting.busy = true;
+  try {
+    await wall.remove(post.id);
+    success('Запись удалена');
+    deleting.post = null;
+  } catch (e) {
+    errorToast('Запись не удалена', e instanceof Error ? e.message : undefined);
+  } finally {
+    deleting.busy = false;
+  }
+}
+
+watch(
+  profileId,
+  (id) => {
+    draft.value = '';
+    editOpen.value = false;
+    if (!id) return;
+    void loadProfile();
+    void wall.load(id);
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
-  <UMain class="profile-page flex flex-col w-full h-full min-h-0">
-    <!-- Обложка -->
-    <div class="profile-cover">
-      <div class="profile-cover__gradient" />
-      <div class="profile-cover__pattern" />
-    </div>
+  <UMain class="relative w-full h-full min-h-0">
+    <div class="flex flex-col gap-6 w-full h-full min-h-0 max-w-[1200px] mx-auto overflow-y-auto scrollbar-hide p-px pb-8 *:shrink-0">
+      <!-- Нет такого сотрудника -->
+      <UEmpty
+        v-if="notFound"
+        variant="naked"
+        icon="i-lucide-user-x"
+        title="Сотрудник не найден"
+        description="Возможно, ссылка устарела. Найти коллегу можно через поиск портала (Ctrl+K)."
+        :actions="[{ label: 'На мою страницу', to: '/profile', color: 'neutral', variant: 'outline' }]"
+        class="py-16"
+      />
 
-    <!-- Шапка профиля -->
-    <header class="profile-header">
-      <div class="profile-header__main">
-        <div class="profile-header__avatar-wrap">
-          <UAvatar
-            :src="avatarSrc"
-            :alt="displayName"
-            size="3xl"
-            class="profile-header__avatar"
-            :ui="{ root: '!bg-elevated ring-4 ring-(--ui-bg)' }"
-          />
-          <UTooltip text="Изменить аватар">
-            <span class="inline-flex">
-              <UPopover v-model:open="avatarPickerOpen">
-                <UButton
-                  type="button"
-                  color="primary"
-                  variant="solid"
-                  size="xs"
-                  icon="i-lucide-plus"
-                  class="profile-header__avatar-btn rounded-full"
-                  aria-label="Изменить аватар"
-                />
-                <template #content>
-                  <div class="p-3 grid grid-cols-3 gap-2 w-56">
-                    <UButton
-                      v-for="name in avatarFilenames"
-                      :key="name"
-                      size="sm"
-                      variant="subtle"
-                      color="neutral"
-                      @click="selectAvatar(name)"
-                    >
-                      <img :src="avatarUrlFromFilename(name)" alt="" class="w-10 h-10 object-contain" />
-                    </UButton>
-                  </div>
-                </template>
-              </UPopover>
-            </span>
-          </UTooltip>
-        </div>
+      <UAlert
+        v-else-if="loadError && !profile"
+        color="error"
+        variant="subtle"
+        icon="i-lucide-alert-triangle"
+        title="Не удалось загрузить профиль"
+        :description="loadError"
+      >
+        <template #actions>
+          <UButton color="error" variant="outline" icon="i-lucide-rotate-ccw" @click="loadProfile">Повторить</UButton>
+        </template>
+      </UAlert>
 
-        <div class="profile-header__info min-w-0">
-          <h1 class="profile-header__name">{{ displayName || 'Профиль' }}</h1>
-          <p v-if="subtitle" class="profile-header__role">{{ subtitle }}</p>
-        </div>
-      </div>
-
-      <div class="profile-header__actions">
-        <UButton
-          type="button"
-          :color="pageView === 'edit' ? 'primary' : 'neutral'"
-          :variant="pageView === 'edit' ? 'solid' : 'outline'"
-          size="lg"
-          icon="i-lucide-pencil"
-          label="Редактировать профиль"
-          class="rounded-xl"
-          @click="pageView = 'edit'"
-        />
-        <UButton
-          v-if="pageView === 'edit'"
-          type="button"
-          color="neutral"
-          variant="ghost"
-          size="lg"
-          icon="i-lucide-arrow-left"
-          label="К стене"
-          class="rounded-xl"
-          @click="pageView = 'wall'"
-        />
-      </div>
-    </header>
-
-    <!-- Контент -->
-    <div class="profile-body">
-      <!-- Стена -->
-      <section v-if="pageView === 'wall'" class="profile-wall">
-        <div class="profile-wall__composer" role="button" tabindex="0" @click="openCreatePost" @keydown.enter="openCreatePost">
-          <UIcon name="i-lucide-plus" class="size-5 text-dimmed shrink-0" />
-          <span class="text-muted text-sm sm:text-base">Создать пост</span>
-          <div class="profile-wall__composer-tools" @click.stop>
-            <UTooltip text="Добавить фото">
-              <UButton type="button" color="neutral" variant="ghost" size="sm" icon="i-lucide-image" class="rounded-full" aria-label="Добавить фото" @click="openCreatePost" />
-            </UTooltip>
-            <UTooltip text="Эмодзи">
-              <UButton type="button" color="neutral" variant="ghost" size="sm" icon="i-lucide-smile" class="rounded-full" aria-label="Эмодзи" @click="openCreatePost" />
-            </UTooltip>
+      <div v-else class="grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)] lg:grid-cols-[260px_minmax(0,1fr)] gap-6 items-start">
+        <!-- Левая колонка: аватар, действия, коллеги -->
+        <aside class="flex flex-col gap-4 min-w-0" aria-label="Карточка сотрудника">
+          <USkeleton v-if="loading && !profile" class="w-full max-w-60 md:max-w-none aspect-square rounded-panel" />
+          <div v-else class="w-full max-w-60 md:max-w-none aspect-square rounded-panel bg-elevated grid place-items-center overflow-hidden">
+            <img :src="userAvatarSrc(profile)" :alt="fullName" :class="isUploadedAvatar(profile?.avatar_url) ? 'size-full object-cover' : 'size-3/4 object-contain'" />
           </div>
-        </div>
 
-        <div class="profile-wall__toolbar">
-          <span class="text-sm font-medium text-highlighted">Все посты</span>
-          <UTooltip :text="wallSearchOpen ? 'Закрыть поиск' : 'Поиск по постам'">
-            <UButton
-              type="button"
-              color="neutral"
-              variant="ghost"
-              size="sm"
-              :icon="wallSearchOpen ? 'i-lucide-x' : 'i-lucide-search'"
-              class="rounded-full shrink-0"
-              :aria-label="wallSearchOpen ? 'Закрыть поиск' : 'Поиск по постам'"
-              @click="toggleWallSearch"
-            />
-          </UTooltip>
-        </div>
+          <nav v-if="profile" class="flex flex-col" aria-label="Действия">
+            <template v-if="isOwn">
+              <UButton color="neutral" variant="ghost" icon="i-lucide-pencil" class="justify-start" @click="editOpen = true">
+                Редактировать страницу
+              </UButton>
+            </template>
+            <template v-else>
+              <UButton color="neutral" variant="ghost" icon="i-lucide-message-square-plus" class="justify-start" @click="focusComposer">
+                Написать на стене
+              </UButton>
+              <UButton v-if="profile.email" color="neutral" variant="ghost" icon="i-lucide-mail" class="justify-start" :href="`mailto:${profile.email}`">
+                Написать письмо
+              </UButton>
+              <UButton color="neutral" variant="ghost" icon="i-lucide-user" class="justify-start" to="/profile">
+                Моя страница
+              </UButton>
+            </template>
+          </nav>
 
-        <UInput
-          v-if="wallSearchOpen"
-          v-model="wallSearch"
-          placeholder="Поиск по записям..."
-          size="lg"
-          icon="i-lucide-search"
-          class="w-full"
-          autofocus
-        />
-
-        <div v-if="filteredPosts.length" class="profile-wall__feed">
-          <ProfileWallPost
-            v-for="post in filteredPosts"
-            :key="post.id"
-            :post="post"
-            :is-owner="post.userId === currentUserId"
-            @delete="deletePost"
-            @edit="openEditPost"
+          <ProfileWishes
+            v-if="profile"
+            :wishes="profile.wishes"
+            :is-own="isOwn"
+            @update="patchProfile({ wishes: $event })"
           />
-        </div>
 
-        <div v-else class="profile-wall__empty">
-          <UIcon name="i-lucide-message-square-plus" class="size-10 text-dimmed mb-3" />
-          <p class="text-sm font-medium text-highlighted">Пока нет записей</p>
-          <p class="text-xs text-muted mt-1 max-w-xs text-center">
-            Создайте первый пост — поделитесь новостью или фотографией с коллегами
-          </p>
-          <UButton
-            type="button"
-            color="primary"
-            variant="soft"
-            size="md"
-            label="Создать пост"
-            class="mt-4 rounded-full"
-            @click="openCreatePost"
-          />
-        </div>
-      </section>
+          <ProfileSection v-if="profile && profile.colleagues.total" title="Коллеги" title-id="profile-colleagues">
+            <template #aside>{{ profile.colleagues.total }}</template>
+            <ul class="grid grid-cols-3 gap-x-2 gap-y-3">
+              <li v-for="c in profile.colleagues.items" :key="c.id" class="min-w-0">
+                <RouterLink :to="`/profile/${c.id}`" class="group flex flex-col items-center gap-1 text-center rounded-md focus-visible:outline-2 focus-visible:outline-primary">
+                  <span class="w-full aspect-square rounded-md bg-elevated grid place-items-center overflow-hidden">
+                    <img :src="userAvatarSrc(c)" alt="" :class="isUploadedAvatar(c.avatar_url) ? 'size-full object-cover' : 'size-3/4 object-contain'" />
+                  </span>
+                  <span class="w-full text-xs leading-4 text-default group-hover:text-primary line-clamp-2 break-words">
+                    {{ c.firstname }} {{ c.surname }}
+                  </span>
+                </RouterLink>
+              </li>
+            </ul>
+          </ProfileSection>
+        </aside>
 
-      <!-- Редактирование -->
-      <section v-else class="profile-edit">
-        <UCard class="profile-edit__card">
-          <template #header>
-            <div>
-              <h2 class="text-lg font-semibold text-highlighted">Личные данные</h2>
-              <p class="text-sm text-muted mt-0.5">Информация отображается в профиле и на стене</p>
-            </div>
+        <!-- Правая колонка: анкета, информация, стена -->
+        <div class="flex flex-col gap-6 min-w-0">
+          <div v-if="loading && !profile" class="flex flex-col gap-3">
+            <USkeleton class="h-8 w-2/3 rounded-lg" />
+            <USkeleton class="h-4 w-1/2 rounded" />
+            <USkeleton class="h-4 w-1/3 rounded" />
+            <USkeleton class="h-4 w-2/5 rounded" />
+          </div>
+
+          <template v-else-if="profile">
+            <header class="flex flex-col gap-4">
+              <h1 class="text-2xl font-semibold leading-tight text-highlighted">{{ fullName }}</h1>
+              <dl v-if="infoRows.length" class="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
+                <template v-for="row in infoRows" :key="row.label">
+                  <dt class="text-muted">{{ row.label }}:</dt>
+                  <dd class="min-w-0 break-words">
+                    <a v-if="row.href" :href="row.href" class="text-primary hover:underline">{{ row.value }}</a>
+                    <span v-else class="text-default">{{ row.value }}</span>
+                  </dd>
+                </template>
+              </dl>
+            </header>
+
+            <ProfileSection v-if="hasAbout || isOwn" title="Информация" title-id="profile-info">
+              <dl v-if="hasAbout" class="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)] gap-x-4 gap-y-3 text-sm">
+                <template v-if="profile.about">
+                  <dt class="text-muted">О себе:</dt>
+                  <dd class="min-w-0 text-default whitespace-pre-line break-words">{{ profile.about }}</dd>
+                </template>
+                <template v-if="profile.interests">
+                  <dt class="text-muted">Интересы:</dt>
+                  <dd class="min-w-0 text-default whitespace-pre-line break-words">{{ profile.interests }}</dd>
+                </template>
+              </dl>
+              <p v-else class="text-sm text-muted">
+                Расскажите коллегам о себе и своих интересах.
+                <UButton color="primary" variant="link" class="p-0 align-baseline" @click="editOpen = true">Заполнить</UButton>
+              </p>
+            </ProfileSection>
           </template>
 
-          <UForm :state="accountForm" class="space-y-6" @submit.prevent="onUpdateAccount">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
-              <UFormField label="Фамилия" name="lastName">
-                <UInput v-model="accountForm.lastName" size="lg" class="w-full" autocomplete="family-name" :disabled="profileLoading" />
-              </UFormField>
-              <UFormField label="Имя" name="firstName">
-                <UInput v-model="accountForm.firstName" size="lg" class="w-full" autocomplete="given-name" :disabled="profileLoading" />
-              </UFormField>
-              <UFormField label="Отчество" name="patronymic">
-                <UInput v-model="accountForm.patronymic" size="lg" class="w-full" autocomplete="additional-name" :disabled="profileLoading" />
-              </UFormField>
-              <UFormField label="Телефон" name="phone">
-                <UInput v-model="accountForm.phone" size="lg" class="w-full" type="tel" autocomplete="tel" :disabled="profileLoading" />
-              </UFormField>
-              <UFormField label="Электронная почта" name="email">
-                <UInput v-model="accountForm.email" size="lg" class="w-full" type="email" autocomplete="email" :disabled="profileLoading" />
-              </UFormField>
-              <UserWorkFields
-                v-model:ofo-id="accountForm.ofoId"
-                v-model:role="accountForm.role"
-                :disabled="profileLoading"
+          <template v-if="profile">
+            <ProfileAwards
+              :user-id="profile.id"
+              :awards="profile.awards"
+              :can-manage="canManageAwards"
+              @update="patchProfile({ awards: $event })"
+            />
+
+            <ProfileSection v-if="profile.courses.total" title="Пройденные курсы" title-id="profile-courses">
+              <template #aside>{{ profile.courses.total }}</template>
+              <ul class="flex flex-col divide-y divide-default">
+                <li v-for="c in profile.courses.items" :key="`${c.courseId}-${c.completedAt}`" class="flex items-start gap-3 py-2.5 first:pt-0">
+                  <UIcon name="i-lucide-graduation-cap" class="size-5 text-success shrink-0 mt-0.5" aria-hidden="true" />
+                  <div class="flex-1 min-w-0">
+                    <RouterLink v-if="c.enrollmentId" :to="`/courses/${c.enrollmentId}/result`" class="text-sm font-medium text-primary hover:underline break-words">{{ c.title }}</RouterLink>
+                    <p v-else class="text-sm font-medium text-highlighted break-words">{{ c.title }}</p>
+                    <p class="text-xs text-muted">
+                      <template v-if="c.completedAt">Пройден {{ shortDate(c.completedAt) }}</template>
+                      <template v-if="c.score != null"><template v-if="c.completedAt"> · </template>результат {{ Math.round(c.score) }}%</template>
+                    </p>
+                  </div>
+                </li>
+              </ul>
+              <p v-if="profile.courses.total > profile.courses.items.length" class="pt-2 text-xs text-muted">
+                Показаны последние {{ profile.courses.items.length }} из {{ profile.courses.total }}
+              </p>
+            </ProfileSection>
+
+            <ProfileSection v-if="profile.absences.length" title="Журнал отсутствия" title-id="profile-absences">
+              <ul class="flex flex-col gap-2">
+                <li v-for="a in profile.absences" :key="a.id" class="flex items-start gap-3 text-sm">
+                  <UIcon :name="a.active ? 'i-lucide-plane' : 'i-lucide-calendar-check'" class="size-4 shrink-0 mt-0.5" :class="a.active ? 'text-warning' : 'text-dimmed'" aria-hidden="true" />
+                  <div class="flex-1 min-w-0">
+                    <p :class="a.active ? 'font-medium text-highlighted' : 'text-default'">{{ absenceLabel(a) }}</p>
+                    <p v-if="a.reason" class="text-xs text-muted break-words">{{ a.reason }}</p>
+                  </div>
+                </li>
+              </ul>
+            </ProfileSection>
+          </template>
+
+          <!-- Стена -->
+          <ProfileSection v-if="profile || loading" title="Стена" title-id="profile-wall">
+            <template v-if="total" #aside>{{ total }} {{ plural(total, ['запись', 'записи', 'записей']) }}</template>
+
+            <form class="flex flex-col gap-2 pb-2" @submit.prevent="submitPost">
+              <UTextarea
+                ref="composer"
+                v-model="draft"
+                :rows="2"
+                autoresize
+                :maxrows="10"
+                :maxlength="WALL_POST_MAX_LENGTH"
+                :placeholder="isOwn ? 'Что у вас нового?' : 'Написать на стене…'"
+                aria-label="Текст записи на стене"
+                class="w-full"
+                @keydown.ctrl.enter.prevent="submitPost"
+                @keydown.meta.enter.prevent="submitPost"
               />
-            </div>
+              <div class="flex items-center justify-between gap-3">
+                <span class="text-xs text-dimmed">Ctrl+Enter — отправить</span>
+                <UButton type="submit" color="primary" size="sm" :loading="posting" :disabled="!canPost">Отправить</UButton>
+              </div>
+            </form>
 
-            <USeparator />
+            <UAlert
+              v-if="wallError"
+              color="error"
+              variant="subtle"
+              icon="i-lucide-alert-triangle"
+              title="Не удалось загрузить стену"
+              :description="wallError"
+            >
+              <template #actions>
+                <UButton color="error" variant="outline" icon="i-lucide-rotate-ccw" @click="wall.load(profileId)">Повторить</UButton>
+              </template>
+            </UAlert>
 
-            <div>
-              <h3 class="text-sm font-semibold text-highlighted mb-1">Аватар</h3>
-              <p class="text-sm text-muted mb-3">Выберите изображение для профиля</p>
-              <div class="flex flex-wrap gap-2">
-                <UButton
-                  v-for="name in avatarFilenames"
-                  :key="name"
-                  size="md"
-                  :variant="avatarSrc.includes(name) ? 'solid' : 'outline'"
-                  :color="avatarSrc.includes(name) ? 'primary' : 'neutral'"
-                  @click="selectAvatar(name)"
-                >
-                  <img :src="avatarUrlFromFilename(name)" alt="" class="w-8 h-8 object-contain" />
-                </UButton>
+            <div v-else-if="wallLoading" class="flex flex-col divide-y divide-default" aria-busy="true" aria-label="Загрузка записей">
+              <div v-for="n in 3" :key="n" class="flex gap-3 py-4">
+                <USkeleton class="size-12 rounded-full shrink-0" />
+                <div class="flex-1 flex flex-col gap-2">
+                  <USkeleton class="h-4 w-40 rounded" />
+                  <USkeleton class="h-4 w-full rounded" />
+                  <USkeleton class="h-4 w-3/4 rounded" />
+                </div>
               </div>
             </div>
 
-            <USeparator />
+            <UEmpty
+              v-else-if="!posts.length"
+              variant="naked"
+              icon="i-lucide-message-square"
+              title="На стене пока нет записей"
+              :description="isOwn ? 'Напишите первую — коллеги увидят её на вашей странице.' : 'Будьте первым, кто напишет на этой стене.'"
+              class="py-8"
+            />
 
-            <div>
-              <h3 class="text-sm font-semibold text-highlighted mb-1">Цвета интерфейса</h3>
-              <p class="text-sm text-muted mb-3">Настройка сохранится в браузере</p>
-              <UDropdownMenu :items="themeMenuItems" :ui="{ content: 'w-56' }">
-                <UButton type="button" icon="i-lucide-palette" color="neutral" variant="outline" size="lg" trailing-icon="i-lucide-chevrons-up-down">
-                  Кастомизация портала
-                </UButton>
-                <template #chip-leading="{ item }">
-                  <div class="inline-flex items-center justify-center shrink-0 size-5">
-                    <span
-                      class="rounded-full ring ring-bg bg-(--chip-light) dark:bg-(--chip-dark) size-2"
-                      :style="{
-                        '--chip-light': `var(--color-${(item as any).chip}-500)`,
-                        '--chip-dark': `var(--color-${(item as any).chip}-400)`,
-                      }"
-                    />
-                  </div>
-                </template>
-              </UDropdownMenu>
+            <div v-else class="flex flex-col divide-y divide-default border-t border-default">
+              <ProfileWallPost
+                v-for="post in posts"
+                :key="post.id"
+                :post="post"
+                :save="savePost"
+                @delete="deleting.post = $event"
+              />
             </div>
 
-            <div class="flex flex-wrap items-center gap-3 pt-2">
-              <UButton type="submit" color="primary" size="lg" :loading="profileSaving" :disabled="profileLoading">
-                Сохранить изменения
-              </UButton>
-              <UButton type="button" color="neutral" variant="ghost" size="lg" @click="pageView = 'wall'">
-                Отмена
+            <div v-if="posts.length < total && !wallLoading" class="flex justify-center pt-2">
+              <UButton color="neutral" variant="outline" :loading="loadingMore" @click="loadMorePosts">
+                Показать ещё
               </UButton>
             </div>
-          </UForm>
-        </UCard>
-      </section>
-
-      <!-- Сайдбар -->
-      <aside class="profile-sidebar">
-        <UCard v-if="profileInfoLines.length" class="profile-sidebar__card">
-          <template #header>
-            <h3 class="text-sm font-semibold text-highlighted">Информация</h3>
-          </template>
-          <ul class="space-y-2.5">
-            <li v-for="(line, i) in profileInfoLines" :key="i" class="flex items-start gap-2.5 text-sm">
-              <UIcon :name="line.icon" class="size-4 text-dimmed shrink-0 mt-0.5" />
-              <span class="text-muted break-words">{{ line.text }}</span>
-            </li>
-          </ul>
-        </UCard>
-
-        <UCard class="profile-sidebar__card">
-          <template #header>
-            <h3 class="text-sm font-semibold text-highlighted">О стене</h3>
-          </template>
-          <p class="text-sm text-muted leading-relaxed">
-            Публикуйте новости, фото и заметки для коллег.
-          </p>
-        </UCard>
-      </aside>
+          </ProfileSection>
+        </div>
+      </div>
     </div>
 
-    <ProfileCreatePost
-      v-model:open="postEditorOpen"
-      :post-id="editingPost?.id ?? null"
-      :initial-content="editingPost?.content ?? ''"
-      @submit="onPostSubmit"
+    <ProfileEditSlideover
+      v-if="isOwn && profile"
+      v-model:open="editOpen"
+      :user-id="myId"
+      :initial="editInitial"
+      @saved="onProfileSaved"
+      @avatar-uploaded="onAvatarUploaded"
     />
+
+    <UModal
+      v-model:open="deleteOpen"
+      title="Удалить запись?"
+      description="Запись исчезнет со стены вместе с реакциями. Отменить это нельзя."
+    >
+      <template #body>
+        <p class="text-sm text-default whitespace-pre-line line-clamp-4 break-words">{{ deleting.post?.content }}</p>
+      </template>
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <UButton color="neutral" variant="ghost" :disabled="deleting.busy" @click="deleteOpen = false">Отмена</UButton>
+          <UButton color="error" :loading="deleting.busy" @click="confirmDelete">Удалить</UButton>
+        </div>
+      </template>
+    </UModal>
   </UMain>
 </template>
-
-<style scoped>
-.profile-page {
-  --profile-cover-h: 11rem;
-  gap: 0;
-}
-
-@media (min-width: 640px) {
-  .profile-page { --profile-cover-h: 13rem; }
-}
-
-.profile-cover {
-  position: relative;
-  height: var(--profile-cover-h);
-  border-radius: 1rem;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.profile-cover__gradient {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--ui-primary) 70%, #1a1a2e) 0%,
-    color-mix(in srgb, var(--ui-primary) 40%, #16213e) 45%,
-    color-mix(in srgb, var(--ui-primary) 25%, #0f0f14) 100%
-  );
-}
-
-.profile-cover__pattern {
-  position: absolute;
-  inset: 0;
-  opacity: 0.35;
-  background-image:
-    radial-gradient(circle at 18% 42%, rgb(255 255 255 / 0.12) 0%, transparent 42%),
-    radial-gradient(circle at 82% 28%, rgb(255 255 255 / 0.08) 0%, transparent 38%);
-}
-
-.profile-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 1rem 1.5rem;
-  padding: 0 0.25rem;
-  margin-top: -3.25rem;
-  position: relative;
-  z-index: 2;
-}
-
-@media (min-width: 640px) {
-  .profile-header { margin-top: -3.75rem; }
-}
-
-.profile-header__main {
-  display: flex;
-  align-items: flex-end;
-  gap: 1rem 1.25rem;
-  min-width: 0;
-}
-
-.profile-header__avatar-wrap {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.profile-header__avatar {
-  width: 6.5rem;
-  height: 6.5rem;
-}
-
-@media (min-width: 640px) {
-  .profile-header__avatar {
-    width: 7.5rem;
-    height: 7.5rem;
-  }
-}
-
-.profile-header__avatar-btn {
-  position: absolute;
-  right: 0.25rem;
-  bottom: 0.25rem;
-  box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
-}
-
-.profile-header__name {
-  font-size: 1.375rem;
-  font-weight: 600;
-  line-height: 1.25;
-  color: var(--ui-text-highlighted);
-  letter-spacing: -0.02em;
-}
-
-@media (min-width: 640px) {
-  .profile-header__name { font-size: 1.625rem; }
-}
-
-.profile-header__role {
-  font-size: 0.875rem;
-  color: var(--ui-text-muted);
-  margin-top: 0.2rem;
-}
-
-.profile-header__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  padding-bottom: 0.25rem;
-}
-
-.profile-body {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1rem;
-  margin-top: 1.25rem;
-  padding-bottom: 1rem;
-}
-
-@media (min-width: 1024px) {
-  .profile-body {
-    grid-template-columns: minmax(0, 1fr) 17.5rem;
-    gap: 1.25rem;
-    align-items: start;
-  }
-
-  .profile-edit {
-    grid-column: 1 / -1;
-    max-width: 48rem;
-  }
-}
-
-@media (min-width: 1280px) {
-  .profile-body {
-    grid-template-columns: minmax(0, 1fr) 20rem;
-  }
-}
-
-.profile-wall {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  min-width: 0;
-}
-
-.profile-wall__composer {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.875rem 1rem;
-  background: var(--ui-bg-elevated);
-  border: 1px solid color-mix(in srgb, var(--ui-border) 55%, transparent);
-  border-radius: 1rem;
-  cursor: pointer;
-  transition: border-color 0.2s ease, background 0.2s ease;
-}
-
-.profile-wall__composer:hover {
-  border-color: color-mix(in srgb, var(--ui-primary) 35%, var(--ui-border));
-  background: color-mix(in srgb, var(--ui-bg-elevated) 92%, var(--ui-primary));
-}
-
-.profile-wall__composer-tools {
-  margin-left: auto;
-  display: flex;
-  gap: 0.125rem;
-}
-
-.profile-wall__toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.25rem 0;
-}
-
-.profile-wall__feed {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.profile-wall__empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 3rem 1.5rem;
-  background: var(--ui-bg-elevated);
-  border: 1px dashed color-mix(in srgb, var(--ui-border) 70%, transparent);
-  border-radius: 1rem;
-  text-align: center;
-}
-
-.profile-sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.profile-sidebar__card :deep([data-slot="header"]) {
-  padding-bottom: 0.5rem;
-}
-
-.profile-edit__card {
-  border-radius: 1rem;
-}
-</style>

@@ -149,18 +149,25 @@ POST/PUT/DELETE — редактор секции `absence_journal` за люб�
 
 | Что | Где |
 |-----|-----|
-| Страница | `src/pages/ProfilePage.vue` (822 строки) |
+| Страница | `src/pages/ProfilePage.vue` — `/profile` (своя), `/profile/:id` (коллеги) |
+| Редактирование | `src/components/profile/ProfileEditSlideover.vue` — аватар (готовый или своё фото), «О себе», «Интересы» |
+| Желания, награды | `src/components/profile/ProfileWishes.vue`, `ProfileAwards.vue` |
+| Плашка-заголовок блока | `src/components/profile/ProfileSection.vue` |
 | Отображаемое имя/аватар в шапке | `src/composables/useProfileDisplay.ts`, `useHeaderUser.ts` |
-| Стена постов | `src/composables/useProfileWall.ts` |
-| Компоненты стены | `src/components/profile/ProfileCreatePost.vue`, `ProfileWallPost.vue` |
+| Стена | `src/composables/useProfileWall.ts`, `src/components/profile/ProfileWallPost.vue` |
+| Реакции на записи | `NewsReactions.vue` с `target="wall"`, `useNewsReactions.ts` (`useReactions`) |
 | Аватары по умолчанию | `src/constants/profileAvatars.ts` |
+| API | `profile.php` (`?view=page`), `profile_wall.php`, `profile_extras.php`, `profile_avatar.php` — `backend/internal/handlers/profile.go`, `profile_wall.go`, `profile_extras.go`, `profile_avatar.go`; обработка фото — `backend/internal/media/webp.go` (`SaveAvatar`) |
 
-Сохранение карточки: `POST /api/profile.php` — реальная запись в БД
-(`ProfilePage.vue:293-310`).
-
-**Стена постов работает только в localStorage** (`profile-wall-posts:v2`,
-`useProfileWall.ts:12,42,67`): ни одного обращения к API. Посты не видны
-другим пользователям и теряются при очистке браузера. **[ЧАСТИЧНО]**
+Компоновка старого ВКонтакте на токенах портала (ADR-040): слева аватар,
+действия и «Коллеги» (то же подразделение), справа ФИО, анкета (должность,
+подразделение, день рождения, телефон, почта), «Информация» («О себе»,
+«Интересы»), награды, пройденные курсы, журнал отсутствия и стена; слева ещё
+«Желания». ФИО, телефон, почта, подразделение и должность в профиле **не
+редактируются** (ADR-041). Писать на стене может любой вошедший сотрудник; запись —
+простой текст до 4000 символов, выводится как текст (не `v-html`). Попасть в
+профиль коллеги — из поиска портала (Ctrl+K → «Сотрудники»), из «Коллег» и по
+имени автора записи.
 
 ---
 

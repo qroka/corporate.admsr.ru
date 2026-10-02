@@ -1,3 +1,5 @@
+import { existsSync, statSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import ui from '@nuxt/ui/vite';
@@ -77,6 +79,9 @@ export default defineConfig({
       '/api/Upload/upload.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/api/users.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/api/profile.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
+      '/api/profile_wall.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
+      '/api/profile_extras.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
+      '/api/profile_avatar.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/api/feedback.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/api/ofo.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/api/ofo_seats.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
@@ -151,10 +156,20 @@ export default defineConfig({
         secure: false,
       },
       // Static uploads (FullPic/SmallPic) are served by backend web root in dev
+      // Файл есть в public/ (туда пишет локальный Go API, UPLOAD_DIR=public) — отдаём его
+      // локально, иначе загруженные картинки и аватары в dev не открываются.
       '/img': {
         target: 'https://172.17.4.21',
         changeOrigin: true,
         secure: false,
+        bypass(req) {
+          try {
+            const file = fileURLToPath(new URL(`./public${decodeURIComponent((req.url || '').split('?')[0])}`, import.meta.url));
+            if (existsSync(file) && statSync(file).isFile()) return req.url;
+          } catch {
+            /* некорректный путь — пусть решает прокси */
+          }
+        },
       },
     },
   },

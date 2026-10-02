@@ -35,7 +35,6 @@ func main() {
 	galleryBaseH := &handlers.GalleryBase{Pool: pool, Auth: authSvc, UploadDir: cfg.UploadDir}
 	uploadH := &handlers.Upload{UploadDir: cfg.UploadDir}
 	usersH := &handlers.Users{Pool: pool, Auth: authSvc}
-	profileH := &handlers.Profile{Pool: pool, Auth: authSvc}
 	feedbackH := &handlers.Feedback{Pool: pool, Auth: authSvc}
 	ofoH := &handlers.OFO{Pool: pool, Auth: authSvc}
 	absenceH := &handlers.Absence{Pool: pool, Auth: authSvc}
@@ -45,6 +44,10 @@ func main() {
 	formsH := &handlers.FormsHandler{Pool: pool, Auth: authSvc}
 	syncH := &handlers.Sync{Pool: pool, Config: cfg}
 	birthdaysH := &handlers.Birthdays{Pool: pool, Auth: authSvc, UploadDir: cfg.UploadDir}
+	profileH := &handlers.Profile{Pool: pool, Auth: authSvc, Birthdays: birthdaysH, UploadDir: cfg.UploadDir}
+	profileWallH := &handlers.ProfileWall{Pool: pool, Auth: authSvc}
+	profileExtrasH := &handlers.ProfileExtras{Pool: pool, Auth: authSvc}
+	profileAvatarH := &handlers.ProfileAvatar{Pool: pool, Auth: authSvc, UploadDir: cfg.UploadDir}
 	healthH := &handlers.Health{Pool: pool}
 
 	mux := http.NewServeMux()
@@ -61,6 +64,9 @@ func main() {
 	mux.Handle("/api/Upload/upload.php", uploadH)
 	mux.Handle("/api/users.php", usersH)
 	mux.Handle("/api/profile.php", profileH)
+	mux.Handle("/api/profile_wall.php", profileWallH)
+	mux.Handle("/api/profile_extras.php", profileExtrasH)
+	mux.Handle("/api/profile_avatar.php", profileAvatarH)
 	mux.Handle("/api/feedback.php", feedbackH)
 	mux.HandleFunc("/api/ofo.php", ofoH.List)
 	mux.HandleFunc("/api/ofo_seats.php", ofoH.Seats)

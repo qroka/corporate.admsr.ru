@@ -26,6 +26,11 @@ export function userShortName(u: NameParts | null | undefined): string {
   return [u.surname, u.firstname].map(clean).filter(Boolean).join(' ');
 }
 
+/** Свой снимок (загружен сотрудником) — заполняет рамку целиком; стандартные аватары — картинки-стикеры с полями. */
+export function isUploadedAvatar(src: string | null | undefined): boolean {
+  return String(src ?? '').includes('/img/FullPic/avatars/uploads/');
+}
+
 /** Аватар сотрудника; без своего — тот же аватар по умолчанию, что в шапке и профиле. */
 export function userAvatarSrc(u: { avatar_url?: string | null } | null | undefined): string {
   const src = String(u?.avatar_url ?? '').trim();

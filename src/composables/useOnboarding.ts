@@ -78,11 +78,6 @@ export type SaveOnboardingPayload = {
   ofo: string;
   role: string;
   avatar_url: string;
-  firstname?: string;
-  surname?: string;
-  lastname?: string;
-  phone?: string;
-  email?: string;
 };
 
 export async function saveOnboardingProfile(payload: SaveOnboardingPayload): Promise<boolean> {

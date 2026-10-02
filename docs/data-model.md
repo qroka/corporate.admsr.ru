@@ -57,6 +57,8 @@
 | `V11__news_reactions.sql` | `news_reactions (news_id, user_id, reaction)` — реакции сотрудников на новости |
 | `V13__test_question_pairing.sql` | `test_questions.type` += `match`, `classify`; `test_options.role` (`option`/`item`/`target`), `target_option_id` |
 | `V12__course_assign_all.sql` | `course_assignments`: `target_type = 'all'`, колонка `deadline_days`, индекс действующих назначений |
+| `V15__profile_extras.sql` | `profile_wishes (user_id, text)` — желания, до 20 на человека (проверяет Go); `profile_awards (user_id, title, description, awarded_on, issued_by)` — награды, выдаёт админ |
+| `V14__profile_wall.sql` | Профиль: `profile_about (user_id, about, interests)`, `wall_posts (owner_id, author_id, content)` — стена, простой текст; `wall_post_reactions (post_id, user_id, reaction)` — ключи реакций те же, что у новостей |
 
 ## Ключевые группы таблиц
 
