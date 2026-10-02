@@ -59,6 +59,7 @@
 npm install          # установка зависимостей
 npm run dev          # Vite dev-сервер на :5173
 npm run build        # production-сборка в dist/
+npm run typecheck    # vue-tsc с базовой линией: ошибок не больше, чем в scripts/typecheck-baseline.json
 npm run preview      # просмотр сборки
 npm run test:courses # smoke-проверка схемы курсов (нужен PHP + БД)
 ```
@@ -77,10 +78,9 @@ go test ./...        # тесты (16 тест-функций)
 curl -fsS -H "Host: corporate.admsr.ru" http://127.0.0.1/api/health.php
 ```
 
-**Чего нет:** `tsconfig.json` (проверки типов), линтера, форматтера, тестов
-фронтенда, CI. `npm test` — заглушка.
+**Чего нет:** линтера, форматтера, тестов фронтенда, CI. `npm test` — заглушка.
 
-**Минимум перед сдачей:** фронтенд — `npm run build`; backend —
+**Минимум перед сдачей:** фронтенд — `npm run build && npm run typecheck`; backend —
 `go build ./... && go vet ./... && go test ./...`.
 
 ---

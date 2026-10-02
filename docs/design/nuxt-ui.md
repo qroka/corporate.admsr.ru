@@ -177,10 +177,9 @@ ls node_modules/@nuxt/ui/dist/runtime/components/*.vue | xargs -n1 basename | se
 
 Используется только Lucide (~826 вхождений).
 
-> Локальных коллекций (`@iconify-json/*`) и вызова `addCollection` в проекте нет,
-> поэтому данные иконок запрашиваются `@iconify/vue` c
-> `https://api.iconify.design`. См. [known-issues.md](../known-issues.md), IMP-10.
-> **[ЧАСТИЧНО ПОДТВЕРЖДЕНО — по коду]**
+> Коллекция Lucide берётся из пакета `@iconify-json/lucide` и регистрируется в `src/main.js`
+> через `addCollection` — к `api.iconify.design` запросов нет (IMP-10 закрыт 2026-10-02, ADR-045;
+> проверено в браузере: иконки рисуются, внешних запросов нет). Новая иконка Lucide работает сразу.
 
 ---
 

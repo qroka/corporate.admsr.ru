@@ -283,7 +283,7 @@ Smoke: `npm run test:courses`.
 | Панель ОФО | `src/components/AdminOfoPanel.vue` |
 | Пользователи | `src/composables/useUsersData.ts` |
 | Группы доступа | `src/composables/useGroupsData.ts` |
-| ОФО | `src/composables/useOfoData.ts`, `useOfoTree.ts`; компоненты `OfoSelect.vue`, `OfoMultiSelect.vue` |
+| ОФО | `src/composables/useOfoTree.ts`; компоненты `OfoSelect.vue`, `OfoMultiSelect.vue` |
 
 Эндпоинты: `users.php` (только админ), `portal_groups.php`, `ofo*.php`.
 

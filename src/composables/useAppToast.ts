@@ -38,25 +38,11 @@ export function useAppToast() {
     });
   }
 
-  /**
-   * Редактирование ОФО и должностей в админке к серверу не подключено: форма
-   * ничего не записывает. Раньше здесь был тост «ОФО сохранено» — говорим правду.
-   */
-  function adminOfoNotSaved(title: string) {
-    toast.add({
-      title: 'Изменения не сохранены',
-      description: `«${title}»: редактирование ОФО пока не подключено к серверу.`,
-      color: 'warning',
-      icon: 'i-lucide-info',
-    });
-  }
-
   return {
     toast,
     success,
     error,
     profileSaved,
     adminUserSaved,
-    adminOfoNotSaved,
   };
 }

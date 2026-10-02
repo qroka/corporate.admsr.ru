@@ -310,10 +310,8 @@ Tailwind. Фактическое распределение `gap-*`:
 `PORTAL_SERVICE_ICON_OPTIONS` (16 значений) —
 `src/pages/Services/portalServiceCatalog.ts`.
 
-> Иконки резолвятся `@iconify/vue` и при отсутствии локальных коллекций
-> запрашиваются с `https://api.iconify.design`. Пакета `@iconify-json/lucide` и
-> вызова `addCollection` в проекте нет. См. [известные проблемы](../known-issues.md),
-> IMP-10. **[ЧАСТИЧНО ПОДТВЕРЖДЕНО — по коду, в прод-сети не проверялось]**
+> Иконки Lucide регистрируются локально (`@iconify-json/lucide` + `addCollection` в `src/main.js`),
+> внешний CDN не используется. См. [известные проблемы](../known-issues.md), IMP-10.
 
 ### Favicon
 

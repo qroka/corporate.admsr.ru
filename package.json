@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "typecheck": "node scripts/typecheck.mjs",
     "images:webp": "node scripts/generate-events-webp.mjs",
     "formdata:excel": "node scripts/formdata-to-excel.mjs",
     "test:courses": "php scripts/test_courses.php",
@@ -17,6 +18,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@iconify-json/lucide": "^1.2.138",
+    "@iconify/vue": "^5.0.3",
     "@nuxt/ui": "^4.8.0",
     "@tiptap/extension-emoji": "^3.22.1",
     "@tiptap/extension-text-align": "^3.22.1",
@@ -38,6 +41,8 @@
     "postcss": "^8.5.6",
     "sharp": "^0.34.5",
     "tailwindcss": "^4.2.1",
-    "vite": "^7.3.1"
+    "typescript": "^6.0.3",
+    "vite": "^7.3.1",
+    "vue-tsc": "^3.3.11"
   }
 }

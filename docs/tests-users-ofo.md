@@ -401,7 +401,7 @@ DDL этой таблицы **нет** в `db/migration/` — схема уна�
 | `GET /api/ofo.php` | `id, title, parent, type, sort_order` |
 | `GET /api/ofo_seats.php` | `id, title, ofo, insurance, rating` |
 
-Фронт: `useOfoData.ts` — названия для журнала отсутствия, админ-фильтры/бейджи, статистика мест.
+Фронт: `useOfoData.ts` удалён 2026-10-02 (IMP-47); названия — из `useOfoTree.ts` (`ofo_tree.php`).
 
 #### B. Дерево подразделений (основное для выбора в UI)
 
@@ -543,7 +543,6 @@ src/stores/role.js
 api/ofo.php, ofo_seats.php            # легаси
 api/ofo_tree.php, ofo_positions.php   # дерево
 
-src/composables/useOfoData.ts
 src/composables/useOfoTree.ts
 src/components/OfoSelect.vue
 src/components/OfoMultiSelect.vue

@@ -4,12 +4,12 @@
 
 | Проверка | Команда | Статус |
 |----------|---------|--------|
-| Сборка фронтенда | `npm run build` | ✅ единственная проверка фронта |
+| Сборка фронтенда | `npm run build` | ✅ |
 | Компиляция Go | `cd backend && go build ./...` | ✅ |
 | Статический анализ Go | `cd backend && go vet ./...` | ✅ |
 | Тесты Go | `cd backend && go test ./...` | ✅ 16 тест-функций в `internal/handlers`, `internal/courses` и `internal/tests` |
 | Smoke схемы курсов | `npm run test:courses` | требует PHP + доступ к БД |
-| Проверка типов TS | — | ❌ `tsconfig.json` отсутствует |
+| Проверка типов TS | `npm run typecheck` | ⚠️ vue-tsc с базовой линией: падает, только если ошибок стало больше, чем в `scripts/typecheck-baseline.json` (сейчас 113; ADR-045) |
 | Линт | — | ❌ не настроен |
 | Тесты фронтенда | — | ❌ отсутствуют (`npm test` — заглушка) |
 | CI | — | ❌ отсутствует |

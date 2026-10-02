@@ -1,5 +1,7 @@
 import { createApp } from 'vue';
 import ui from '@nuxt/ui/vue-plugin';
+import { addCollection } from '@iconify/vue';
+import lucideIcons from '@iconify-json/lucide/icons.json';
 import { createPinia } from 'pinia';
 import App from './App.vue';
 import './assets/tailwind.css';
@@ -15,6 +17,9 @@ if (window.location.pathname.startsWith('/kiosk')) {
 } else {
   applyMainColorModeFromStorage();
 }
+
+// Lucide из бандла: без этого @iconify/vue тянет иконки с api.iconify.design (IMP-10).
+addCollection(lucideIcons);
 
 const app = createApp(App);
 

@@ -126,6 +126,7 @@ curl -s http://127.0.0.1:8080/api/health.php
 | `npm run dev` | Vite dev-сервер на `:5173` | ✅ |
 | `npm run build` | Production-сборка в `dist/` | ✅ |
 | `npm run preview` | Просмотр собранного | ✅ |
+| `npm run typecheck` | `scripts/typecheck.mjs`: vue-tsc, сравнение с `scripts/typecheck-baseline.json` | ✅ |
 | `npm run images:webp` | `node scripts/generate-events-webp.mjs` | ✅ файл существует |
 | `npm run formdata:excel` | `node scripts/formdata-to-excel.mjs` | ✅ файл существует |
 | `npm run test:courses` | `php scripts/test_courses.php` — smoke-проверка схемы курсов | ✅ файл существует |
@@ -141,7 +142,6 @@ curl -s http://127.0.0.1:8080/api/health.php
 
 | Чего нет | Следствие |
 |----------|-----------|
-| `tsconfig.json` | TypeScript только транспилируется Vite/esbuild; **проверки типов нет** ни локально, ни в сборке |
 | Линтера (ESLint/oxlint/Biome) | Стиль кода не проверяется автоматически |
 | Форматтера (Prettier) | Форматирование не унифицировано |
 | Тестов фронтенда (Vitest/Playwright) | `npm test` — заглушка |
