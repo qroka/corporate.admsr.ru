@@ -144,11 +144,9 @@ origin'ы Vite (`localhost:5173/5174`). **[ПОДТВЕРЖДЕНО]**
 `api/` — 87 файлов, каждый самодостаточный скрипт. Используется как fallback для
 эндпоинтов, не покрытых allowlist'ом nginx.
 
-Эндпоинты, существующие **только** в PHP (в Go-mux их нет):
-`auth_context.php`, `course_file.php`, `course_history.php`,
-`course_assignment_cancel.php`, `course_assignments_list.php`,
-`course_materials_order.php`, `courses_archive.php`, `courses_duplicate.php`,
-`courses_readiness.php`. **[ПОДТВЕРЖДЕНО]**
+Эндпоинтов, существующих **только** в PHP, больше нет: последние семь перенесены в Go 2026-10-02
+(ADR-047). `auth_context.php` — хелпер, не эндпоинт. Запасной путь `fastcgi` в nginx остаётся до проверки
+на сервере; порядок снятия PHP — [php-decommission.md](php-decommission.md).
 
 Эндпоинт, существующий **только** в Go: `portal_services.php` (PHP-файла нет) —
 поэтому раздел «Сервисы» работает лишь при запущенном Go API. **[ПОДТВЕРЖДЕНО]**

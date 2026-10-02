@@ -82,6 +82,7 @@
 | [architecture.md](architecture.md) | Слои, границы модулей, путь запроса, двойной backend (Go/PHP) |
 | [local-setup.md](local-setup.md) | Запуск, конфигурация, переменные окружения, команды |
 | [modules.md](modules.md) | Модули и пользовательские сценарии с путями к файлам |
+| [php-decommission.md](php-decommission.md) | Чек-лист снятия PHP (`api/`): что перенесено, где PHP ещё упоминается, порядок удаления | Перед удалением `api/` |
 | [api.md](api.md) | Каталог эндпоинтов, формат ответа, какие в Go, какие в PHP |
 | [data-model.md](data-model.md) | Таблицы, миграции, что есть в миграциях, а что — легаси |
 | [auth-and-permissions.md](auth-and-permissions.md) | Сессии, роли, группы доступа, гейтинг UI |

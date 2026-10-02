@@ -78,7 +78,7 @@
 |----------|------|------|--------|
 | `course_assign_preview.php` | admin | опц. userIds[], ofoIds[], includeChildren, **allUsers** | `{ count, recipients[], fromUsers, fromOfo, withoutOfo }` |
 | `course_assign.php` | admin | courseId\|versionId; **userIds** и/или **ofoIds** или **allUsers: true**; опц. includeChildren, startsAt, deadlineAt, deadlineDays, comment (только published). Назначения ofo/all постоянные (ADR-036); без V12 — 503 | `{ assignmentIds[], enrollmentsCreated, skipped }` |
-| `course_assignment_cancel.php` | admin | **assignmentId** | `{ assignmentId, cancelledEnrollments }` — **только PHP**, портал не вызывает |
+| `course_assignment_cancel.php` | admin | **assignmentId** | `{ assignmentId, cancelledEnrollments }` — Go (`AssignmentCancel`, 2026-10-02), портал не вызывает |
 | `course_enrollment_cancel.php` | раздел `courses` + категория курса | **enrollmentId** | `{ enrollment }`; 409 для `completed`/`cancelled`. **Go** (`EnrollmentCancel`), ADR-035 |
 | `course_assignments_list.php` | admin | опц. courseId, versionId, activeOnly | `{ items[] }` |
 | `course_admin_results.php` | admin | опц. courseId, versionId, status, ofoId, q, limit (≤200), offset | `{ aggregates, items[], limit, offset }`; `aggregates` считаются **без** фильтра `status` (по остальным), `aggregates.matched` — сколько строк под фильтром статуса |

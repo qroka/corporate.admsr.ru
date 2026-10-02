@@ -45,7 +45,9 @@ curl -s http://127.0.0.1:8080/api/health.php
 `course_file.php` (файлы материалов, с `Range`) и `course_enrollment_cancel.php` (отмена назначения
 участнику) — в Go с 2026-09-28.
 
-Ещё на PHP: прочие редкие скрипты (`course_assignment_cancel.php`, `course_history.php` и т.п.), SPA их не вызывает.
+На PHP эндпоинтов не осталось: `course_assignment_cancel.php`, `course_assignments_list.php`, `course_history.php`,
+`course_materials_order.php`, `courses_archive.php`, `courses_duplicate.php`, `courses_readiness.php` перенесены в Go
+2026-10-02 (SPA их не вызывает). Снятие PHP — `docs/php-decommission.md`.
 
 ## Прод: nginx allowlist
 

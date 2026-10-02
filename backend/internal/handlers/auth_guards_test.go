@@ -29,6 +29,7 @@ func TestEndpointsRequireSessionBeforeTouchingDB(t *testing.T) {
 	extrasH := &ProfileExtras{Pool: nil, Auth: authSvc}
 	avatarH := &ProfileAvatar{Pool: nil, Auth: authSvc}
 	uploadH := &Upload{Auth: authSvc}
+	coursesH := &CoursesHandler{Auth: authSvc}
 	rsvpH := &EventRSVP{Pool: nil, Auth: authSvc}
 	calendarH := &CalendarEntries{Pool: nil, Auth: authSvc}
 	formsH := &FormsHandler{Pool: nil, Auth: authSvc}
@@ -56,6 +57,13 @@ func TestEndpointsRequireSessionBeforeTouchingDB(t *testing.T) {
 		{"calendar list", http.MethodGet, "/api/calendar_entries.php", "", nil, calendarH.ServeHTTP},
 		{"calendar create", http.MethodPost, "/api/calendar_entries.php", `{"action":"create","source":"personal","dateKey":"2026-10-02","title":"x"}`, nil, calendarH.ServeHTTP},
 		{"calendar delete", http.MethodPost, "/api/calendar_entries.php", `{"action":"delete","id":1}`, nil, calendarH.ServeHTTP},
+		{"course assignment cancel", http.MethodPost, "/api/course_assignment_cancel.php", `{}`, nil, coursesH.AssignmentCancel},
+		{"course assignments list", http.MethodPost, "/api/course_assignments_list.php", `{}`, nil, coursesH.AssignmentsList},
+		{"course history", http.MethodPost, "/api/course_history.php", `{}`, nil, coursesH.History},
+		{"course materials order", http.MethodPost, "/api/course_materials_order.php", `{}`, nil, coursesH.MaterialsOrder},
+		{"courses archive", http.MethodPost, "/api/courses_archive.php", `{}`, nil, coursesH.Archive},
+		{"courses duplicate", http.MethodPost, "/api/courses_duplicate.php", `{}`, nil, coursesH.Duplicate},
+		{"courses readiness", http.MethodPost, "/api/courses_readiness.php", `{}`, nil, coursesH.Readiness},
 		{"wish add", http.MethodPost, "/api/profile_extras.php", `{"action":"wish_add","text":"x"}`, nil, extrasH.ServeHTTP},
 		{"award add", http.MethodPost, "/api/profile_extras.php", `{"action":"award_add","userId":1,"title":"x","awardedOn":"2026-10-01"}`, nil, extrasH.ServeHTTP},
 		{"forms create", http.MethodPost, "/api/forms.php", `{}`, nil, formsH.Forms},

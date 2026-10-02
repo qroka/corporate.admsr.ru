@@ -89,7 +89,7 @@ curl -fsS -H "Host: corporate.admsr.ru" http://127.0.0.1/api/health.php
 
 | Зона | Правило | Источник |
 |------|---------|----------|
-| `api/` (PHP) | **Не изменять.** Все правки backend — только в Go | PROJECT_AUDIT §8, решение владельца 2026-09-21 |
+| `api/` (PHP) | **Не изменять.** Все правки backend — только в Go. Эндпоинтов только в PHP не осталось; снятие — [`docs/php-decommission.md`](docs/php-decommission.md) | PROJECT_AUDIT §8, решение владельца 2026-09-21 |
 | `src/pages/Kiosk/`, `src/AppKiosk.vue`, `src/components/Kiosk*` | **Не трогать** | там же |
 | `components.d.ts`, `auto-imports.d.ts` | Генерируются сборкой, вручную не править | `vite.config.js` |
 | `dist/` | Артефакт сборки | — |
