@@ -531,7 +531,7 @@ function openCreate(kind: 'meeting' | 'personal') {
   createOpen.value = true;
 }
 
-function submitCreate() {
+async function submitCreate() {
   const title = createForm.value.title.trim();
   if (!title) {
     toast.add({ title: 'Укажите название', color: 'warning', icon: 'i-lucide-alert-circle' });
@@ -543,14 +543,24 @@ function submitCreate() {
     return;
   }
   const dateKey = `${dateVal.year}-${String(dateVal.month).padStart(2, '0')}-${String(dateVal.day).padStart(2, '0')}`;
-  addLocalEntry({
-    source: createKind.value,
-    dateKey,
-    title,
-    timeStart: createForm.value.timeStart || undefined,
-    timeEnd: createForm.value.timeEnd || undefined,
-    location: createForm.value.location.trim() || undefined,
-  });
+  try {
+    await addLocalEntry({
+      source: createKind.value,
+      dateKey,
+      title,
+      timeStart: createForm.value.timeStart || undefined,
+      timeEnd: createForm.value.timeEnd || undefined,
+      location: createForm.value.location.trim() || undefined,
+    });
+  } catch (e) {
+    toast.add({
+      title: 'Не удалось сохранить',
+      description: e instanceof Error ? e.message : undefined,
+      color: 'error',
+      icon: 'i-lucide-alert-circle',
+    });
+    return;
+  }
   createOpen.value = false;
   selectDay(parseDateKey(dateKey));
   cursor.value = new Date(dateVal.year, dateVal.month - 1, 1);
@@ -561,9 +571,20 @@ function submitCreate() {
   });
 }
 
-function deleteLocal(item: CalendarItem) {
+async function deleteLocal(item: CalendarItem) {
   if (item.source !== 'meeting' && item.source !== 'personal') return;
-  removeLocalEntry(item.id);
+  try {
+    // id ленты — `entry-<id с сервера>`
+    await removeLocalEntry(item.id.replace(/^entry-/, ''));
+  } catch (e) {
+    toast.add({
+      title: 'Не удалось удалить',
+      description: e instanceof Error ? e.message : undefined,
+      color: 'error',
+      icon: 'i-lucide-alert-circle',
+    });
+    return;
+  }
   toast.add({ title: 'Удалено', color: 'neutral', icon: 'i-lucide-trash-2' });
 }
 
@@ -1116,7 +1137,7 @@ const showInlinePanel = computed(
       v-model:open="createOpen"
       side="right"
       :title="createKind === 'meeting' ? 'Новая встреча' : 'Личное событие'"
-      description="Сохранится в вашем локальном календаре"
+      description="Видно только вам, доступно на любом устройстве"
     >
       <template #body>
         <div class="flex flex-col gap-4">

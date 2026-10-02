@@ -82,6 +82,8 @@ export default defineConfig({
       '/api/profile_wall.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/api/profile_extras.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/api/profile_avatar.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
+      '/api/event_rsvp.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
+      '/api/calendar_entries.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/api/feedback.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/api/ofo.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },
       '/api/ofo_seats.php': { target: 'http://127.0.0.1:8080', changeOrigin: true },

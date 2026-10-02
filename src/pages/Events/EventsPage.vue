@@ -10,6 +10,7 @@ import { slideoverPopoverContent, slideoverSelectContent } from '../../composabl
 import { useCursorFeed } from '../../composables/useCursorFeed';
 import { useFeedSentinel } from '../../composables/useFeedSentinel';
 import { useAppToast } from '../../composables/useAppToast';
+import { useEventRsvp } from '../../composables/useEventRsvp';
 
 type EventPost = BlogPostProps & {
   id?: number;
@@ -29,7 +30,6 @@ type EventCardModel = EventPost & {
 };
 
 const EVENTS_PAGE_LIMIT = 24;
-const RSVP_STORAGE_KEY = 'events-rsvp:v1';
 const MONTH_SHORT = ['ЯНВ', 'ФЕВ', 'МАР', 'АПР', 'МАЙ', 'ИЮН', 'ИЮЛ', 'АВГ', 'СЕН', 'ОКТ', 'НОЯ', 'ДЕК'] as const;
 
 const route = useRoute();
@@ -59,7 +59,7 @@ watch(searchQuery, (q) => {
 const badgeFilter = ref<'_all' | 'Новое' | 'Архив'>('_all');
 const datePeriod = ref<'_all' | 'week' | 'month'>('_all');
 const eventsTab = ref<'all' | 'my'>('all');
-const rsvpPulse = ref(0);
+const { ensureLoaded: ensureRsvpLoaded, isJoined, setJoined } = useEventRsvp();
 
 const datePeriodOptions = [
   { value: '_all', label: 'Любая дата' },
@@ -133,47 +133,25 @@ function mapEvent(raw: any): EventPost {
   };
 }
 
-function getRsvpMap(): Record<string, boolean> {
-  try {
-    const raw = window.localStorage.getItem(RSVP_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function setRsvpMap(map: Record<string, boolean>) {
-  try {
-    window.localStorage.setItem(RSVP_STORAGE_KEY, JSON.stringify(map));
-  } catch {
-    // ignore
-  }
-}
-
-function isJoinedEvent(id: number | undefined): boolean {
-  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-  rsvpPulse.value;
-  if (!id || typeof window === 'undefined') return false;
-  return !!getRsvpMap()[String(id)];
-}
-
-function toggleJoin(event: EventPost, e?: Event) {
+async function toggleJoin(event: EventPost, e?: Event) {
   e?.preventDefault();
   e?.stopPropagation();
   const id = event.id;
   if (!id) return;
   if (isArchivedBadge(event.badge)) return;
-  const map = getRsvpMap();
-  const key = String(id);
-  const wasJoined = !!map[key];
-  map[key] = !wasJoined;
-  setRsvpMap(map);
-  rsvpPulse.value++;
+  const wasJoined = isJoined(id);
+  const res = await setJoined(id, !wasJoined);
+  if (!res.ok) {
+    toast.add({
+      title: 'Не удалось сохранить запись',
+      description: res.message,
+      color: 'error',
+      icon: 'i-lucide-alert-circle',
+    });
+    return;
+  }
   toast.add({
     title: wasJoined ? 'Запись отменена' : 'Вы записались на мероприятие',
-    description: wasJoined
-      ? 'Вы больше не в списке участников (демо).'
-      : 'Добавили вас в список участников (демо).',
     color: 'success',
     icon: 'i-lucide-circle-check',
   });
@@ -192,7 +170,7 @@ function toCardModel(event: EventPost): EventCardModel {
     placeLabel: extractPlaceLabel(text),
     isPast: past,
     isArchived: archived,
-    isJoined: isJoinedEvent(event.id),
+    isJoined: isJoined(event.id),
   };
 }
 
@@ -454,6 +432,7 @@ useFeedSentinel({
 
 onMounted(() => {
   void loadInitial();
+  void ensureRsvpLoaded();
 });
 
 onUnmounted(() => {

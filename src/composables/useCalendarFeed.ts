@@ -1,6 +1,8 @@
 import { computed, ref } from 'vue';
 import { useBirthdayColleagues } from './useBirthdayColleagues';
 import { useCoursesStore, type EnrollmentSummary } from './useCoursesStore';
+import { apiSessionFetch, getAuthUser } from './useAuthSession';
+import { useEventRsvp } from './useEventRsvp';
 
 export type CalendarSource = 'event' | 'meeting' | 'birthday' | 'learning' | 'personal';
 
@@ -24,7 +26,8 @@ export type CalendarItem = {
 };
 
 export type LocalCalendarEntry = {
-  id: string;
+  /** id с сервера (число); в ленте календаря он превращается в строку `entry-<id>` */
+  id: number | string;
   source: 'meeting' | 'personal';
   dateKey: string;
   title: string;
@@ -33,8 +36,15 @@ export type LocalCalendarEntry = {
   location?: string;
 };
 
-const LOCAL_KEY = 'portal-calendar-local:v1';
-const RSVP_STORAGE_KEY = 'events-rsvp:v1';
+// Личные записи и встречи — на сервере (/api/calendar_entries.php, V16). Раньше лежали в
+// localStorage одним списком на весь браузер — старые записи не переносятся (чьи они, неизвестно).
+if (typeof window !== 'undefined') {
+  try {
+    window.localStorage.removeItem('portal-calendar-local:v1');
+  } catch {
+    /* хранилище недоступно */
+  }
+}
 
 export const CALENDAR_SOURCE_META: Record<
   CalendarSource,
@@ -98,34 +108,6 @@ function extractPlace(text: string): string | undefined {
   return m?.[1]?.trim() || undefined;
 }
 
-function readLocalEntries(): LocalCalendarEntry[] {
-  try {
-    const raw = window.localStorage.getItem(LOCAL_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeLocalEntries(items: LocalCalendarEntry[]) {
-  try {
-    window.localStorage.setItem(LOCAL_KEY, JSON.stringify(items));
-  } catch {
-    // ignore
-  }
-}
-
-function getRsvpMap(): Record<string, boolean> {
-  try {
-    const raw = window.localStorage.getItem(RSVP_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
-  } catch {
-    return {};
-  }
-}
-
 function formatHm(d: Date): string {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
@@ -139,6 +121,7 @@ export function useCalendarFeed() {
   } = useBirthdayColleagues();
 
   const courses = useCoursesStore();
+  const { ensureLoaded: ensureRsvpLoaded, isJoined: isRsvpJoined } = useEventRsvp();
 
   const eventsLoading = ref(false);
   const eventsError = ref<string | null>(null);
@@ -179,39 +162,58 @@ export function useCalendarFeed() {
     }
   }
 
-  function loadLocal() {
-    localEntries.value = readLocalEntries();
+  async function loadLocal() {
+    if (!getAuthUser()?.id) {
+      localEntries.value = [];
+      return;
+    }
+    try {
+      const json = await apiSessionFetch<{ entries?: LocalCalendarEntry[] }>('/api/calendar_entries.php');
+      if (json?.success) {
+        localEntries.value = Array.isArray(json.data?.entries) ? json.data!.entries! : [];
+      }
+    } catch {
+      // календарь работает и без личных записей
+    }
   }
 
   async function ensureLoaded() {
     ensureBirthdays();
-    loadLocal();
-    await Promise.all([loadEvents(), loadLearning()]);
+    await Promise.all([loadEvents(), loadLearning(), loadLocal(), ensureRsvpLoaded()]);
   }
 
-  function addLocalEntry(entry: Omit<LocalCalendarEntry, 'id'> & { id?: string }) {
-    const next: LocalCalendarEntry = {
-      id: entry.id ?? `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      source: entry.source,
-      dateKey: entry.dateKey,
-      title: entry.title.trim(),
-      timeStart: entry.timeStart,
-      timeEnd: entry.timeEnd,
-      location: entry.location,
-    };
-    localEntries.value = [...localEntries.value, next];
-    writeLocalEntries(localEntries.value);
-    return next;
+  /** Сохраняет на сервере; при отказе бросает Error с текстом для тоста. */
+  async function addLocalEntry(entry: Omit<LocalCalendarEntry, 'id'>): Promise<LocalCalendarEntry> {
+    const json = await apiSessionFetch<{ entry?: LocalCalendarEntry }>('/api/calendar_entries.php', {
+      method: 'POST',
+      json: {
+        action: 'create',
+        source: entry.source,
+        dateKey: entry.dateKey,
+        title: entry.title.trim(),
+        timeStart: entry.timeStart,
+        timeEnd: entry.timeEnd,
+        location: entry.location,
+      },
+    });
+    const saved = json?.data?.entry;
+    if (!json?.success || !saved) throw new Error(json?.message || 'Не удалось сохранить запись');
+    localEntries.value = [...localEntries.value, saved];
+    return saved;
   }
 
-  function removeLocalEntry(id: string) {
-    localEntries.value = localEntries.value.filter((e) => e.id !== id);
-    writeLocalEntries(localEntries.value);
+  /** Удаляет на сервере; запись пропадает из списка только после подтверждения. */
+  async function removeLocalEntry(id: string | number): Promise<void> {
+    const json = await apiSessionFetch('/api/calendar_entries.php', {
+      method: 'POST',
+      json: { action: 'delete', id: Number(id) },
+    });
+    if (!json?.success) throw new Error(json?.message || 'Не удалось удалить запись');
+    localEntries.value = localEntries.value.filter((e) => String(e.id) !== String(id));
   }
 
   const items = computed((): CalendarItem[] => {
     const out: CalendarItem[] = [];
-    const rsvp = getRsvpMap();
 
     for (const ev of rawEvents.value) {
       const dateRaw = String(ev?.date ?? '').trim();
@@ -232,7 +234,7 @@ export function useCalendarFeed() {
         location: extractPlace(text),
         href: `/events/${id}`,
         actionLabel: 'Открыть',
-        isJoined: Boolean(rsvp[id]),
+        isJoined: isRsvpJoined(id),
       });
     }
 
@@ -242,7 +244,7 @@ export function useCalendarFeed() {
           ? `${entry.timeStart}-${entry.timeEnd}`
           : entry.timeStart || '';
       out.push({
-        id: entry.id,
+        id: `entry-${entry.id}`,
         source: entry.source,
         dateKey: entry.dateKey,
         title: entry.title,

@@ -29,6 +29,8 @@ func TestEndpointsRequireSessionBeforeTouchingDB(t *testing.T) {
 	extrasH := &ProfileExtras{Pool: nil, Auth: authSvc}
 	avatarH := &ProfileAvatar{Pool: nil, Auth: authSvc}
 	uploadH := &Upload{Auth: authSvc}
+	rsvpH := &EventRSVP{Pool: nil, Auth: authSvc}
+	calendarH := &CalendarEntries{Pool: nil, Auth: authSvc}
 	formsH := &FormsHandler{Pool: nil, Auth: authSvc}
 	ofoH := &OFO{Pool: nil, Auth: authSvc}
 
@@ -49,6 +51,11 @@ func TestEndpointsRequireSessionBeforeTouchingDB(t *testing.T) {
 		{"wall delete", http.MethodPost, "/api/profile_wall.php", `{"action":"delete","id":1}`, nil, wallH.ServeHTTP},
 		{"avatar upload", http.MethodPost, "/api/profile_avatar.php", `{}`, nil, avatarH.ServeHTTP},
 		{"image upload", http.MethodPost, "/api/Upload/upload.php", `{}`, nil, uploadH.ServeHTTP},
+		{"rsvp list", http.MethodGet, "/api/event_rsvp.php", "", nil, rsvpH.ServeHTTP},
+		{"rsvp set", http.MethodPost, "/api/event_rsvp.php", `{"eventId":1,"joined":true}`, nil, rsvpH.ServeHTTP},
+		{"calendar list", http.MethodGet, "/api/calendar_entries.php", "", nil, calendarH.ServeHTTP},
+		{"calendar create", http.MethodPost, "/api/calendar_entries.php", `{"action":"create","source":"personal","dateKey":"2026-10-02","title":"x"}`, nil, calendarH.ServeHTTP},
+		{"calendar delete", http.MethodPost, "/api/calendar_entries.php", `{"action":"delete","id":1}`, nil, calendarH.ServeHTTP},
 		{"wish add", http.MethodPost, "/api/profile_extras.php", `{"action":"wish_add","text":"x"}`, nil, extrasH.ServeHTTP},
 		{"award add", http.MethodPost, "/api/profile_extras.php", `{"action":"award_add","userId":1,"title":"x","awardedOn":"2026-10-01"}`, nil, extrasH.ServeHTTP},
 		{"forms create", http.MethodPost, "/api/forms.php", `{}`, nil, formsH.Forms},

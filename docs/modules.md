@@ -85,8 +85,10 @@
 Эндпоинт: `events.php` (GET публичный, мутации — секция `events`).
 Связь с альбомом галереи: `events.album_id` — `db/migration/V7__events_gallery_album.sql`.
 
-Отметка «пойду» (RSVP) хранится **только в localStorage** (`events-rsvp:v1`,
-`useCalendarFeed.ts:37,125-132`). На сервер не уходит. **[ЧАСТИЧНО]**
+Запись на мероприятие («Записаться») хранится на сервере: `event_rsvp.php` (`calendar_personal.go`,
+таблица `event_rsvps`, V16), состояние общее для страниц — `src/composables/useEventRsvp.ts`. Прежние отметки
+из localStorage (`events-rsvp:v1`) не переносились и удаляются при загрузке модуля. Список записавшихся
+организатору пока не показывается — только сам факт записи у сотрудника.
 
 Генерация WebP-обложек: `npm run images:webp` → `scripts/generate-events-webp.mjs`.
 
@@ -114,8 +116,9 @@
 
 Пять источников (`CalendarSource`): `event`, `meeting`, `birthday`, `learning`,
 `personal` — `useCalendarFeed.ts:5`. Личные записи (`personal`) и встречи
-пользователя хранятся в localStorage `portal-calendar-local:v1`
-(`useCalendarFeed.ts:36,106-123`) — серверного хранилища нет. **[ЧАСТИЧНО]**
+пользователя хранятся на сервере: `calendar_entries.php` (`calendar_personal.go`, таблица
+`calendar_entries`, V16), видны только их автору. Прежние записи из localStorage
+(`portal-calendar-local:v1`) не переносились и удаляются при загрузке модуля.
 
 Единственное место в проекте, где брейкпоинты читаются из JS:
 `useMediaQuery('(min-width: 1024px)')` и `768px` — `CalendarPage.vue:38-39`.

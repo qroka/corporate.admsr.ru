@@ -5,6 +5,7 @@ import type { BlogPostProps } from '@nuxt/ui';
 import { useSectionAccess } from '../../composables/useSectionAccess';
 import { apiSessionFetch } from '../../composables/useAuthSession';
 import { useAppToast } from '../../composables/useAppToast';
+import { useEventRsvp } from '../../composables/useEventRsvp';
 import { useGalleryData } from '../../composables/useGalleryData';
 import { slideoverPopoverContent, slideoverSelectContent } from '../../composables/slideoverFieldUi';
 import { toCalendarDate } from '../../utils/date';
@@ -173,7 +174,10 @@ async function fetchEvent(id: string | string[]) {
   }
 }
 
-onMounted(() => fetchEvent(route.params.id));
+onMounted(() => {
+  void fetchEvent(route.params.id);
+  void ensureRsvpLoaded();
+});
 watch(() => route.params.id, fetchEvent);
 
 watch(
@@ -190,51 +194,27 @@ watch(
   { immediate: true },
 );
 
-// ─── RSVP (local demo) ────────────────────────────────────────────────────────
-const RSVP_STORAGE_KEY = 'events-rsvp:v1';
-const joinPulse = ref(0);
+// ─── Запись на мероприятие (сервер, V16) ──────────────────────────────────────
+const { ensureLoaded: ensureRsvpLoaded, isJoined: isJoinedEvent, setJoined } = useEventRsvp();
+const isJoined = computed(() => isJoinedEvent(event.value?.id));
 
-function getRsvpMap(): Record<string, boolean> {
-  try {
-    const raw = window.localStorage.getItem(RSVP_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function setRsvpMap(map: Record<string, boolean>) {
-  try {
-    window.localStorage.setItem(RSVP_STORAGE_KEY, JSON.stringify(map));
-  } catch {
-    // ignore
-  }
-}
-
-const isJoined = computed(() => {
-  // joinPulse is only here to make re-computation deterministic after toggle
-  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-  joinPulse.value;
-  const id = event.value?.id;
-  if (!id) return false;
-  if (typeof window === 'undefined') return false;
-  return !!getRsvpMap()[String(id)];
-});
-
-function toggleJoin() {
+async function toggleJoin() {
   const id = event.value?.id;
   if (!id) return;
   if (isArchivedEvent.value) return;
   const wasJoined = isJoined.value;
-  const map = getRsvpMap();
-  const key = String(id);
-  map[key] = !map[key];
-  setRsvpMap(map);
-  joinPulse.value++;
-
+  const res = await setJoined(id, !wasJoined);
+  if (!res.ok) {
+    toast.add({
+      title: 'Не удалось сохранить запись',
+      description: res.message,
+      color: 'error',
+      icon: 'i-lucide-alert-circle',
+    });
+    return;
+  }
   toast.add({
     title: wasJoined ? 'Запись отменена' : 'Вы записались на мероприятие',
-    description: wasJoined ? 'Вы больше не в списке участников (демо).' : 'Добавили вас в список участников (демо).',
     color: 'success',
     icon: 'i-lucide-circle-check',
   });

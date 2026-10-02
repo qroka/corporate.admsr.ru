@@ -47,6 +47,8 @@ func main() {
 	profileH := &handlers.Profile{Pool: pool, Auth: authSvc, Birthdays: birthdaysH, UploadDir: cfg.UploadDir}
 	profileWallH := &handlers.ProfileWall{Pool: pool, Auth: authSvc}
 	profileExtrasH := &handlers.ProfileExtras{Pool: pool, Auth: authSvc}
+	eventRSVPH := &handlers.EventRSVP{Pool: pool, Auth: authSvc}
+	calendarEntriesH := &handlers.CalendarEntries{Pool: pool, Auth: authSvc}
 	profileAvatarH := &handlers.ProfileAvatar{Pool: pool, Auth: authSvc, UploadDir: cfg.UploadDir}
 	healthH := &handlers.Health{Pool: pool}
 
@@ -67,6 +69,8 @@ func main() {
 	mux.Handle("/api/profile_wall.php", profileWallH)
 	mux.Handle("/api/profile_extras.php", profileExtrasH)
 	mux.Handle("/api/profile_avatar.php", profileAvatarH)
+	mux.Handle("/api/event_rsvp.php", eventRSVPH)
+	mux.Handle("/api/calendar_entries.php", calendarEntriesH)
 	mux.Handle("/api/feedback.php", feedbackH)
 	mux.HandleFunc("/api/ofo.php", ofoH.List)
 	mux.HandleFunc("/api/ofo_seats.php", ofoH.Seats)
