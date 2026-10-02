@@ -6,6 +6,10 @@ export default defineConfig({
   plugins: [
     vue(),
     ui({
+      // Тему (light/dark/system) ведёт useColorMode.ts. Встроенный режим Nuxt UI
+      // (vueuse, ключ vueuse-color-scheme) конфликтует: UDashboardSearch при монтировании
+      // после входа сбрасывал класс `dark` на системный.
+      colorMode: false,
       ui: {
         colors: {
           primary: 'emerald',
