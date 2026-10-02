@@ -1731,7 +1731,11 @@ func (h *TestsHandler) AttemptFinish(w http.ResponseWriter, r *http.Request) {
 	var nextAction any
 	if enrollmentID != nil {
 		coursesSvc := &courses.Service{Pool: h.Pool}
-		_, _ = coursesSvc.TryCompleteEnrollment(ctx, *enrollmentID, r)
+		completion, _ := coursesSvc.TryCompleteEnrollment(ctx, *enrollmentID, r)
+		if completion == nil && cl != nil {
+			// Итоговый тест не сдан и попытки кончились → «Курс не сдан» (Q-08).
+			coursesSvc.FailIfFinalAttemptsExhausted(ctx, *enrollmentID, tests.ToInt64Must(cl["course_test_link_id"]), r)
+		}
 		nextAction = h.nextActionStub(ctx, *enrollmentID)
 	}
 

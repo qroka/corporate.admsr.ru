@@ -69,7 +69,7 @@ Soft refs на `user_info` / `ofo_unit` — **без жёстких FK** (как
 | `course_id` | bigint NOT NULL | FK → `course_courses` |
 | `version_number` | integer NOT NULL | UNIQUE с course_id |
 | `status` | text | `draft` \| `published` \| `archived` |
-| `short_description`, `full_description` | text | |
+| `short_description`, `full_description` | text | `full_description` Go больше не читает и не пишет (ADR-044); колонка осталась — её ещё трогает PHP |
 | `cover_url` | text | |
 | `sequential_progress` | boolean DEFAULT true | |
 | `completion_rule` | text DEFAULT `all_required` | |

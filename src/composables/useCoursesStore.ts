@@ -63,7 +63,6 @@ export type CourseVersion = {
   versionNumber: number;
   status: 'draft' | 'published' | 'archived';
   shortDescription?: string;
-  fullDescription?: string;
   coverUrl?: string | null;
   sequentialProgress?: boolean;
   completionRule?: string;

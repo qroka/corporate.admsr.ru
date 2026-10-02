@@ -16,10 +16,9 @@ const store = useCoursesStore();
 const { toast } = useAppToast();
 useAdminCoursePortalBreadcrumbs();
 const {
-  categories,
   ensureLoaded: ensureOfo,
-  rootUnitsOf,
-  rootLabelOf,
+  unitItems,
+  unitById,
 } = useOfoTree();
 
 const courseId = computed(() => Number(route.params.courseId));
@@ -67,21 +66,11 @@ const statusItems = [
   { label: 'Отменён', value: 'cancelled' },
 ];
 
-/** Корневые ОФО (без родителя) — как верхний уровень вкладки ОФО на дашборде. */
-const ofoItems = computed(() => {
-  const items: { label: string; value: string }[] = [{ label: 'Все ОФО', value: '_all' }];
-  const cats = [...categories.value].sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
-  for (const cat of cats) {
-    for (const u of rootUnitsOf(cat.id)) {
-      items.push({ label: u.name, value: String(u.id) });
-    }
-  }
-  return items.sort((a, b) => {
-    if (a.value === '_all') return -1;
-    if (b.value === '_all') return 1;
-    return a.label.localeCompare(b.label, 'ru');
-  });
-});
+/** Любое подразделение (путь «Корень / Отдел»); сервер сам берёт и вложенные (Q-11). */
+const ofoItems = computed(() => [
+  { label: 'Все ОФО', value: '_all' },
+  ...unitItems.value.map((u) => ({ label: u.label, value: String(u.id) })),
+]);
 
 /** Порядок строк: сервер отдаёт по дате назначения, остальное сортируем здесь. */
 type SortKey = 'assigned' | 'fio' | 'progress' | 'deadline' | 'activity';
@@ -125,9 +114,10 @@ const hasActiveFilters = computed(
   () => Boolean(searchQuery.value.trim()) || ofoFilter.value !== '_all' || statusFilter.value !== '_all',
 );
 
+/** Точное подразделение сотрудника (раньше показывали корневое ОФО). */
 function displayOfoName(ofoId: number | null | undefined, fallback?: string | null) {
-  const root = rootLabelOf(ofoId);
-  if (root) return root;
+  const unit = ofoId != null ? unitById.value.get(Number(ofoId)) : null;
+  if (unit) return unit.name;
   return fallback || null;
 }
 

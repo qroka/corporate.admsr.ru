@@ -120,6 +120,22 @@ export function useOfoTree() {
     return parts.join(' / ');
   }
 
+  /**
+   * Все подразделения плоским списком в порядке дерева: «Корень / … / Подразделение».
+   * Для выбора любого уровня (назначение курса, фильтр результатов); поиск идёт по полному пути.
+   */
+  const unitItems = computed(() => {
+    const items: { label: string; value: number }[] = [];
+    const cats = [...categories.value].sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+    const walk = (unit: OfoUnit, path: string[]) => {
+      const here = [...path, unit.name];
+      items.push({ label: here.join(' / '), value: unit.id });
+      for (const ch of childrenOf(unit.id)) walk(ch, here);
+    };
+    for (const cat of cats) for (const root of rootUnitsOf(cat.id)) walk(root, []);
+    return items;
+  });
+
   /** unit_number по id (для запроса должностей). */
   function unitNumberOf(unitId: number | null | undefined): number | null {
     if (unitId == null) return null;
@@ -149,6 +165,7 @@ export function useOfoTree() {
     rootUnitOf,
     rootLabelOf,
     pathLabel,
+    unitItems,
     unitNumberOf,
     fetchPositions,
   };

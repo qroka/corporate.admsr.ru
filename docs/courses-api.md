@@ -29,7 +29,7 @@
 | Endpoint | Auth | Body (основные поля) | `data` (кратко) |
 |----------|------|----------------------|-----------------|
 | `courses_list.php` | admin | — | `{ items: Course[] }` |
-| `courses_create.php` | admin | **title**; опц. category, short/fullDescription, coverUrl, sequentialProgress, completionRule, defaultDeadlineDays, finalPassingScore, requireFinalTest | `{ course, version }` |
+| `courses_create.php` | admin | **title**; опц. category, shortDescription, coverUrl, sequentialProgress, completionRule, defaultDeadlineDays, finalPassingScore, requireFinalTest | `{ course, version }` |
 | `courses_get.php` | admin | **courseId**; опц. versionId | `{ course, version }` (дерево с контентом) |
 | `courses_update.php` | admin | **courseId**; опц. versionId, title, category; контент только draft | `{ course, version }` |
 | `courses_delete.php` | admin | **courseId** | `{ courseId }` (soft-delete) |

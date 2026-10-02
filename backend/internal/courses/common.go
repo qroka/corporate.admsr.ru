@@ -94,7 +94,6 @@ func MapVersionRow(row map[string]any) map[string]any {
 		"versionNumber":       toInt(row["version_number"]),
 		"status":              fmt.Sprint(row["status"]),
 		"shortDescription":    strOr(row["short_description"], ""),
-		"fullDescription":     strOr(row["full_description"], ""),
 		"coverUrl":            row["cover_url"],
 		"sequentialProgress":  Bool(row["sequential_progress"]),
 		"completionRule":      strOr(row["completion_rule"], "all_required"),
@@ -370,21 +369,18 @@ func (s *Service) CreateCourse(ctx context.Context, user *auth.User, data map[st
 		return nil, err
 	}
 
-	sd, fd := "", ""
+	sd := ""
 	if sp := strPtr(data["shortDescription"], data["short_description"]); sp != nil {
 		sd = SanitizeHTML(sp)
-	}
-	if fp := strPtr(data["fullDescription"], data["full_description"]); fp != nil {
-		fd = SanitizeHTML(fp)
 	}
 	var versionID int64
 	err = tx.QueryRow(ctx, `
 		INSERT INTO public.course_versions (
-			course_id, version_number, status, short_description, full_description,
+			course_id, version_number, status, short_description,
 			cover_url, sequential_progress, completion_rule, default_deadline_days,
 			final_passing_score, require_final_test, generate_certificate, created_by
-		) VALUES ($1,1,'draft',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
-		courseID, sd, fd, dataField(data, "coverUrl", "cover_url"),
+		) VALUES ($1,1,'draft',$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+		courseID, sd, dataField(data, "coverUrl", "cover_url"),
 		Bool(dataField(data, "sequentialProgress", "sequential_progress")),
 		strOr(dataField(data, "completionRule", "completion_rule"), "all_required"),
 		intField(data, "defaultDeadlineDays", "default_deadline_days"),
@@ -906,6 +902,9 @@ func (s *Service) TryCompleteEnrollment(ctx context.Context, enrollmentID int64,
 		return nil, nil
 	}
 	st := fmt.Sprint(enr["status"])
+	if st == "failed" {
+		return nil, nil
+	}
 	if st == "completed" || st == "cancelled" {
 		row, _ := scanOne(ctx, s.Pool, `SELECT * FROM public.course_completions WHERE enrollment_id = $1 ORDER BY id DESC LIMIT 1`, enrollmentID)
 		return row, nil
@@ -991,6 +990,64 @@ func (s *Service) TryCompleteEnrollment(ctx context.Context, enrollmentID int64,
 		return nil, err
 	}
 	return scanOne(ctx, s.Pool, `SELECT * FROM public.course_completions WHERE id = $1`, completionID)
+}
+
+// finalAttemptsExhausted — true, если у итогового теста включён лимит попыток и все они
+// использованы. Без лимита попытки не кончаются, курс «не сдан» не бывает (Q-08).
+func finalAttemptsExhausted(limitAttempts bool, attempts, completed int) bool {
+	if !limitAttempts {
+		return false
+	}
+	if attempts < 1 {
+		attempts = 1
+	}
+	return completed >= attempts
+}
+
+// FailIfFinalAttemptsExhausted переводит запись в «Не сдан» (failed), когда итоговый тест не
+// сдан и попыток больше нет (Q-08). Вызывается после завершения попытки и после
+// TryCompleteEnrollment: если курс уже завершён или отменён — ничего не делает. Вернуть
+// курсу прохождение можно только «Обнулить результат» (стирает попытки и ставит not_started).
+func (s *Service) FailIfFinalAttemptsExhausted(ctx context.Context, enrollmentID, linkID int64, r *http.Request) bool {
+	var status, linkType string
+	var userID, formID int64
+	var limitAttempts bool
+	var attempts int
+	err := s.Pool.QueryRow(ctx, `
+		SELECT e.status, e.user_id, l.type, l.test_form_id, f.limit_attempts, f.attempts
+		FROM public.course_enrollments e
+		JOIN public.course_test_links l ON l.id = $2
+		JOIN public.test_forms f ON f.id = l.test_form_id
+		WHERE e.id = $1`, enrollmentID, linkID).Scan(&status, &userID, &linkType, &formID, &limitAttempts, &attempts)
+	if err != nil || linkType != "final" {
+		return false
+	}
+	if status != "not_started" && status != "in_progress" && status != "overdue" {
+		return false
+	}
+	if s.TestLinkPassed(ctx, enrollmentID, linkID) {
+		return false
+	}
+	// Тот же подсчёт, что при старте попытки (tests_routes.go): по форме и пользователю.
+	var completed int
+	_ = s.Pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM public.test_attempts
+		WHERE form_id = $1 AND user_id = $2 AND status = 'completed'`, formID, userID).Scan(&completed)
+	if !finalAttemptsExhausted(limitAttempts, attempts, completed) {
+		return false
+	}
+	tag, err := s.Pool.Exec(ctx, `
+		UPDATE public.course_enrollments SET status = 'failed', updated_at = now()
+		WHERE id = $1 AND status IN ('not_started', 'in_progress', 'overdue')`, enrollmentID)
+	if err != nil || tag.RowsAffected() == 0 {
+		return false
+	}
+	uid := userID
+	eid := enrollmentID
+	Audit(ctx, s.Pool, &uid, "course.enrollment.fail", "course_enrollment", &eid, map[string]any{
+		"previousStatus": status, "attemptsUsed": completed,
+	}, r)
+	return true
 }
 
 func (s *Service) buildCompletionSnapshot(ctx context.Context, enrollmentID int64, enr, version map[string]any, finalScore *float64) map[string]any {

@@ -241,7 +241,7 @@ func (h *CoursesHandler) Update(w http.ResponseWriter, r *http.Request) {
 				return nil, courses.Err(http.StatusForbidden, "Нет доступа к выбранной категории курсов")
 			}
 		}
-		contentKeys := []string{"shortDescription", "fullDescription", "coverUrl", "sequentialProgress", "completionRule", "defaultDeadlineDays", "finalPassingScore", "requireFinalTest", "generateCertificate"}
+		contentKeys := []string{"shortDescription", "coverUrl", "sequentialProgress", "completionRule", "defaultDeadlineDays", "finalPassingScore", "requireFinalTest", "generateCertificate"}
 		wantsContent := false
 		for _, k := range contentKeys {
 			if _, ok := body[k]; ok {
@@ -278,10 +278,6 @@ func (h *CoursesHandler) Update(w http.ResponseWriter, r *http.Request) {
 			if v, ok := body["shortDescription"]; ok {
 				s := courses.SanitizeHTML(strPtrVal(v))
 				_, _ = tx.Exec(ctx, `UPDATE public.course_versions SET short_description = $2, updated_at = now() WHERE id = $1`, versionID, s)
-			}
-			if v, ok := body["fullDescription"]; ok {
-				s := courses.SanitizeHTML(strPtrVal(v))
-				_, _ = tx.Exec(ctx, `UPDATE public.course_versions SET full_description = $2, updated_at = now() WHERE id = $1`, versionID, s)
 			}
 			if v, ok := body["coverUrl"]; ok {
 				_, _ = tx.Exec(ctx, `UPDATE public.course_versions SET cover_url = $2, updated_at = now() WHERE id = $1`, versionID, v)

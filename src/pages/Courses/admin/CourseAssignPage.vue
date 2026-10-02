@@ -15,7 +15,7 @@ const store = useCoursesStore();
 const { toast } = useAppToast();
 useAdminCoursePortalBreadcrumbs();
 const { users, ensureLoaded: ensureUsers } = useUsersData();
-const { categories, ensureLoaded: ensureOfo, rootUnitsOf } = useOfoTree();
+const { ensureLoaded: ensureOfo, unitItems } = useOfoTree();
 
 const courseId = computed(() => Number(route.params.courseId));
 const loading = ref(true);
@@ -49,16 +49,11 @@ const userItems = computed(() =>
 /** Значение пункта «Все сотрудники» в списке ОФО (id подразделений положительные). */
 const ALL_STAFF = 0;
 
-/** «Все сотрудники» + корневые ОФО — как в фильтре результатов (только названия, без категорий). */
-const ofoItems = computed(() => {
-  const items: { label: string; value: number }[] = [];
-  const cats = [...categories.value].sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
-  for (const cat of cats) {
-    for (const u of rootUnitsOf(cat.id)) items.push({ label: u.name, value: u.id });
-  }
-  items.sort((a, b) => a.label.localeCompare(b.label, 'ru'));
-  return [[{ label: 'Все сотрудники', value: ALL_STAFF, icon: 'i-lucide-users' }], items];
-});
+/** «Все сотрудники» + любое подразделение (путь «Корень / Отдел») — Q-11. */
+const ofoItems = computed(() => [
+  [{ label: 'Все сотрудники', value: ALL_STAFF, icon: 'i-lucide-users' }],
+  unitItems.value,
+]);
 
 const allStaff = computed(() => ofoIds.value.includes(ALL_STAFF));
 const unitIds = computed(() => ofoIds.value.filter((id) => id !== ALL_STAFF));
