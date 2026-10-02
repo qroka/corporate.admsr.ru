@@ -33,7 +33,7 @@ func main() {
 	eventsH := &handlers.Events{Pool: pool, Auth: authSvc}
 	galleryH := &handlers.Gallery{Pool: pool, Auth: authSvc, UploadDir: cfg.UploadDir}
 	galleryBaseH := &handlers.GalleryBase{Pool: pool, Auth: authSvc, UploadDir: cfg.UploadDir}
-	uploadH := &handlers.Upload{UploadDir: cfg.UploadDir}
+	uploadH := &handlers.Upload{Auth: authSvc, UploadDir: cfg.UploadDir}
 	usersH := &handlers.Users{Pool: pool, Auth: authSvc}
 	feedbackH := &handlers.Feedback{Pool: pool, Auth: authSvc}
 	ofoH := &handlers.OFO{Pool: pool, Auth: authSvc}

@@ -517,12 +517,17 @@ func (h *GalleryBase) del(w http.ResponseWriter, r *http.Request) {
 
 // Upload handles /api/Upload/upload.php
 type Upload struct {
+	Auth      *auth.Service
 	UploadDir string
 }
 
 func (h *Upload) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		httpx.MethodNotAllowed(w)
+		return
+	}
+	// IMP-61: раньше загрузка была открыта без входа.
+	if _, ok := requireUser(w, r, h.Auth); !ok {
 		return
 	}
 	if err := r.ParseMultipartForm(25 << 20); err != nil {

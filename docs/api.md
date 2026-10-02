@@ -89,7 +89,7 @@ PHP-реализацию (или в 404, если PHP-файла нет).
 | `news.php` | публично; `?action=reactors` — `requireUser` | секция `news`; `?action=react`, `?action=like` — `requireUser` (личность из сессии); `?action=view` — публично |
 | `events.php` | публично | секция `events` |
 | `gallery.php`, `gallery_base.php` | публично | секция `gallery` |
-| `Upload/upload.php` | — | см. `gallery.go:519` (`Upload`) |
+| `Upload/upload.php` | — | `requireUser` (любой вошедший; секцию не проверяет — IMP-61) |
 | `birthdays.php` | авторизованный | секция `birthdays` |
 | `absence_journal.php` | `requireUser` | `requireUser` + секция `absence_journal` **или** своя запись (`DELETE` — своя активная) |
 | `users.php` | `requireAdmin` | `requireAdmin` |

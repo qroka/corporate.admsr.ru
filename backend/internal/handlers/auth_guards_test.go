@@ -28,6 +28,7 @@ func TestEndpointsRequireSessionBeforeTouchingDB(t *testing.T) {
 	wallH := &ProfileWall{Pool: nil, Auth: authSvc}
 	extrasH := &ProfileExtras{Pool: nil, Auth: authSvc}
 	avatarH := &ProfileAvatar{Pool: nil, Auth: authSvc}
+	uploadH := &Upload{Auth: authSvc}
 	formsH := &FormsHandler{Pool: nil, Auth: authSvc}
 	ofoH := &OFO{Pool: nil, Auth: authSvc}
 
@@ -47,6 +48,7 @@ func TestEndpointsRequireSessionBeforeTouchingDB(t *testing.T) {
 		{"wall create", http.MethodPost, "/api/profile_wall.php", `{"action":"create","userId":1,"content":"x"}`, nil, wallH.ServeHTTP},
 		{"wall delete", http.MethodPost, "/api/profile_wall.php", `{"action":"delete","id":1}`, nil, wallH.ServeHTTP},
 		{"avatar upload", http.MethodPost, "/api/profile_avatar.php", `{}`, nil, avatarH.ServeHTTP},
+		{"image upload", http.MethodPost, "/api/Upload/upload.php", `{}`, nil, uploadH.ServeHTTP},
 		{"wish add", http.MethodPost, "/api/profile_extras.php", `{"action":"wish_add","text":"x"}`, nil, extrasH.ServeHTTP},
 		{"award add", http.MethodPost, "/api/profile_extras.php", `{"action":"award_add","userId":1,"title":"x","awardedOn":"2026-10-01"}`, nil, extrasH.ServeHTTP},
 		{"forms create", http.MethodPost, "/api/forms.php", `{}`, nil, formsH.Forms},
