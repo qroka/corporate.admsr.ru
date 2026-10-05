@@ -279,6 +279,8 @@ export function useCalendarFeed() {
     }
 
     for (const enr of courses.myEnrollments.value as EnrollmentSummary[]) {
+      // Курс пройден — напоминание «Завершить» в календаре больше не нужно.
+      if (enr.status === 'completed') continue;
       const raw = enr.deadlineAt;
       if (!raw) continue;
       const d = new Date(raw);
