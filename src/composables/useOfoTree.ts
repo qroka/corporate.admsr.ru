@@ -151,6 +151,18 @@ export function useOfoTree() {
     return (json.data ?? []) as OfoPosition[];
   }
 
+  /** Добавить должность в справочник подразделения (только админ). Бросает Error с текстом сервера. */
+  async function addPosition(unitNumber: number, name: string): Promise<OfoPosition> {
+    const res = await fetch('/api/ofo_positions.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ unit_number: unitNumber, name }),
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.success) throw new Error(json?.message || `Ошибка ${res.status}`);
+    return json.data as OfoPosition;
+  }
+
   return {
     categories,
     units,
@@ -168,5 +180,6 @@ export function useOfoTree() {
     unitItems,
     unitNumberOf,
     fetchPositions,
+    addPosition,
   };
 }

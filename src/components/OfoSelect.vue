@@ -82,13 +82,13 @@ watch(open, (v) => { if (v) expandPathTo(props.modelValue); });
       class="w-full justify-between"
     >
       <span class="truncate" :class="modelValue == null ? 'text-dimmed' : ''">
-        {{ selectedLabel || 'Выберите ОФО' }}
+        {{ selectedLabel || 'Выберите подразделение' }}
       </span>
     </UButton>
 
     <template #content>
       <div class="p-2">
-        <div v-if="loading" class="text-sm text-muted px-1 py-2">Загрузка ОФО…</div>
+        <div v-if="loading" class="text-sm text-muted px-1 py-2">Загрузка подразделений…</div>
         <div v-else-if="error" class="text-sm text-error px-1 py-2">{{ error }}</div>
 
         <div v-else class="flex flex-col gap-2">

@@ -210,7 +210,7 @@ function goBack() {
 
 function onWorkNext() {
   if (!canProceedFromWork.value) {
-    error('Заполните данные', 'Выберите ОФО и должность, чтобы продолжить.');
+    error('Заполните данные', 'Выберите подразделение и должность, чтобы продолжить.');
     return;
   }
   goNext();
@@ -479,7 +479,7 @@ onMounted(async () => {
                   Место работы
                 </h2>
                 <p class="text-sm text-muted max-w-lg mx-auto">
-                  Укажите ОФО и должность — они нужны для журнала отсутствия
+                  Укажите подразделение и должность — они нужны для журнала отсутствия
                   и отображения вас в корпоративных сервисах.
                 </p>
               </div>
@@ -739,7 +739,7 @@ onMounted(async () => {
               <UCard variant="subtle" class="max-w-md mx-auto w-full ring-1 ring-default">
                 <dl class="space-y-3 text-sm">
                   <div class="flex justify-between gap-4">
-                    <dt class="text-muted">ОФО</dt>
+                    <dt class="text-muted">Подразделение</dt>
                     <dd class="font-medium text-highlighted text-right">
                       {{ selectedOfoLabel || '—' }}
                     </dd>

@@ -61,7 +61,7 @@ const roleItems = computed(() => {
   const items = positions.value.map((p) => ({ value: p.name, label: p.name }));
   const current = props.role.trim();
   if (current && !items.some((i) => i.value === current)) {
-    items.unshift({ value: current, label: `${current} — нет в справочнике ОФО` });
+    items.unshift({ value: current, label: `${current} — нет в справочнике подразделения` });
   }
   return items;
 });
@@ -82,7 +82,7 @@ const ofoHelpText = computed(() => (ofoError.value ? String(ofoError.value) : pr
 </script>
 
 <template>
-  <UFormField label="ОФО" name="ofoId" :required="required" :help="ofoHelpText">
+  <UFormField label="Подразделение" name="ofoId" :required="required" :help="ofoHelpText">
     <OfoSelect :model-value="ofoId" :disabled="disabled || ofoLocked" @update:model-value="onOfoChange" />
   </UFormField>
 
@@ -92,7 +92,7 @@ const ofoHelpText = computed(() => (ofoError.value ? String(ofoError.value) : pr
       :items="roleItems"
       value-key="value"
       label-key="label"
-      :placeholder="ofoId == null ? 'Сначала выберите ОФО' : 'Выберите должность'"
+      :placeholder="ofoId == null ? 'Сначала выберите подразделение' : 'Выберите должность'"
       :size="size"
       color="neutral"
       class="w-full"

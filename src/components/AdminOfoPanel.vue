@@ -4,6 +4,7 @@ import { useOfoTree, type OfoPosition, type OfoUnit } from '../composables/useOf
 import { useUsersData, type AdminUserRow } from '../composables/useUsersData';
 import { userAvatarSrc } from '../utils/userName';
 import { plural } from '../pages/Courses/courseDuration';
+import { useAppToast } from '../composables/useAppToast';
 
 const emit = defineEmits<{ (e: 'open-user', user: AdminUserRow): void }>();
 
@@ -20,8 +21,11 @@ const {
   unitById,
   pathLabel,
   fetchPositions,
+  addPosition,
 } = useOfoTree();
 ensureLoaded();
+
+const { success } = useAppToast();
 
 const { users, loading: usersLoading, ensureLoaded: ensureUsersLoaded } = useUsersData();
 
@@ -145,6 +149,45 @@ function openUnit(unit: OfoUnit) {
 function openUser(user: AdminUserRow) {
   detailOpen.value = false;
   emit('open-user', user);
+}
+
+// ── Добавление должности ──────────────────────────────────────────────────────
+const addOpen = ref(false);
+const addName = ref('');
+const addSaving = ref(false);
+const addError = ref('');
+
+function openAddPosition() {
+  addName.value = '';
+  addError.value = '';
+  addOpen.value = true;
+}
+
+function closeAddPosition() {
+  addOpen.value = false;
+}
+
+async function submitAddPosition() {
+  const unit = selected.value;
+  const name = addName.value.trim();
+  if (!unit || addSaving.value) return;
+  if (!name) {
+    addError.value = 'Введите название должности';
+    return;
+  }
+  addSaving.value = true;
+  addError.value = '';
+  try {
+    await addPosition(unit.unit_number, name);
+    addOpen.value = false;
+    success('Должность добавлена', `«${name}» — ${unit.name}`);
+    void loadPositions(unit);
+    void reload(); // обновить счётчик должностей в дереве
+  } catch (e) {
+    addError.value = e instanceof Error ? e.message : 'Не удалось добавить должность';
+  } finally {
+    addSaving.value = false;
+  }
 }
 
 // Переход во вложенное подразделение внутри той же панели.
@@ -375,7 +418,12 @@ watch(selectedId, (id, prev) => {
           </section>
 
           <section class="flex flex-col gap-3" aria-labelledby="ofo-positions-title">
-            <h3 id="ofo-positions-title" class="text-base font-semibold text-highlighted">Должности</h3>
+            <div class="flex items-center justify-between gap-3">
+              <h3 id="ofo-positions-title" class="text-base font-semibold text-highlighted">Должности</h3>
+              <UButton color="neutral" variant="outline" size="sm" icon="i-lucide-plus" @click="openAddPosition">
+                Добавить
+              </UButton>
+            </div>
             <div v-if="positionsLoading" class="flex flex-wrap gap-2" aria-busy="true" aria-label="Загрузка должностей">
               <USkeleton v-for="n in 3" :key="n" class="h-6 w-32 rounded-md" />
             </div>
@@ -397,5 +445,34 @@ watch(selectedId, (id, prev) => {
         </div>
       </template>
     </USlideover>
+
+    <UModal
+      v-model:open="addOpen"
+      title="Новая должность"
+      :description="selected ? `Будет доступна в подразделении «${selected.name}».` : undefined"
+    >
+      <template #body>
+        <UForm :state="{ name: addName }" class="flex flex-col gap-2" @submit.prevent="submitAddPosition">
+          <UFormField label="Название должности" name="name" :error="addError || undefined">
+            <UInput
+              v-model="addName"
+              size="xl"
+              color="neutral"
+              placeholder="Например, Ведущий специалист"
+              maxlength="200"
+              autofocus
+              class="w-full"
+              @update:model-value="addError = ''"
+            />
+          </UFormField>
+        </UForm>
+      </template>
+      <template #footer>
+        <div class="flex justify-end gap-3 w-full">
+          <UButton color="neutral" variant="outline" size="xl" @click="closeAddPosition">Отмена</UButton>
+          <UButton color="primary" size="xl" :loading="addSaving" @click="submitAddPosition">Добавить</UButton>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>

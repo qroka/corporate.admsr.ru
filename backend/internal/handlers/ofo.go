@@ -1,9 +1,13 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"corporate.admsr.ru/backend/internal/auth"
@@ -214,11 +218,136 @@ func (h *OFO) Tree(w http.ResponseWriter, r *http.Request) {
 	}, "OK")
 }
 
+// Positions — GET: должности подразделения; POST: добавить должность (админ).
 func (h *OFO) Positions(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
+		h.positionsList(w, r)
+	case http.MethodPost:
+		h.positionsAdd(w, r)
+	default:
 		httpx.MethodNotAllowed(w)
+	}
+}
+
+const maxPositionNameLen = 200
+
+// positionsAdd добавляет должность в справочник подразделения.
+// Тело: { unit_number, name }. Если должность с таким названием уже есть в
+// справочнике (у другого подразделения), привязывает её, а не плодит дубль.
+func (h *OFO) positionsAdd(w http.ResponseWriter, r *http.Request) {
+	if _, ok := requireAdmin(w, r, h.Auth); !ok {
 		return
 	}
+	var body struct {
+		UnitNumber int64  `json:"unit_number"`
+		Name       string `json:"name"`
+	}
+	if err := httpx.DecodeJSON(r, &body); err != nil {
+		httpx.Fail(w, http.StatusBadRequest, "Некорректный JSON")
+		return
+	}
+	name := strings.Join(strings.Fields(body.Name), " ")
+	if body.UnitNumber <= 0 {
+		httpx.Fail(w, http.StatusBadRequest, "Укажите unit_number")
+		return
+	}
+	if name == "" {
+		httpx.Fail(w, http.StatusBadRequest, "Введите название должности")
+		return
+	}
+	if utf8.RuneCountInString(name) > maxPositionNameLen {
+		httpx.Fail(w, http.StatusBadRequest, "Название должности слишком длинное")
+		return
+	}
+
+	ctx := r.Context()
+	tx, err := h.Pool.Begin(ctx)
+	if err != nil {
+		httpx.Fail(w, http.StatusInternalServerError, "Ошибка подключения к БД")
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	// Справочник правят редко; сериализуем, чтобы два одновременных запроса
+	// не создали дубль и не взяли один и тот же id.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('ofo_position'))`); err != nil {
+		httpx.Fail(w, http.StatusInternalServerError, "Ошибка подключения к БД")
+		return
+	}
+
+	var unitExists bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM public.ofo_unit WHERE unit_number = $1)`, body.UnitNumber,
+	).Scan(&unitExists); err != nil {
+		httpx.Fail(w, http.StatusInternalServerError, "Ошибка подключения к БД")
+		return
+	}
+	if !unitExists {
+		httpx.Fail(w, http.StatusNotFound, "Подразделение не найдено")
+		return
+	}
+
+	var id int64
+	var isHead bool
+	err = tx.QueryRow(ctx, `
+		SELECT id, is_head FROM public.ofo_position
+		WHERE lower(btrim(name)) = lower($1)
+		ORDER BY id LIMIT 1`, name).Scan(&id, &isHead)
+	switch {
+	case err == nil:
+		// Должность уже есть в справочнике — используем её.
+	case errors.Is(err, pgx.ErrNoRows):
+		// В проде id может быть serial/identity, в локальной схеме — нет:
+		// берём последовательность, если она есть, иначе MAX(id)+1.
+		var seq *string
+		if err := tx.QueryRow(ctx,
+			`SELECT pg_get_serial_sequence('public.ofo_position', 'id')`).Scan(&seq); err != nil {
+			httpx.Fail(w, http.StatusInternalServerError, "Ошибка подключения к БД")
+			return
+		}
+		const sortOrder = `(SELECT COALESCE(MAX(sort_order), 0) + 1 FROM public.ofo_position)`
+		if seq != nil {
+			err = tx.QueryRow(ctx, `
+				INSERT INTO public.ofo_position (name, is_head, sort_order)
+				VALUES ($1, false, `+sortOrder+`) RETURNING id`, name).Scan(&id)
+		} else {
+			err = tx.QueryRow(ctx, `
+				INSERT INTO public.ofo_position (id, name, is_head, sort_order)
+				VALUES ((SELECT COALESCE(MAX(id), 0) + 1 FROM public.ofo_position), $1, false, `+sortOrder+`)
+				RETURNING id`, name).Scan(&id)
+		}
+		if err != nil {
+			httpx.Fail(w, http.StatusInternalServerError, "Не удалось добавить должность")
+			return
+		}
+	default:
+		httpx.Fail(w, http.StatusInternalServerError, "Ошибка подключения к БД")
+		return
+	}
+
+	tag, err := tx.Exec(ctx, `
+		INSERT INTO public.ofo_unit_position (unit_number, position_id)
+		SELECT $1::bigint, $2::bigint
+		WHERE NOT EXISTS (
+			SELECT 1 FROM public.ofo_unit_position WHERE unit_number = $1::bigint AND position_id = $2::bigint
+		)`, body.UnitNumber, id)
+	if err != nil {
+		httpx.Fail(w, http.StatusInternalServerError, "Не удалось добавить должность")
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		httpx.Fail(w, http.StatusConflict, "Такая должность в этом подразделении уже есть")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		httpx.Fail(w, http.StatusInternalServerError, "Не удалось добавить должность")
+		return
+	}
+	httpx.Created(w, map[string]any{"id": id, "name": name, "is_head": isHead}, "Должность добавлена")
+}
+
+func (h *OFO) positionsList(w http.ResponseWriter, r *http.Request) {
 	// Оргструктура — внутренние данные портала, анонимам не отдаём (SEC-001).
 	if _, ok := requireUser(w, r, h.Auth); !ok {
 		return
