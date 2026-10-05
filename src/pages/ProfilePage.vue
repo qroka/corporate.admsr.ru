@@ -23,7 +23,6 @@ import ProfileAwards, { type Award } from '../components/profile/ProfileAwards.v
 
 type Colleague = { id: number; firstname: string; surname: string; avatar_url: string };
 type CompletedCourse = { courseId: number; title: string; completedAt: string | null; score: number | null; enrollmentId?: number };
-type Absence = { id: number; start: string; end: string | null; reason: string; active: boolean };
 type ProfileData = {
   id: number;
   firstname: string;
@@ -40,7 +39,6 @@ type ProfileData = {
   interests: string;
   colleagues: { total: number; items: Colleague[] };
   courses: { total: number; items: CompletedCourse[] };
-  absences: Absence[];
   wishes: Wish[];
   awards: Award[];
 };
@@ -102,7 +100,6 @@ async function loadProfile() {
         total: Number(p.courses?.total) || 0,
         items: Array.isArray(p.courses?.items) ? p.courses.items : [],
       },
-      absences: Array.isArray(p.absences) ? p.absences : [],
       wishes: Array.isArray(p.wishes) ? p.wishes : [],
       awards: Array.isArray(p.awards) ? p.awards : [],
     };
@@ -153,20 +150,13 @@ function onAvatarUploaded(url: string) {
   window.dispatchEvent(new Event('ui:user-profile-updated'));
 }
 
-// ── Блоки: желания, награды, курсы, отсутствия ───────────────────────────────
+// ── Блоки: желания, награды, курсы ───────────────────────────────
 function patchProfile(patch: Partial<ProfileData>) {
   if (profile.value) profile.value = { ...profile.value, ...patch };
 }
 
 const shortDate = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
-
-function absenceLabel(a: Absence): string {
-  const from = new Date(a.start).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
-  if (a.active) return `Сейчас отсутствует с ${from}`;
-  const to = a.end ? new Date(a.end).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : '';
-  return to && to !== from ? `${from} — ${to}` : from;
-}
 
 // ── Стена ───────────────────────────────────────────────────────────────────
 const wall = useProfileWall();
@@ -398,18 +388,6 @@ watch(
               <p v-if="profile.courses.total > profile.courses.items.length" class="pt-2 text-xs text-muted">
                 Показаны последние {{ profile.courses.items.length }} из {{ profile.courses.total }}
               </p>
-            </ProfileSection>
-
-            <ProfileSection v-if="profile.absences.length" title="Журнал отсутствия" title-id="profile-absences">
-              <ul class="flex flex-col gap-2">
-                <li v-for="a in profile.absences" :key="a.id" class="flex items-start gap-3 text-sm">
-                  <UIcon :name="a.active ? 'i-lucide-plane' : 'i-lucide-calendar-check'" class="size-4 shrink-0 mt-0.5" :class="a.active ? 'text-warning' : 'text-dimmed'" aria-hidden="true" />
-                  <div class="flex-1 min-w-0">
-                    <p :class="a.active ? 'font-medium text-highlighted' : 'text-default'">{{ absenceLabel(a) }}</p>
-                    <p v-if="a.reason" class="text-xs text-muted break-words">{{ a.reason }}</p>
-                  </div>
-                </li>
-              </ul>
             </ProfileSection>
           </template>
 
