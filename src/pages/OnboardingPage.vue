@@ -484,6 +484,35 @@ onMounted(async () => {
                 </p>
               </div>
 
+              <UAlert
+                v-if="!ofoAlreadySet"
+                class="max-w-md mx-auto w-full"
+                color="info"
+                variant="subtle"
+                icon="i-lucide-info"
+                title="Выбирайте самое конкретное подразделение"
+              >
+                <template #description>
+                  <p>Введите в поиске тот отдел, в котором вы работаете, — самый нижний уровень структуры.</p>
+                  <dl class="mt-3 flex flex-col gap-2">
+                    <div class="rounded-md bg-default/60 px-3 py-2">
+                      <dt class="font-medium text-highlighted">Вы сотрудник отдела</dt>
+                      <dd class="mt-0.5">
+                        Работаете в управлении информационных технологий и цифрового развития, в отделе по
+                        информатизации? Введите <b class="font-semibold text-highlighted">«Отдел по информатизации»</b>.
+                      </dd>
+                    </div>
+                    <div class="rounded-md bg-default/60 px-3 py-2">
+                      <dt class="font-medium text-highlighted">Вы начальник управления</dt>
+                      <dd class="mt-0.5">
+                        Введите название управления — например,
+                        <b class="font-semibold text-highlighted">«Управление информационных технологий и цифрового развития»</b>.
+                      </dd>
+                    </div>
+                  </dl>
+                </template>
+              </UAlert>
+
               <UForm class="space-y-4 max-w-md mx-auto w-full">
                 <UserWorkFields
                   v-model:ofo-id="form.ofoId"
