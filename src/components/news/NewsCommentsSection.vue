@@ -10,6 +10,7 @@ import NewsCommentThread from './NewsCommentThread.vue';
 import NewsCommentComposer from './NewsCommentComposer.vue';
 import { useNewsComments, type NewsComment, type NewsCommentsSort } from '../../composables/useNewsComments';
 import { useAppToast } from '../../composables/useAppToast';
+import { isProfanityCancelled } from '../../composables/useProfanityGate';
 
 const props = withDefaults(
   defineProps<{ newsId: string | number; focusCommentId?: number | null; scrollIntoView?: boolean }>(),
@@ -123,7 +124,7 @@ async function sendRoot(text: string) {
     total.value += 1;
     rootsTotal.value += 1;
   } catch (e) {
-    error('Не удалось опубликовать комментарий', e instanceof Error ? e.message : undefined);
+    if (!isProfanityCancelled(e)) error('Не удалось опубликовать комментарий', e instanceof Error ? e.message : undefined);
     throw e;
   }
 }

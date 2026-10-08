@@ -14,6 +14,7 @@ import {
 import { formatWallDate } from '../../composables/useProfileWall';
 import { userAvatarSrc } from '../../utils/userName';
 import { useAppToast } from '../../composables/useAppToast';
+import { isProfanityCancelled } from '../../composables/useProfanityGate';
 
 const props = withDefaults(defineProps<{ comment: NewsComment; reply?: boolean; highlighted?: boolean }>(), {
   reply: false,
@@ -58,7 +59,7 @@ async function submitEdit() {
     emit('saved', await updateComment(props.comment.id, draft.value));
     editing.value = false;
   } catch (e) {
-    error('Не удалось сохранить комментарий', e instanceof Error ? e.message : undefined);
+    if (!isProfanityCancelled(e)) error('Не удалось сохранить комментарий', e instanceof Error ? e.message : undefined);
   } finally {
     saving.value = false;
   }

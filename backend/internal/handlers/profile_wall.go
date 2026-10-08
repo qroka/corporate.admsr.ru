@@ -244,6 +244,10 @@ func (h *ProfileWall) create(w http.ResponseWriter, r *http.Request, cur *auth.U
 		httpx.Fail(w, http.StatusNotFound, "Сотрудник не найден")
 		return
 	}
+	content, ok := profanityGate(w, cur.ID, body, content)
+	if !ok {
+		return
+	}
 	var id int64
 	if err := h.Pool.QueryRow(r.Context(), `
 		INSERT INTO public.wall_posts (owner_id, author_id, content)
@@ -291,6 +295,9 @@ func (h *ProfileWall) update(w http.ResponseWriter, r *http.Request, cur *auth.U
 	content, msg := normalizeWallContent(body["content"])
 	if msg != "" {
 		httpx.Fail(w, http.StatusUnprocessableEntity, msg)
+		return
+	}
+	if content, ok = profanityGate(w, cur.ID, body, content); !ok {
 		return
 	}
 	if _, err := h.Pool.Exec(r.Context(),

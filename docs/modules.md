@@ -87,6 +87,18 @@
 Реакции — те же 8 ключей, `NewsReactions target="comment"`. Ответ на ваш комментарий — в колокольчик,
 клик ведёт на `/news/:id?comment=<id>`: ветка закрепляется сверху развёрнутой и подсвечивается.
 
+### Фильтр мата (ADR-053)
+
+| Что | Где |
+|-----|-----|
+| Поиск слов | `backend/internal/profanity/profanity.go` (+ `profanity_test.go`) — список только здесь |
+| Задача и токен | `backend/internal/handlers/profanity_gate.go` — `profanityGate(...)` перед сохранением текста |
+| Фронт | `src/composables/useProfanityGate.ts` (`postWithProfanityGate`), окно `src/components/ProfanityChallengeModal.vue` в `App.vue` |
+| Где действует | комментарии (`create`/`update`), стена профиля (`create`/`update`/`greet`) |
+
+Текст с матом — 422 с задачей; решили — публикуется со звёздочками (`х****й`). Добавляя новое место с
+пользовательским текстом, вызовите `profanityGate` в Go и отправляйте через `postWithProfanityGate`.
+
 ---
 
 ## Мероприятия
@@ -351,6 +363,7 @@ Smoke: `npm run test:courses`.
 | Поле Markdown | `src/components/MarkdownEditor.vue` + `src/composables/markdownEditing.ts` (панель, горячие клавиши, списки по Enter/Tab, ссылка из вставки) |
 | Стандартная обложка | `public/devblog-cover.svg` (`public/img/` — загрузки, вне git) |
 | Backend | `backend/internal/handlers/devblog.go` (`devblog.php`) |
+| Где виден | лента рабочего стола (автор — «Разработчики портала»), колокольчик (тоже «Разработчики портала», без аватара), страница новости. Во вкладке «Новости» девблогов нет (`news.php?excludeCategory=Девблог`). «По теме» и «Предыдущая / Следующая» у девблога — только девблоги, у новости — без девблогов. Категория и подпись — `DEVBLOG_CATEGORY`, `DEVBLOG_AUTHOR` в `useDevblog.ts` |
 
 Один общий черновик в Markdown: слева текст, справа предпросмотр (`UEditor` с `content-type="markdown"`,
 только чтение). Автосохранение через 1,5 с с номером версии: сохранил другой администратор — выбор «Взять

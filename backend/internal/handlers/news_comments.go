@@ -493,11 +493,12 @@ func (h *NewsComments) create(w http.ResponseWriter, r *http.Request, cur *auth.
 		httpx.Fail(w, http.StatusUnprocessableEntity, msg)
 		return
 	}
+	ok := true
 	newsID := int64Of(body["newsId"])
 	var rootID, replyToID, replyToUser *int64
 	if rid := int64Of(body["replyToId"]); rid > 0 {
-		target, ok := h.loadComment(w, r, rid)
-		if !ok {
+		var target newsCommentRow
+		if target, ok = h.loadComment(w, r, rid); !ok {
 			return
 		}
 		if target.Deleted {
@@ -523,6 +524,9 @@ func (h *NewsComments) create(w http.ResponseWriter, r *http.Request, cur *auth.
 	}
 	if !exists {
 		httpx.Fail(w, http.StatusNotFound, "Новость не найдена")
+		return
+	}
+	if content, ok = profanityGate(w, cur.ID, body, content); !ok {
 		return
 	}
 	var id int64
@@ -555,6 +559,9 @@ func (h *NewsComments) update(w http.ResponseWriter, r *http.Request, cur *auth.
 	content, msg := normalizeCommentContent(body["content"])
 	if msg != "" {
 		httpx.Fail(w, http.StatusUnprocessableEntity, msg)
+		return
+	}
+	if content, ok = profanityGate(w, cur.ID, body, content); !ok {
 		return
 	}
 	if _, err := h.Pool.Exec(r.Context(),

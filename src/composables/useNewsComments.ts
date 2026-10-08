@@ -1,5 +1,6 @@
 import { apiSessionFetch } from './useAuthSession';
 import { seedCommentReactions } from './useNewsReactions';
+import { postWithProfanityGate } from './useProfanityGate';
 
 /**
  * Комментарии к новостям — /api/news_comments.php, таблицы news_comments и
@@ -98,22 +99,20 @@ async function loadThread(id: number): Promise<{ root: NewsComment; replies: New
   };
 }
 
+/** Текст с матом — сначала задача (useProfanityGate); закрыли окно — ProfanityCancelledError. */
 async function createComment(input: { newsId?: number | string; replyToId?: number; content: string }) {
-  const json = await apiSessionFetch(API_URL, {
-    method: 'POST',
-    json: {
-      action: 'create',
-      newsId: input.newsId != null ? Number(input.newsId) : undefined,
-      replyToId: input.replyToId,
-      content: input.content.trim(),
-    },
+  const json = await postWithProfanityGate(API_URL, {
+    action: 'create',
+    newsId: input.newsId != null ? Number(input.newsId) : undefined,
+    replyToId: input.replyToId,
+    content: input.content.trim(),
   });
   if (!json?.success || !json.data) fail(json, 'Не удалось опубликовать комментарий');
   return normalizeComment(json.data);
 }
 
 async function updateComment(id: number, content: string) {
-  const json = await apiSessionFetch(API_URL, { method: 'POST', json: { action: 'update', id, content: content.trim() } });
+  const json = await postWithProfanityGate(API_URL, { action: 'update', id, content: content.trim() });
   if (!json?.success || !json.data) fail(json, 'Не удалось сохранить комментарий');
   return normalizeComment(json.data);
 }

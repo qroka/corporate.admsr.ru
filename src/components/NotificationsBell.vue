@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import {
   NOTIFICATION_KIND_ICON,
   NOTIFICATION_KIND_LABEL,
+  notificationTitle,
   useNotifications,
   type PortalNotification,
 } from '../composables/useNotifications';
@@ -162,7 +163,7 @@ async function readAll() {
                     {{ NOTIFICATION_KIND_LABEL[n.kind] }}
                   </span>
                   <span class="text-sm text-highlighted" :class="n.read ? 'font-medium' : 'font-semibold'">
-                    {{ n.actor ? n.actor.name : n.reminder?.title || 'Событие' }}
+                    {{ notificationTitle(n) }}
                   </span>
                   <span v-if="n.reminder" class="text-sm text-toned">{{ reminderLine(n) }}</span>
                   <span v-else-if="n.excerpt" class="text-sm text-toned line-clamp-2">{{ n.excerpt }}</span>

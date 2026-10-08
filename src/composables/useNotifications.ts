@@ -1,5 +1,6 @@
 import { ref } from 'vue';
 import { apiSessionFetch, getAuthUser } from './useAuthSession';
+import { DEVBLOG_AUTHOR } from './useDevblog';
 
 /**
  * Уведомления (колокольчик в шапке) — /api/notifications.php, таблица notifications (V17).
@@ -49,6 +50,13 @@ export const NOTIFICATION_KIND_LABEL: Record<NotificationKind, string> = {
   event_reminder: 'Напоминание: событие завтра',
 };
 
+/** Кто / что в заголовке уведомления: автор, «Разработчики портала» для девблога или событие. */
+export function notificationTitle(n: PortalNotification): string {
+  if (n.actor) return n.actor.name;
+  if (n.kind === 'devblog') return DEVBLOG_AUTHOR;
+  return n.reminder?.title || 'Событие';
+}
+
 export const NOTIFICATION_KIND_ICON: Record<NotificationKind, string> = {
   wall_post: 'i-lucide-message-square',
   birthday_greeting: 'i-lucide-gift',
@@ -86,7 +94,8 @@ function normalize(raw: any): PortalNotification {
     newsId: raw?.newsId != null ? Number(raw.newsId) : null,
     createdAt: String(raw?.createdAt ?? ''),
     read: Boolean(raw?.read),
-    actor: raw?.actor
+    // Девблог подписан «Разработчики портала», а не опубликовавшим администратором.
+    actor: raw?.actor && kind !== 'devblog'
       ? {
           id: Number(raw.actor.id) || 0,
           name: String(raw.actor.name ?? 'Сотрудник'),

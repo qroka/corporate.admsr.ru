@@ -2,6 +2,7 @@
 import { computed, reactive, ref, watch, onMounted, onUnmounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { useNewsData, formatNewsDate, resolveNewsImageSrc, mapApiRow } from '../../composables/useNewsData';
+import { DEVBLOG_CATEGORY } from '../../composables/useDevblog';
 import { newsEditorToolbarItems } from '../../composables/newsEditorToolbar';
 import { newsEditorExtensions, newsEditorEmojiMenuItems } from '../../composables/newsEditorExtensions';
 import { newsEditorHandlers } from '../../composables/newsEditorHandlers';
@@ -84,6 +85,8 @@ const {
     params.set('limit', String(NEWS_PAGE_LIMIT));
     if (cursor) params.set('cursor', cursor);
     if (searchForApi.value) params.set('search', searchForApi.value);
+    // Девблоги — только в ленте рабочего стола, во вкладке «Новости» их нет.
+    params.set('excludeCategory', DEVBLOG_CATEGORY);
     return `/api/news.php?${params.toString()}`;
   },
   mapItem: (raw) => {

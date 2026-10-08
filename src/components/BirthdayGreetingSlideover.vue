@@ -7,6 +7,7 @@ import {
   useBirthdayGreetings,
 } from '../composables/useBirthdayGreetings';
 import { useAppToast } from '../composables/useAppToast';
+import { isProfanityCancelled } from '../composables/useProfanityGate';
 
 /**
  * Поздравление с днём рождения: свой текст или готовая фраза, публикуется на
@@ -49,7 +50,7 @@ async function submit() {
     slideoverOpen.value = false;
     success('Поздравление опубликовано', `Оно появилось на стене: ${name}.`);
   } catch (e) {
-    error('Не удалось поздравить', e instanceof Error ? e.message : undefined);
+    if (!isProfanityCancelled(e)) error('Не удалось поздравить', e instanceof Error ? e.message : undefined);
   } finally {
     sending.value = false;
   }

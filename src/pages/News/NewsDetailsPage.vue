@@ -14,6 +14,7 @@ import { apiSessionFetch } from '../../composables/useAuthSession';
 import { useBreadcrumbCurrentLabel } from '../../composables/usePortalNavigation';
 import NewsCommentsSection from '../../components/news/NewsCommentsSection.vue';
 import DevblogVersionBadge from '../../components/DevblogVersionBadge.vue';
+import { isDevblogCategory } from '../../composables/useDevblog';
 
 const route = useRoute();
 const router = useRouter();
@@ -27,7 +28,7 @@ let devblogSeq = 0;
 async function loadDevblogVersion(id: string, category: string) {
   const my = ++devblogSeq;
   devblogVersion.value = '';
-  if (category !== 'Девблог' || !id) return;
+  if (!isDevblogCategory(category) || !id) return;
   try {
     const res = await fetch(`/api/news.php?id=${encodeURIComponent(id)}`);
     const json = await res.json();
@@ -106,10 +107,19 @@ function onKioskNewsBodyClick(e: MouseEvent) {
   e.stopPropagation();
 }
 
+/**
+ * Девблоги и новости листаются раздельно: у девблога соседи — девблоги, у новости —
+ * новости без девблогов (во вкладке «Новости» девблогов нет, ADR-052).
+ */
+const sameKindNews = computed(() => {
+  const devblog = isDevblogCategory(item.value?.category);
+  return sortedNews.value.filter((n) => isDevblogCategory(n.category) === devblog);
+});
+
 const surround = computed(() => {
   const id = item.value?.id;
   if (!id) return { prev: null, next: null };
-  const list = sortedNews.value;
+  const list = sameKindNews.value;
   const idx = list.findIndex((x) => x.id === id);
   if (idx < 0) return { prev: null, next: null };
   const prev = idx > 0 ? list[idx - 1] : null;
@@ -125,13 +135,13 @@ const relatedNews = computed(() => {
   const id = item.value?.id;
   if (!id) return [];
   const prefix = isKiosk.value ? '/kiosk/news/' : '/news/';
+  // Только та же тема (категория): у девблога — девблоги. Других с такой темой нет — блок скрыт.
   const category = String(item.value?.category ?? '').trim().toLowerCase();
-  const others = sortedNews.value.filter((n) => n.id !== id);
-  const sameCategory = category
-    ? others.filter((n) => String(n.category ?? '').trim().toLowerCase() === category)
-    : [];
-  const pool = sameCategory.length ? sameCategory : others;
-  return pool.slice(0, 6).map((n) => ({
+  if (!category) return [];
+  const sameCategory = sortedNews.value.filter(
+    (n) => n.id !== id && String(n.category ?? '').trim().toLowerCase() === category,
+  );
+  return sameCategory.slice(0, 6).map((n) => ({
     id: n.id,
     title: n.title || `Новость #${n.id}`,
     date: formatNewsDate(n.date) || '',

@@ -8,6 +8,14 @@ import { seedNewsReactions } from './useNewsReactions';
  */
 
 export const DEVBLOG_DEFAULT_COVER = '/devblog-cover.svg'; // = devblogDefaultCover в devblog.go
+/** Категория новости-девблога (= devblogCategory в devblog.go). */
+export const DEVBLOG_CATEGORY = 'Девблог';
+/** Подпись автора девблога в ленте и колокольчике — не конкретный администратор. */
+export const DEVBLOG_AUTHOR = 'Разработчики портала';
+
+export function isDevblogCategory(category: string | null | undefined): boolean {
+  return String(category ?? '').trim().toLowerCase() === DEVBLOG_CATEGORY.toLowerCase();
+}
 export const DEVBLOG_TITLE_MAX = 200; // = devblogTitleMax
 export const DEVBLOG_BODY_MAX = 50000; // = devblogBodyMax
 /** Версия выпуска «X.Y.Z» (= devblogVersionRe в devblog.go). */

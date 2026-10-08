@@ -9,6 +9,7 @@ import NewsCommentItem from './NewsCommentItem.vue';
 import NewsCommentComposer from './NewsCommentComposer.vue';
 import { useNewsComments, type NewsComment } from '../../composables/useNewsComments';
 import { useAppToast } from '../../composables/useAppToast';
+import { isProfanityCancelled } from '../../composables/useProfanityGate';
 import { plural } from '../../pages/Courses/courseDuration';
 
 const props = withDefaults(
@@ -92,7 +93,7 @@ async function sendReply(text: string) {
     emit('update:root', { ...props.root, replyCount: props.root.replyCount + 1 });
     replyTarget.value = null;
   } catch (e) {
-    error('Не удалось ответить', e instanceof Error ? e.message : undefined);
+    if (!isProfanityCancelled(e)) error('Не удалось ответить', e instanceof Error ? e.message : undefined);
     throw e;
   }
 }

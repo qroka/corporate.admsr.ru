@@ -341,6 +341,12 @@ func (h *News) fetchList(ctx context.Context, q interface{ Get(string) string })
 		args = append(args, "%"+c+"%")
 		argN++
 	}
+	// excludeCategory — без категории целиком (вкладка «Новости» скрывает «Девблог», ADR-052).
+	if c := strings.TrimSpace(q.Get("excludeCategory")); c != "" {
+		cond = append(cond, fmt.Sprintf("lower(coalesce(category, '')) <> lower($%d)", argN))
+		args = append(args, c)
+		argN++
+	}
 
 	allowed := map[string]bool{"date": true, "created_at": true, "id": true, "title": true}
 	order := q.Get("order")
@@ -394,6 +400,12 @@ func (h *News) fetchCursorPage(ctx context.Context, q interface {
 	if c := strings.TrimSpace(q.Get("category")); c != "" {
 		cond = append(cond, fmt.Sprintf("category ILIKE $%d", argN))
 		args = append(args, "%"+c+"%")
+		argN++
+	}
+	// excludeCategory — без категории целиком (вкладка «Новости» скрывает «Девблог», ADR-052).
+	if c := strings.TrimSpace(q.Get("excludeCategory")); c != "" {
+		cond = append(cond, fmt.Sprintf("lower(coalesce(category, '')) <> lower($%d)", argN))
+		args = append(args, c)
 		argN++
 	}
 

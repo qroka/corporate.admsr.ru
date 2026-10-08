@@ -9,6 +9,7 @@ import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { apiSessionFetch, getAuthUser } from '../composables/useAuthSession';
 import { useAppToast } from '../composables/useAppToast';
+import { isProfanityCancelled } from '../composables/useProfanityGate';
 import { useProfileDisplay } from '../composables/useProfileDisplay';
 import { useSectionAccess } from '../composables/useSectionAccess';
 import { currentRole } from '../stores/role';
@@ -177,7 +178,7 @@ async function submitPost() {
     await wall.create(draft.value.trim());
     draft.value = '';
   } catch (e) {
-    errorToast('Запись не опубликована', e instanceof Error ? e.message : undefined);
+    if (!isProfanityCancelled(e)) errorToast('Запись не опубликована', e instanceof Error ? e.message : undefined);
   } finally {
     posting.value = false;
   }
@@ -187,7 +188,7 @@ async function savePost(id: number, content: string) {
   try {
     await wall.update(id, content);
   } catch (e) {
-    errorToast('Запись не сохранена', e instanceof Error ? e.message : undefined);
+    if (!isProfanityCancelled(e)) errorToast('Запись не сохранена', e instanceof Error ? e.message : undefined);
     throw e;
   }
 }

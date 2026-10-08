@@ -16,6 +16,7 @@ import { useNewsComments } from '../composables/useNewsComments';
 import { newsEditorHtmlClass } from '../composables/newsEditorHtmlClass';
 import { formatNewsDate } from '../composables/useNewsData';
 import { useAppToast } from '../composables/useAppToast';
+import { isProfanityCancelled } from '../composables/useProfanityGate';
 
 const router = useRouter();
 const { createComment } = useNewsComments();
@@ -70,7 +71,7 @@ async function sendComment(text: string) {
     commented.value = true;
     success('Комментарий опубликован');
   } catch (e) {
-    error('Не удалось опубликовать комментарий', e instanceof Error ? e.message : undefined);
+    if (!isProfanityCancelled(e)) error('Не удалось опубликовать комментарий', e instanceof Error ? e.message : undefined);
     throw e;
   }
 }

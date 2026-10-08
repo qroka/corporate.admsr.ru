@@ -79,6 +79,9 @@ func (h *ProfileWall) greet(w http.ResponseWriter, r *http.Request, cur *auth.Us
 		httpx.Fail(w, http.StatusUnprocessableEntity, "Поздравить можно в день рождения и в течение трёх дней после")
 		return
 	}
+	if content, ok = profanityGate(w, cur.ID, body, content); !ok {
+		return
+	}
 
 	var id int64
 	err = h.Pool.QueryRow(r.Context(), `

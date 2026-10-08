@@ -38,6 +38,7 @@ declare module 'vue' {
     NotificationsBell: typeof import('./src/components/NotificationsBell.vue')['default']
     OfoMultiSelect: typeof import('./src/components/OfoMultiSelect.vue')['default']
     OfoSelect: typeof import('./src/components/OfoSelect.vue')['default']
+    ProfanityChallengeModal: typeof import('./src/components/ProfanityChallengeModal.vue')['default']
     ProfileAwards: typeof import('./src/components/profile/ProfileAwards.vue')['default']
     ProfileEditSlideover: typeof import('./src/components/profile/ProfileEditSlideover.vue')['default']
     ProfileSection: typeof import('./src/components/profile/ProfileSection.vue')['default']

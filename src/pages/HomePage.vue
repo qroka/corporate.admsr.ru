@@ -13,6 +13,7 @@ import { apiSessionUpload } from '../composables/useAuthSession';
 import { useHeaderUser } from '../composables/useHeaderUser';
 import LearningHomeWidget from './Courses/components/LearningHomeWidget.vue';
 import HomeNewsCard from '../components/home/HomeNewsCard.vue';
+import { DEVBLOG_AUTHOR, isDevblogCategory } from '../composables/useDevblog';
 import HomeCalendarWidget from '../components/home/HomeCalendarWidget.vue';
 import HomeAbsenceWidget from '../components/home/HomeAbsenceWidget.vue';
 import { usePortalServices } from '../composables/usePortalServices';
@@ -473,6 +474,7 @@ onUnmounted(() => {
                 :date="item.date"
                 :created-at="item.createdAt"
                 :views="item.views"
+                :author-name="isDevblogCategory(item.category) ? DEVBLOG_AUTHOR : undefined"
                 :author-role="item.category"
               />
 

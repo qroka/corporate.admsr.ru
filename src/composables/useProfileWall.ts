@@ -1,6 +1,7 @@
 import { ref } from 'vue';
 import { apiSessionFetch } from './useAuthSession';
 import { seedWallReactions } from './useNewsReactions';
+import { postWithProfanityGate } from './useProfanityGate';
 
 /**
  * Стена профиля — на сервере (/api/profile_wall.php, таблица wall_posts, V14).
@@ -108,10 +109,8 @@ export function useProfileWall() {
   }
 
   async function create(content: string): Promise<WallPost> {
-    const json = await apiSessionFetch<any>('/api/profile_wall.php', {
-      method: 'POST',
-      json: { action: 'create', userId: ownerId.value, content },
-    });
+    // Текст с матом — сначала задача (useProfanityGate).
+    const json = await postWithProfanityGate('/api/profile_wall.php', { action: 'create', userId: ownerId.value, content });
     if (!json?.success) throw new Error(json?.message || 'Не удалось опубликовать запись');
     const post = normalize(json.data);
     posts.value = [post, ...posts.value];
@@ -120,10 +119,7 @@ export function useProfileWall() {
   }
 
   async function update(id: number, content: string) {
-    const json = await apiSessionFetch<any>('/api/profile_wall.php', {
-      method: 'POST',
-      json: { action: 'update', id, content },
-    });
+    const json = await postWithProfanityGate('/api/profile_wall.php', { action: 'update', id, content });
     if (!json?.success) throw new Error(json?.message || 'Не удалось сохранить запись');
     const post = normalize(json.data);
     posts.value = posts.value.map((p) => (p.id === id ? post : p));

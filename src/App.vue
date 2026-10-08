@@ -51,6 +51,7 @@
 
         <!-- Девблог при первом заходе после публикации (ADR-052); не в киоске и не на входе. -->
         <DevblogWelcomeModal />
+        <ProfanityChallengeModal />
       </UDashboardGroup>
     </UApp>
   </div>
@@ -62,6 +63,7 @@ import { ru } from '@nuxt/ui/locale';
 import { useRoute, useRouter } from 'vue-router';
 import AppHeader from './components/AppHeader.vue';
 import DevblogWelcomeModal from './components/DevblogWelcomeModal.vue';
+import ProfanityChallengeModal from './components/ProfanityChallengeModal.vue';
 import AppAside from './components/AppAside.vue';
 import { startSessionActivity } from './composables/useSessionActivity';
 import { resolveMainColorMode, useColorMode } from './composables/useColorMode';

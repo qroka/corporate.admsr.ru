@@ -1,6 +1,7 @@
 import { ref } from 'vue';
 import { apiSessionFetch, getAuthUser } from './useAuthSession';
 import { WALL_POST_MAX_LENGTH } from './useProfileWall';
+import { postWithProfanityGate } from './useProfanityGate';
 
 /**
  * Поздравление с днём рождения — запись на стене именинника
@@ -122,9 +123,11 @@ export function useBirthdayGreetings() {
   async function sendGreeting(content: string): Promise<void> {
     const t = target.value;
     if (!t) throw new Error('Не выбран именинник');
-    const json = await apiSessionFetch<{ id?: number; birthdayYear?: number }>('/api/profile_wall.php', {
-      method: 'POST',
-      json: { action: 'greet', userId: t.userId, content: content.trim() },
+    // Свой текст с матом — сначала задача (useProfanityGate).
+    const json = await postWithProfanityGate<{ id?: number; birthdayYear?: number }>('/api/profile_wall.php', {
+      action: 'greet',
+      userId: t.userId,
+      content: content.trim(),
     });
     if (!json?.success || !json.data?.id) {
       // 409 «уже поздравили» — подтянуть список, чтобы кнопка сменилась на «Вы поздравили»
