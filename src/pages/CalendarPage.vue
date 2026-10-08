@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
 import { useMediaQuery } from '@vueuse/core';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import type { DropdownMenuItem, TabsItem } from '@nuxt/ui';
 import {
   CALENDAR_SOURCE_META,
+  calendarItemBarClass,
+  calendarItemBarStyle,
+  calendarItemSoftClass,
+  calendarItemSoftStyle,
   parseDateKey,
   toDateKey,
   useCalendarFeed,
@@ -12,6 +16,9 @@ import {
   type CalendarSource,
 } from '../composables/useCalendarFeed';
 import { useAppToast } from '../composables/useAppToast';
+import { useBirthdayGreetings } from '../composables/useBirthdayGreetings';
+import BirthdayGreetingSlideover from '../components/BirthdayGreetingSlideover.vue';
+import EventColorPicker from '../components/EventColorPicker.vue';
 import { useSectionAccess } from '../composables/useSectionAccess';
 import { toCalendarDate } from '../utils/date';
 
@@ -22,7 +29,9 @@ const DAY_HOURS = Array.from({ length: 24 }, (_, i) => i);
 const dayScrollEl = ref<HTMLElement | null>(null);
 
 const router = useRouter();
+const route = useRoute();
 const { toast } = useAppToast();
+const { openGreeting } = useBirthdayGreetings();
 const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
 ensureSectionAccess();
 const {
@@ -31,6 +40,7 @@ const {
   items,
   ensureLoaded,
   addLocalEntry,
+  updateLocalEntry,
   removeLocalEntry,
 } = useCalendarFeed();
 ensureLoaded();
@@ -61,7 +71,17 @@ const createForm = ref({
   timeStart: '09:00',
   timeEnd: '10:00',
   location: '',
+  color: null as string | null,
 });
+/** id записи на сервере, если форма открыта на «Изменить» */
+const editingEntryId = ref<string | null>(null);
+
+/** Цвет события (V19) — общие функции из useCalendarFeed, те же, что в виджете рабочего стола. */
+const barClass = calendarItemBarClass;
+const barStyle = calendarItemBarStyle;
+const softClass = calendarItemSoftClass;
+const softStyle = calendarItemSoftStyle;
+
 
 watch(
   isMd,
@@ -497,12 +517,12 @@ function chipTime(item: CalendarItem) {
 
 function openItem(item: CalendarItem) {
   if (item.source === 'birthday') {
-    toast.add({
-      title: 'Пока нельзя поздравить',
-      description: 'Функция поздравления временно недоступна.',
-      color: 'error',
-      icon: 'i-lucide-alert-circle',
-    });
+    if (item.greetable && item.userId) {
+      const [y, m, d] = item.dateKey.split('-').map(Number);
+      openGreeting({ userId: item.userId, name: item.title, avatar: item.avatar }, new Date(y, m - 1, d));
+      return;
+    }
+    if (item.href) void router.push(item.href);
     return;
   }
   if (item.href) {
@@ -519,16 +539,51 @@ function openItem(item: CalendarItem) {
   }
 }
 
+/** Переход из напоминания: /calendar?date=YYYY-MM-DD — открыть этот день. */
+watch(
+  () => route.query.date,
+  (raw) => {
+    const key = typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+    if (!key) return;
+    const d = parseDateKey(key);
+    cursor.value = new Date(d.getFullYear(), d.getMonth(), 1);
+    selectDay(d);
+  },
+  { immediate: true, flush: 'post' },
+);
+
 function openCreate(kind: 'meeting' | 'personal') {
   createKind.value = kind;
+  editingEntryId.value = null;
   createForm.value = {
     title: '',
     date: toCalendarDate(selectedKey.value),
     timeStart: '09:00',
     timeEnd: '10:00',
     location: '',
+    color: null,
   };
   createOpen.value = true;
+}
+
+function openEdit(item: CalendarItem) {
+  if (item.source !== 'meeting' && item.source !== 'personal') return;
+  createKind.value = item.source;
+  // id ленты — `entry-<id с сервера>`
+  editingEntryId.value = item.id.replace(/^entry-/, '');
+  createForm.value = {
+    title: item.title,
+    date: toCalendarDate(item.dateKey),
+    timeStart: item.timeStart ?? '',
+    timeEnd: item.timeEnd ?? '',
+    location: item.location ?? '',
+    color: item.color ?? null,
+  };
+  createOpen.value = true;
+}
+
+function closeCreate() {
+  createOpen.value = false;
 }
 
 async function submitCreate() {
@@ -543,15 +598,19 @@ async function submitCreate() {
     return;
   }
   const dateKey = `${dateVal.year}-${String(dateVal.month).padStart(2, '0')}-${String(dateVal.day).padStart(2, '0')}`;
+  const fields = {
+    source: createKind.value,
+    dateKey,
+    title,
+    timeStart: createForm.value.timeStart || undefined,
+    timeEnd: createForm.value.timeEnd || undefined,
+    location: createForm.value.location.trim() || undefined,
+    color: createForm.value.color || undefined,
+  };
+  const editing = editingEntryId.value;
   try {
-    await addLocalEntry({
-      source: createKind.value,
-      dateKey,
-      title,
-      timeStart: createForm.value.timeStart || undefined,
-      timeEnd: createForm.value.timeEnd || undefined,
-      location: createForm.value.location.trim() || undefined,
-    });
+    if (editing) await updateLocalEntry({ id: editing, ...fields });
+    else await addLocalEntry(fields);
   } catch (e) {
     toast.add({
       title: 'Не удалось сохранить',
@@ -565,7 +624,7 @@ async function submitCreate() {
   selectDay(parseDateKey(dateKey));
   cursor.value = new Date(dateVal.year, dateVal.month - 1, 1);
   toast.add({
-    title: createKind.value === 'meeting' ? 'Встреча добавлена' : 'Событие добавлено',
+    title: editing ? 'Изменения сохранены' : createKind.value === 'meeting' ? 'Встреча добавлена' : 'Событие добавлено',
     color: 'success',
     icon: 'i-lucide-check',
   });
@@ -752,7 +811,8 @@ const showInlinePanel = computed(
                     >
                       <span
                         class="size-1.5 rounded-full shrink-0"
-                        :class="CALENDAR_SOURCE_META[item.source].barClass"
+                        :class="barClass(item)"
+                        :style="barStyle(item)"
                       />
                       <span class="truncate min-w-0 text-highlighted">{{ chipTitle(item) }}</span>
                       <span
@@ -818,7 +878,8 @@ const showInlinePanel = computed(
                 >
                   <span
                     class="size-1.5 rounded-full shrink-0"
-                    :class="CALENDAR_SOURCE_META[item.source].barClass"
+                    :class="barClass(item)"
+                        :style="barStyle(item)"
                   />
                   <span class="truncate min-w-0">{{ chipTitle(item) }}</span>
                   <span v-if="chipTime(item)" class="shrink-0 tabular-nums text-muted ms-auto">
@@ -854,12 +915,14 @@ const showInlinePanel = computed(
                   :key="item.id"
                   type="button"
                   class="relative inline-flex max-w-64 shrink-0 items-center gap-1.5 overflow-hidden rounded-md border px-2 py-1 pl-3 text-left text-xs hover:brightness-110"
-                  :class="CALENDAR_SOURCE_META[item.source].softClass"
+                  :class="softClass(item)"
+                :style="softStyle(item)"
                   @click="openItem(item)"
                 >
                   <span
                     class="absolute inset-y-0 left-0 w-1"
-                    :class="CALENDAR_SOURCE_META[item.source].barClass"
+                    :class="barClass(item)"
+                        :style="barStyle(item)"
                   />
                   <span class="truncate">{{ item.title }}</span>
                 </button>
@@ -901,14 +964,15 @@ const showInlinePanel = computed(
                     :key="block.item.id"
                     type="button"
                     class="absolute z-10 overflow-hidden rounded-md border text-left px-2 py-1 pl-3 hover:brightness-110 transition"
-                    :class="CALENDAR_SOURCE_META[block.item.source].softClass"
-                    :style="dayBlockStyle(block)"
+                    :class="softClass(block.item)"
+                    :style="[dayBlockStyle(block), softStyle(block.item)]"
                     :aria-label="`${block.item.title}, ${block.timeRange}`"
                     @click="openItem(block.item)"
                   >
                     <span
                       class="absolute inset-y-0 left-0 w-1"
-                      :class="CALENDAR_SOURCE_META[block.item.source].barClass"
+                      :class="barClass(block.item)"
+                      :style="barStyle(block.item)"
                     />
                     <p class="text-xs font-medium text-highlighted truncate leading-tight">
                       {{ block.item.title }}
@@ -944,7 +1008,8 @@ const showInlinePanel = computed(
                 v-for="item in selectedDayItems"
                 :key="item.id"
                 class="rounded-xl border p-3 flex flex-col gap-3"
-                :class="CALENDAR_SOURCE_META[item.source].softClass"
+                :class="softClass(item)"
+                :style="softStyle(item)"
               >
                 <div class="flex items-start justify-between gap-2">
                   <div class="min-w-0">
@@ -971,7 +1036,10 @@ const showInlinePanel = computed(
                       <span class="inline-flex">
                         <UDropdownMenu
                          
-                          :items="[[{ label: 'Удалить', icon: 'i-lucide-trash-2', color: 'error', onSelect: () => deleteLocal(item) }]]"
+                          :items="[[
+                            { label: 'Изменить', icon: 'i-lucide-pencil', onSelect: () => openEdit(item) },
+                            { label: 'Удалить', icon: 'i-lucide-trash-2', color: 'error', onSelect: () => deleteLocal(item) },
+                          ]]"
                         >
                           <UButton
                             icon="i-lucide-ellipsis-vertical"
@@ -1004,6 +1072,7 @@ const showInlinePanel = computed(
                 </div>
 
                 <UButton
+                  v-if="item.actionLabel"
                   :label="item.actionLabel"
                   color="neutral"
                   variant="outline"
@@ -1053,7 +1122,8 @@ const showInlinePanel = computed(
             v-for="item in selectedDayItems"
             :key="item.id"
             class="rounded-xl border p-3 flex flex-col gap-3"
-            :class="CALENDAR_SOURCE_META[item.source].softClass"
+            :class="softClass(item)"
+                :style="softStyle(item)"
           >
             <div class="flex items-start justify-between gap-2">
               <div class="min-w-0">
@@ -1079,6 +1149,7 @@ const showInlinePanel = computed(
               <UProgress :model-value="item.progress" size="sm" color="warning" />
             </div>
             <UButton
+              v-if="item.actionLabel"
               :label="item.actionLabel"
               color="neutral"
               variant="outline"
@@ -1136,7 +1207,7 @@ const showInlinePanel = computed(
     <USlideover
       v-model:open="createOpen"
       side="right"
-      :title="createKind === 'meeting' ? 'Новая встреча' : 'Личное событие'"
+      :title="editingEntryId ? (createKind === 'meeting' ? 'Изменить встречу' : 'Изменить событие') : createKind === 'meeting' ? 'Новая встреча' : 'Личное событие'"
       description="Видно только вам, доступно на любом устройстве"
     >
       <template #body>
@@ -1158,14 +1229,19 @@ const showInlinePanel = computed(
           <UFormField label="Место">
             <UInput v-model="createForm.location" size="md" color="neutral" class="w-full" placeholder="Переговорная" />
           </UFormField>
+          <UFormField label="Цвет" hint="Только для вас">
+            <EventColorPicker v-model="createForm.color" />
+          </UFormField>
         </div>
       </template>
       <template #footer>
         <div class="flex justify-end gap-2">
-          <UButton color="neutral" variant="ghost" label="Отмена" @click="createOpen = false" />
+          <UButton color="neutral" variant="ghost" label="Отмена" @click="closeCreate" />
           <UButton color="primary" label="Сохранить" @click="submitCreate" />
         </div>
       </template>
     </USlideover>
+
+    <BirthdayGreetingSlideover />
   </UMain>
 </template>

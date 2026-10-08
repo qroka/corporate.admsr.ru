@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { formatRelativeRu } from '../../utils/date';
 import { useAppToast } from '../../composables/useAppToast';
 
@@ -28,6 +29,13 @@ const props = withDefaults(
 );
 
 const { toast } = useAppToast();
+const router = useRouter();
+
+/** Клик по фото открывает новость. Кнопки «Скачать» / «Открыть» поверх фото
+ * останавливают всплытие — до этого обработчика клик от них не доходит. */
+function openNews() {
+  void router.push(props.to);
+}
 const subscribed = ref(false);
 
 function readSubscribed(): Record<string, boolean> {
@@ -122,7 +130,7 @@ function openLightbox(e?: Event) {
     }"
   >
     <div class="grid h-full grid-cols-2">
-      <div class="group relative h-full min-w-0 overflow-hidden bg-muted">
+      <div class="group relative h-full min-w-0 overflow-hidden bg-muted cursor-pointer" @click="openNews">
         <img
           :src="imageSrc"
           alt=""
@@ -196,20 +204,28 @@ function openLightbox(e?: Event) {
         </div>
 
         <div class="flex min-h-0 flex-1 flex-col gap-1.5">
-          <h3 class="shrink-0 text-lg font-bold leading-6 text-highlighted text-pretty line-clamp-2">
-            {{ title }}
-          </h3>
-          <p class="min-h-0 text-sm font-medium leading-5 text-default text-pretty line-clamp-3">
-            {{ description }}
-          </p>
-          <UButton
+          <!-- Заголовок и текст — ссылка на новость (с клавиатуры и в новой вкладке тоже). -->
+          <RouterLink
             :to="to"
+            class="group/text flex min-h-0 shrink flex-col gap-1.5 rounded-md focus-visible:outline-2 focus-visible:outline-primary"
+          >
+            <h3 class="shrink-0 text-lg font-bold leading-6 text-highlighted text-pretty line-clamp-2 group-hover/text:underline">
+              {{ title }}
+            </h3>
+            <p class="min-h-0 text-sm font-medium leading-5 text-default text-pretty line-clamp-3">
+              {{ description }}
+            </p>
+          </RouterLink>
+          <!-- Новость открывается сразу на комментариях (NewsDetailsPage → NewsCommentsSection, #comments). -->
+          <UButton
+            :to="`${to}#comments`"
             color="neutral"
             variant="subtle"
             size="sm"
+            icon="i-lucide-message-circle"
             class="mt-auto self-start shrink-0"
           >
-            Подробнее
+            Прокомментировать
           </UButton>
           <p v-if="relativeTime" class="shrink-0 text-xs leading-4 text-muted">
             {{ relativeTime }}

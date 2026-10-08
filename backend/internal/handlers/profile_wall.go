@@ -20,10 +20,13 @@ import (
 
 // ProfileWall — стена профиля (/api/profile_wall.php). Писать на стену может
 // любой вошедший сотрудник; править — только автор; удалять — автор, владелец
-// стены или администратор. Личность — только из сессии.
+// стены или администратор. Личность — только из сессии. Поздравления с днём
+// рождения — тоже записи стены (birthday_greetings.go); Birthdays нужен, чтобы
+// проверить дату именинника.
 type ProfileWall struct {
-	Pool *pgxpool.Pool
-	Auth *auth.Service
+	Pool      *pgxpool.Pool
+	Auth      *auth.Service
+	Birthdays *Birthdays
 }
 
 const (
@@ -53,8 +56,12 @@ func (h *ProfileWall) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		if r.URL.Query().Get("action") == "reactors" {
+		switch r.URL.Query().Get("action") {
+		case "reactors":
 			h.reactors(w, r)
+			return
+		case "my_greetings":
+			h.myGreetings(w, r, cur)
 			return
 		}
 		h.list(w, r, cur)
@@ -67,6 +74,8 @@ func (h *ProfileWall) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		switch strVal(body["action"]) {
 		case "create":
 			h.create(w, r, cur, body)
+		case "greet":
+			h.greet(w, r, cur, body)
 		case "update":
 			h.update(w, r, cur, body)
 		case "delete":
@@ -242,6 +251,7 @@ func (h *ProfileWall) create(w http.ResponseWriter, r *http.Request, cur *auth.U
 		wallFailDB(w, "create", err)
 		return
 	}
+	notifyWallPost(r.Context(), h.Pool, ownerID, cur.ID, id, notifyKindWallPost)
 	p, err := h.fetchPost(r.Context(), id)
 	if err != nil {
 		wallFailDB(w, "fetch created", err)

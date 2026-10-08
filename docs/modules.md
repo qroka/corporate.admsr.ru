@@ -72,6 +72,21 @@
 
 Индекс под курсорную пагинацию: `db/migration/V8__news_feed_index.sql`.
 
+### Комментарии (ADR-050)
+
+| Что | Где |
+|-----|-----|
+| Данные и запросы | `src/composables/useNewsComments.ts` |
+| Компоненты | `src/components/news/` — `NewsCommentsSection` (страница новости), `NewsCommentThread`, `NewsCommentItem`, `NewsCommentComposer` |
+| Встроено | только `News/NewsDetailsPage.vue` (под текстом, `id="comments"`; не в киоске). На рабочем столе комментариев нет — кнопка «Прокомментировать» в карточке ленты ведёт на `/news/:id#comments` (прокрутка к разделу и курсор в поле) |
+| Backend | `backend/internal/handlers/news_comments.go` (`news_comments.php`) |
+
+Два уровня, как во ВКонтакте: ответ на ответ — в той же ветке с «в ответ Имя». Популярность — число
+всех реакций, при равенстве выше более новый. На странице новости — все, «Популярные» / «Новые», по 20
+с «Показать ещё». В ветке без «Развернуть» виден самый популярный ответ; развёрнутая — по времени.
+Реакции — те же 8 ключей, `NewsReactions target="comment"`. Ответ на ваш комментарий — в колокольчик,
+клик ведёт на `/news/:id?comment=<id>`: ветка закрепляется сверху развёрнутой и подсвечивается.
+
 ---
 
 ## Мероприятия
@@ -119,6 +134,13 @@
 пользователя хранятся на сервере: `calendar_entries.php` (`calendar_personal.go`, таблица
 `calendar_entries`, V16), видны только их автору. Прежние записи из localStorage
 (`portal-calendar-local:v1`) не переносились и удаляются при загрузке модуля.
+
+Личные события и встречи (ADR-051): цвет (`EventColorPicker.vue` — «По умолчанию», 8 базовых цветов,
+палитра `UColorPicker`; хранится в `calendar_entries.color`; красят общие функции `calendarItem*` из
+`useCalendarFeed.ts` — и страница календаря, и виджет на рабочем столе), меню «⋮» — «Изменить» (та же форма, что
+при создании) и «Удалить»; кнопки «Открыть» у них нет. Напоминание накануне — в колокольчике: о личных
+событиях и о мероприятиях, куда записались; создаёт его Go при запросе уведомлений (планировщика нет),
+клик ведёт на `/calendar?date=YYYY-MM-DD` (страница открывает этот день) или на страницу мероприятия.
 
 Единственное место в проекте, где брейкпоинты читаются из JS:
 `useMediaQuery('(min-width: 1024px)')` и `768px` — `CalendarPage.vue:38-39`.
@@ -183,7 +205,35 @@ POST/PUT/DELETE — редактор секции `absence_journal` за люб�
 
 Эндпоинт: `birthdays.php`. Источник данных — `*.xlsx` в каталоге `BIRTHDAYS_DIR`
 или `${UPLOAD_DIR}/birthdays_xlsx` (`birthdays.go:51`), парсинг через
-`xuri/excelize`. Право на редактирование — секция `birthdays`.
+`xuri/excelize`. Право на редактирование — секция `birthdays`. Файлы лежат на
+диске той машины, где запущен Go API: локально без них дней рождения нет.
+
+### Поздравления (ADR-049)
+
+| Что | Где |
+|-----|-----|
+| Состояние, окно, шаблоны | `src/composables/useBirthdayGreetings.ts` |
+| Форма | `src/components/BirthdayGreetingSlideover.vue` |
+| Кнопки | `HomePage.vue` (виджет «Дни рождения коллег», группа «Сегодня»), `CalendarPage.vue` (панель дня, клик по дню рождения) |
+| Backend | `backend/internal/handlers/birthday_greetings.go` (`profile_wall.php`, `action=greet` / `my_greetings`) |
+
+Поздравление — запись на стене именинника. Кнопка «Поздравить» есть, только если ФИО из xlsx
+сопоставилось с активной учётной записью, это не вы и сегодня — день рождения или до 3 дней после.
+После отправки — «Вы поздравили» со ссылкой на стену. Окно (`BIRTHDAY_GREET_WINDOW_DAYS` /
+`birthdayGreetWindowDays`) задано и во фронте, и в Go — менять парами; решает сервер.
+
+## Уведомления
+
+| Что | Где |
+|-----|-----|
+| Состояние | `src/composables/useNotifications.ts` |
+| Колокольчик | `src/components/NotificationsBell.vue` (в `AppHeader.vue`) |
+| Backend | `backend/internal/handlers/notifications.go` (`notifications.php`) |
+
+Виды: запись на вашей стене (`wall_post`), поздравление с днём рождения (`birthday_greeting`).
+Создаются в `profile_wall.php` при `create` / `greet`, если пишете не себе. Удалили запись — ушло и
+уведомление. Опроса по таймеру нет: обновление при открытии колокольчика, переходах (не чаще
+раза в 30 с) и возврате на вкладку — иначе фоновые запросы отменили бы выход по бездействию.
 
 ---
 
@@ -289,6 +339,25 @@ Smoke: `npm run test:courses`.
 | ОФО | `src/composables/useOfoTree.ts`; компоненты `OfoSelect.vue`, `OfoMultiSelect.vue` |
 
 Эндпоинты: `users.php` (только админ), `portal_groups.php`, `ofo*.php`.
+
+### Девблог (ADR-052)
+
+| Что | Где |
+|-----|-----|
+| Рабочая зона | `src/pages/Admin/DevblogPage.vue` (маршрут `/admin/devblog`, `requiresAdmin`; пункт «Редактировать девблог» в меню профиля — только в роли администратора) |
+| Окошко при входе | `src/components/DevblogWelcomeModal.vue` (в `App.vue`, только обычный интерфейс) |
+| Запросы | `src/composables/useDevblog.ts` |
+| Версия выпуска | поле «Версия» под заголовком (по умолчанию последняя + 0.0.1, первая — 1.0.0, «X.Y.Z»); `src/components/DevblogVersionBadge.vue` — под заголовком на странице новости-девблога (`news.php?id=` отдаёт `devblogVersion`), в окошке и предпросмотре, основной цвет темы с переливом |
+| Поле Markdown | `src/components/MarkdownEditor.vue` + `src/composables/markdownEditing.ts` (панель, горячие клавиши, списки по Enter/Tab, ссылка из вставки) |
+| Стандартная обложка | `public/devblog-cover.svg` (`public/img/` — загрузки, вне git) |
+| Backend | `backend/internal/handlers/devblog.go` (`devblog.php`) |
+
+Один общий черновик в Markdown: слева текст, справа предпросмотр (`UEditor` с `content-type="markdown"`,
+только чтение). Автосохранение через 1,5 с с номером версии: сохранил другой администратор — выбор «Взять
+сохранённую / Оставить мою». «Опубликовать» отправляет HTML, построенный тем же редактором, — сервер
+создаёт новость категории «Девблог» (лента, реакции, комментарии — как у новостей), уведомление `devblog`
+всем активным сотрудникам (кроме автора) и очищает черновик. Окошко — последний опубликованный девблог,
+который сотрудник не закрыл; закрыли — отметка на сервере, уведомление о нём прочитано.
 
 BUG-001/BUG-002 (откат оптимистичных обновлений при ошибке сервера) исправлены —
 см. [PROJECT_AUDIT.md](PROJECT_AUDIT.md).

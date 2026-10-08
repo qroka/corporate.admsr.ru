@@ -144,6 +144,7 @@ func (h *Birthdays) handleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	avatarMap := h.buildAvatarMap(r.Context())
+	userIDs := h.buildUserIDMap(r.Context())
 	all := make([]map[string]any, 0)
 	matches, _ := filepath.Glob(filepath.Join(dir, "*.xlsx"))
 	sort.Strings(matches)
@@ -162,6 +163,13 @@ func (h *Birthdays) handleGet(w http.ResponseWriter, r *http.Request) {
 				row["avatar"] = av
 			} else {
 				row["avatar"] = nil
+			}
+			// userId — чья стена принимает поздравление; nil — ФИО не нашлось среди
+			// активных учётных записей (или нашлось дважды), поздравить некого.
+			if id := userIDs[normFIO(e.FIO)]; id > 0 {
+				row["userId"] = id
+			} else {
+				row["userId"] = nil
 			}
 			all = append(all, row)
 		}
@@ -537,6 +545,38 @@ func (h *Birthdays) buildAvatarMap(ctx context.Context) map[string]string {
 				out[full] = av
 			}
 		}
+	}
+	return out
+}
+
+// buildUserIDMap — ФИО → id активной учётной записи. Если одинаковое ФИО у двух
+// активных сотрудников, человека не сопоставляем: поздравление ушло бы не тому.
+func (h *Birthdays) buildUserIDMap(ctx context.Context) map[string]int64 {
+	out := map[string]int64{}
+	rows, err := h.Pool.Query(ctx, `SELECT id, surname, firstname, lastname FROM public.user_info WHERE status = true`)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	ambiguous := map[string]bool{}
+	for rows.Next() {
+		var id int64
+		var surname, firstname, lastname *string
+		if err := rows.Scan(&id, &surname, &firstname, &lastname); err != nil {
+			continue
+		}
+		full := normFIO(joinNames(surname, firstname, lastname))
+		if full == "" {
+			continue
+		}
+		if _, dup := out[full]; dup {
+			ambiguous[full] = true
+			continue
+		}
+		out[full] = id
+	}
+	for k := range ambiguous {
+		delete(out, k)
 	}
 	return out
 }

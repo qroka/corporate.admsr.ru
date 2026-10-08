@@ -120,8 +120,10 @@ curl -fsS -H "Host: corporate.admsr.ru" http://127.0.0.1/api/health.php
 6. **Списки продублированы.** Разделы прав — в `backend/internal/auth/permissions.go`
    **и** `src/pages/Admin/portalSections.ts`. Категории курсов — в
    `permissions.go` **и** `src/pages/Courses/courseCategories.ts`. Реакции на
-   новости и записи стены профиля — в `backend/internal/handlers/news_reactions.go` **и**
-   `src/composables/useNewsReactions.ts`. Менять парами.
+   новости, записи стены профиля и комментарии — в `backend/internal/handlers/news_reactions.go` **и**
+   `src/composables/useNewsReactions.ts`. Окно поздравления с днём рождения (3 дня) — в
+   `backend/internal/handlers/birthday_greetings.go` **и** `src/composables/useBirthdayGreetings.ts`.
+   Менять парами.
 
 7. **Страница скроллит себя, а не документ.** Корень — `h-dvh overflow-hidden`.
    Отсюда `h-full min-h-0 overflow-y-auto` в каркасе каждой страницы.

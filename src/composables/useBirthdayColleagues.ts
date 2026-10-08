@@ -52,6 +52,8 @@ function resolveUserAvatarSrc(raw: unknown): string {
 
 type RawUserForBirthday = {
   id: number;
+  /** id учётной записи (стена для поздравления); null — ФИО не сопоставилось */
+  userId: number | null;
   fio: string;
   md: { m: number; d: number };
   avatar: string;
@@ -90,6 +92,7 @@ function mapRows(rows: Record<string, unknown>[], seatTitles: Map<string, string
     if (!fio) continue;
     out.push({
       id,
+      userId: id,
       fio,
       md,
       avatar: resolveUserAvatarSrc(r.avatar),
@@ -101,6 +104,8 @@ function mapRows(rows: Record<string, unknown>[], seatTitles: Map<string, string
 
 export type BirthdayPerson = {
   id: string;
+  /** id учётной записи (стена для поздравления); null — ФИО не сопоставилось */
+  userId: number | null;
   name: string;
   role: string;
   avatar: string;
@@ -108,6 +113,8 @@ export type BirthdayPerson = {
 
 export type BirthdayGroup = {
   id: string;
+  /** Дата дня рождения в этом году (полночь) */
+  date: Date;
   dateLabel: string;
   dayLabel: string;
   dayColor: 'primary' | 'neutral';
@@ -155,6 +162,7 @@ function buildBirthdayGroups(users: RawUserForBirthday[]): BirthdayGroup[] {
       .map(
         (u): BirthdayPerson => ({
           id: `u-${u.id}`,
+          userId: u.userId,
           name: u.fio,
           role: u.positionTitle,
           avatar: u.avatar,
@@ -163,6 +171,7 @@ function buildBirthdayGroups(users: RawUserForBirthday[]): BirthdayGroup[] {
 
     groups.push({
       id: `bday-offset-${i}`,
+      date: d,
       dateLabel: formatCalendarDayTitle(d),
       dayLabel: dayLabels[i],
       dayColor: colors[i],
@@ -213,6 +222,7 @@ export function useBirthdayColleagues() {
       items.push({
         person: {
           id: `u-${u.id}`,
+          userId: u.userId,
           name: u.fio,
           role: u.positionTitle,
           avatar: u.avatar,
@@ -246,7 +256,8 @@ export function useBirthdayColleagues() {
             const d = Number(e.day);
             const fio = String(e.fio ?? '').trim();
             if (!fio || !(m >= 1 && m <= 12) || !(d >= 1 && d <= 31)) return null;
-            return { id: i + 1, fio, md: { m, d }, avatar: resolveBdayAvatar(e.avatar), positionTitle: '' };
+            const userId = Number(e.userId) > 0 ? Number(e.userId) : null;
+            return { id: i + 1, userId, fio, md: { m, d }, avatar: resolveBdayAvatar(e.avatar), positionTitle: '' };
           })
           .filter((x): x is RawUserForBirthday => x !== null);
         sharedLoaded.value = true;

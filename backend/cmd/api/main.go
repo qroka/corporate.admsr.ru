@@ -45,7 +45,10 @@ func main() {
 	syncH := &handlers.Sync{Pool: pool, Config: cfg}
 	birthdaysH := &handlers.Birthdays{Pool: pool, Auth: authSvc, UploadDir: cfg.UploadDir}
 	profileH := &handlers.Profile{Pool: pool, Auth: authSvc, Birthdays: birthdaysH, UploadDir: cfg.UploadDir}
-	profileWallH := &handlers.ProfileWall{Pool: pool, Auth: authSvc}
+	profileWallH := &handlers.ProfileWall{Pool: pool, Auth: authSvc, Birthdays: birthdaysH}
+	notificationsH := &handlers.Notifications{Pool: pool, Auth: authSvc}
+	newsCommentsH := &handlers.NewsComments{Pool: pool, Auth: authSvc}
+	devblogH := &handlers.Devblog{Pool: pool, Auth: authSvc}
 	profileExtrasH := &handlers.ProfileExtras{Pool: pool, Auth: authSvc}
 	eventRSVPH := &handlers.EventRSVP{Pool: pool, Auth: authSvc}
 	calendarEntriesH := &handlers.CalendarEntries{Pool: pool, Auth: authSvc}
@@ -60,6 +63,8 @@ func main() {
 	mux.HandleFunc("/api/heartbeat.php", authH.Heartbeat)
 	mux.HandleFunc("/api/session_bootstrap.php", authH.SessionBootstrap)
 	mux.Handle("/api/news.php", newsH)
+	mux.Handle("/api/news_comments.php", newsCommentsH)
+	mux.Handle("/api/devblog.php", devblogH)
 	mux.Handle("/api/events.php", eventsH)
 	mux.Handle("/api/gallery.php", galleryH)
 	mux.Handle("/api/gallery_base.php", galleryBaseH)
@@ -71,6 +76,7 @@ func main() {
 	mux.Handle("/api/profile_avatar.php", profileAvatarH)
 	mux.Handle("/api/event_rsvp.php", eventRSVPH)
 	mux.Handle("/api/calendar_entries.php", calendarEntriesH)
+	mux.Handle("/api/notifications.php", notificationsH)
 	mux.Handle("/api/feedback.php", feedbackH)
 	mux.HandleFunc("/api/ofo.php", ofoH.List)
 	mux.HandleFunc("/api/ofo_seats.php", ofoH.Seats)

@@ -5,6 +5,7 @@ import { useHeaderUser } from '../composables/useHeaderUser';
 import { usePortalBreadcrumbs } from '../composables/usePortalNavigation';
 import { currentRole, setRole } from '../stores/role';
 import { clearAuthStorage } from '../composables/useAuthSession';
+import NotificationsBell from './NotificationsBell.vue';
 import {
   currentFontLabel,
   currentRadiusLabel,
@@ -173,6 +174,10 @@ const userMenuItems = computed(() => {
         icon: 'i-lucide-layout-dashboard',
         to: '/admin',
       },
+      // Только в роли администратора — как и сама страница (requiresAdmin), ADR-052.
+      ...(currentRole.value === 'admin'
+        ? [{ label: 'Редактировать девблог', icon: 'i-lucide-notebook-pen', to: '/admin/devblog' }]
+        : []),
     ]);
   }
 
@@ -378,17 +383,7 @@ const userMenuItems = computed(() => {
           }"
         />
 
-        <UTooltip text="Уведомления" :content="{ side: 'bottom' }">
-          <UButton
-            color="neutral"
-            variant="outline"
-            size="md"
-            square
-            class="h-8 shrink-0"
-            icon="i-lucide-bell"
-            aria-label="Уведомления"
-          />
-        </UTooltip>
+        <NotificationsBell />
 
         <UDropdownMenu
           v-model:open="userMenuOpen"

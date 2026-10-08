@@ -3,6 +3,8 @@ import { computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   CALENDAR_SOURCE_META,
+  calendarItemBarClass,
+  calendarItemBarStyle,
   toDateKey,
   useCalendarFeed,
   type CalendarItem,
@@ -152,7 +154,8 @@ function openItem(item: CalendarItem) {
       >
         <span
           class="mt-1.5 size-2 shrink-0 rounded-full"
-          :class="sourceMeta(item.source).barClass"
+          :class="calendarItemBarClass(item)"
+          :style="calendarItemBarStyle(item)"
         />
         <div class="min-w-0 flex-1">
           <p class="text-sm font-medium text-highlighted line-clamp-2">

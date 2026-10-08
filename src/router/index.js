@@ -21,6 +21,7 @@ import TestsBlankPage from '../pages/TestsBlankPage.vue';
 import DevelopmentMotivationDepartmentPage from '../pages/DevelopmentMotivationDepartmentPage.vue';
 import ServicesPage from '../pages/ServicesPage.vue';
 import AdminDashboardPage from '../pages/Admin/AdminDashboardPage.vue';
+import DevblogPage from '../pages/Admin/DevblogPage.vue';
 import CalendarPage from '../pages/CalendarPage.vue';
 import LoginPage from '../pages/login.vue';
 import OnboardingPage from '../pages/OnboardingPage.vue';
@@ -95,6 +96,7 @@ const routes = [
   { path: '/services', name: 'services', component: ServicesPage, meta: { title: 'Сервисы' } },
   { path: '/development-motivation', name: 'development-motivation', component: DevelopmentMotivationDepartmentPage, meta: { title: 'Отдел развития и мотивации' } },
   { path: '/admin', name: 'admin', component: AdminDashboardPage, meta: { title: 'Дэшборд администратора', requiresAdmin: true } },
+  { path: '/admin/devblog', name: 'admin-devblog', component: DevblogPage, meta: { title: 'Девблог', requiresAdmin: true } },
   { path: '/knowledge-base', redirect: { name: 'documentation' } },
   { path: '/chatbot', redirect: { name: 'feedback' } },
 

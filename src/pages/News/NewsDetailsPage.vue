@@ -12,9 +12,33 @@ import { useAppToast } from '../../composables/useAppToast';
 import { useSectionAccess } from '../../composables/useSectionAccess';
 import { apiSessionFetch } from '../../composables/useAuthSession';
 import { useBreadcrumbCurrentLabel } from '../../composables/usePortalNavigation';
+import NewsCommentsSection from '../../components/news/NewsCommentsSection.vue';
+import DevblogVersionBadge from '../../components/DevblogVersionBadge.vue';
 
 const route = useRoute();
 const router = useRouter();
+
+/**
+ * Версия выпуска девблога (ADR-052) — есть только в ответе по одной новости
+ * (news.php?id=), а страница берёт новость из общего списка; догружаем для «Девблога».
+ */
+const devblogVersion = ref('');
+let devblogSeq = 0;
+async function loadDevblogVersion(id: string, category: string) {
+  const my = ++devblogSeq;
+  devblogVersion.value = '';
+  if (category !== 'Девблог' || !id) return;
+  try {
+    const res = await fetch(`/api/news.php?id=${encodeURIComponent(id)}`);
+    const json = await res.json();
+    if (my === devblogSeq && json?.success) devblogVersion.value = String(json.data?.devblogVersion ?? '');
+  } catch {
+    /* без версии — просто не показываем */
+  }
+}
+
+/** Переход из уведомления «ответили на ваш комментарий»: ?comment=<id> */
+const focusCommentId = computed(() => Number(route.query.comment) || null);
 const { loading, error, getById, ensureLoaded, sortedNews, reload, patchItem } = useNewsData();
 ensureLoaded();
 
@@ -35,6 +59,12 @@ watch(
 
 const newsId = computed(() => String(route.params.id ?? '').trim());
 const item = computed(() => (newsId.value ? getById(newsId.value) : undefined));
+
+watch(
+  () => [item.value?.id ?? '', item.value?.category ?? ''] as const,
+  ([id, category]) => void loadDevblogVersion(id, category),
+  { immediate: true },
+);
 
 const newsScrollEl = ref<HTMLElement | null>(null);
 
@@ -463,6 +493,8 @@ async function removeCoverImage(e?: Event) {
                   </template>
                 </UPageHeader>
 
+                <DevblogVersionBadge v-if="devblogVersion" :version="devblogVersion" class="-mt-1" />
+
                 <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted">
                   <UBadge v-if="item.category" color="info" variant="subtle">
                     {{ item.category }}
@@ -553,6 +585,14 @@ async function removeCoverImage(e?: Event) {
                 ]"
                 v-html="item.description"
                 @click.capture="onKioskNewsBodyClick"
+              />
+              <NewsCommentsSection
+                v-if="!isKiosk"
+                id="comments"
+                :key="`comments-${item.id}`"
+                :news-id="item.id"
+                :focus-comment-id="focusCommentId"
+                :scroll-into-view="route.hash === '#comments'"
               />
               <div
                 v-if="surround.prev || surround.next"

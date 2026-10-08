@@ -72,7 +72,14 @@ func (h *News) get(w http.ResponseWriter, r *http.Request) {
 			httpx.Fail(w, http.StatusInternalServerError, "Ошибка подключения к БД")
 			return
 		}
-		httpx.OK(w, h.oneWithReactions(r, row), "OK")
+		item := h.oneWithReactions(r, row)
+		// Новость-девблог (V20–V21) — показать версию выпуска под заголовком. Без V21 — просто без версии.
+		var release string
+		if err := h.Pool.QueryRow(r.Context(),
+			`SELECT release_version FROM public.devblog_posts WHERE news_id = $1`, id).Scan(&release); err == nil && release != "" {
+			item["devblogVersion"] = release
+		}
+		httpx.OK(w, item, "OK")
 		return
 	}
 
@@ -276,6 +283,12 @@ func (h *News) del(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = h.Pool.Exec(r.Context(), `DELETE FROM public.news WHERE id = $1`, id)
+	// Комментарии (V18) и девблог (V20) ссылаются на новость без FK — убираем вместе с ней;
+	// без этих миграций ошибки безвредны.
+	_, _ = h.Pool.Exec(r.Context(), `DELETE FROM public.news_comments WHERE news_id = $1`, id)
+	_, _ = h.Pool.Exec(r.Context(), `DELETE FROM public.notifications WHERE news_id = $1`, id)
+	_, _ = h.Pool.Exec(r.Context(), `DELETE FROM public.devblog_dismissed WHERE news_id = $1`, id)
+	_, _ = h.Pool.Exec(r.Context(), `DELETE FROM public.devblog_posts WHERE news_id = $1`, id)
 	httpx.OK(w, nil, "Новость удалена")
 }
 

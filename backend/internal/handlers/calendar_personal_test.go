@@ -8,9 +8,14 @@ import (
 // V16 (Q-03): проверка тела записи личного календаря до обращения к БД.
 func TestCalendarEntryInput(t *testing.T) {
 	ok := map[string]any{"source": "meeting", "dateKey": "2026-10-02", "title": "  Планёрка  ", "timeStart": "09:30", "timeEnd": "10:00", "location": " 301 "}
-	source, title, dateKey, ts, te, loc, problem := calendarEntryInput(ok)
-	if problem != "" || source != "meeting" || title != "Планёрка" || dateKey != "2026-10-02" || ts != "09:30" || te != "10:00" || loc != "301" {
-		t.Fatalf("корректное тело отвергнуто или не обрезано: %q %q %q %q %q %q %q", source, title, dateKey, ts, te, loc, problem)
+	e, problem := calendarEntryInput(ok)
+	if problem != "" || e.Source != "meeting" || e.Title != "Планёрка" || e.DateKey != "2026-10-02" || e.TimeStart != "09:30" || e.TimeEnd != "10:00" || e.Location != "301" {
+		t.Fatalf("корректное тело отвергнуто или не обрезано: %+v %q", e, problem)
+	}
+	// V19: цвет — '#rrggbb', приводится к нижнему регистру.
+	ok["color"] = "#3B82F6"
+	if e, problem := calendarEntryInput(ok); problem != "" || e.Color != "#3b82f6" {
+		t.Fatalf("цвет: %+v %q", e, problem)
 	}
 
 	cases := []struct {
@@ -25,19 +30,22 @@ func TestCalendarEntryInput(t *testing.T) {
 		{"плохое время", func(m map[string]any) { m["timeStart"] = "25:00" }},
 		{"плохое время конца", func(m map[string]any) { m["timeEnd"] = "9-30" }},
 		{"длинное место", func(m map[string]any) { m["location"] = strings.Repeat("м", calendarLocationMaxRunes+1) }},
+		{"цвет не hex", func(m map[string]any) { m["color"] = "red" }},
+		{"цвет короткий", func(m map[string]any) { m["color"] = "#fff" }},
+		{"цвет со стилем", func(m map[string]any) { m["color"] = "#ffffff;background:url(x)" }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			m := map[string]any{"source": "personal", "dateKey": "2026-10-02", "title": "x"}
 			tc.mut(m)
-			if _, _, _, _, _, _, problem := calendarEntryInput(m); problem == "" {
+			if _, problem := calendarEntryInput(m); problem == "" {
 				t.Fatalf("ожидалась ошибка валидации")
 			}
 		})
 	}
 
 	// Необязательные поля не обязательны.
-	if _, _, _, _, _, _, problem := calendarEntryInput(map[string]any{"source": "personal", "dateKey": "2026-10-02", "title": "x"}); problem != "" {
+	if _, problem := calendarEntryInput(map[string]any{"source": "personal", "dateKey": "2026-10-02", "title": "x"}); problem != "" {
 		t.Fatalf("тело без времени и места отвергнуто: %s", problem)
 	}
 }

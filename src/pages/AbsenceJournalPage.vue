@@ -152,8 +152,6 @@ const ofoTitleById = computed<Record<string, string>>(() => {
 const startAbsenceAt = ref(toLocalDateTimeInputValue(nowRounded()));
 const startDateValue = shallowRef<ReturnType<typeof toCalendarDate>>(null);
 const startTimeValue = shallowRef<Time | null>(null);
-const startHour = ref(0);
-const startMinute = ref(0);
 const startReason = ref('');
 const filterPeriod = ref<'all' | 'today' | 'week' | 'month'>('all');
 const mySortDesc = ref(true);
@@ -161,8 +159,6 @@ const historySearchOpen = ref(false);
 const historyFilterOpen = ref(false);
 const myRecordsStore = ref<AbsenceRecord[]>([]);
 const adminRecordsStore = ref<AbsenceRecord[]>([]);
-
-let syncingStartTime = false;
 
 const hourOptions = Array.from({ length: 24 }, (_, h) => ({
   label: two(h),
@@ -180,20 +176,38 @@ function roundMinutesToStep(minutes: number, step = TIME_STEP_MINUTES): number {
   return Math.max(0, rounded);
 }
 
-function applyStartTimeParts(hour: number, minute: number) {
-  const h = Math.min(23, Math.max(0, hour));
-  const m = roundMinutesToStep(minute);
-  startHour.value = h;
-  startMinute.value = m;
-  startTimeValue.value = new Time(h, m, 0);
+function toStepTime(hour: number, minute: number): Time {
+  return new Time(Math.min(23, Math.max(0, hour)), roundMinutesToStep(minute), 0);
 }
+
+/**
+ * Часы и минуты для выпадающих списков — производные от значения поля времени.
+ * Обратной записи в поле при вводе нет: округление до шага делает сам UInputTime
+ * (`step-snapping`) при уходе фокуса. Иначе минуты округлялись после первой цифры,
+ * и «1515» превращалось в 15:05.
+ */
+function timePartRefs(time: typeof startTimeValue) {
+  const hour = computed({
+    get: () => time.value?.hour ?? 0,
+    set: (h: number) => {
+      time.value = toStepTime(h, time.value?.minute ?? 0);
+    },
+  });
+  const minute = computed({
+    get: () => roundMinutesToStep(time.value?.minute ?? 0),
+    set: (m: number) => {
+      time.value = toStepTime(time.value?.hour ?? 0, m);
+    },
+  });
+  return { hour, minute };
+}
+
+const { hour: startHour, minute: startMinute } = timePartRefs(startTimeValue);
 
 function syncStartPartsFromCombined() {
   const d = parseDateTimeInputValue(startAbsenceAt.value) ?? new Date();
   startDateValue.value = toCalendarDate(d);
-  syncingStartTime = true;
-  applyStartTimeParts(d.getHours(), d.getMinutes());
-  syncingStartTime = false;
+  startTimeValue.value = toStepTime(d.getHours(), d.getMinutes());
 }
 
 function syncCombinedFromParts() {
@@ -210,24 +224,6 @@ syncCombinedFromParts();
 
 watch([startDateValue, startTimeValue], () => {
   syncCombinedFromParts();
-});
-
-watch(startTimeValue, (time) => {
-  if (syncingStartTime || !time) return;
-  syncingStartTime = true;
-  startHour.value = time.hour;
-  startMinute.value = roundMinutesToStep(time.minute);
-  if (time.minute !== startMinute.value) {
-    startTimeValue.value = new Time(time.hour, startMinute.value, 0);
-  }
-  syncingStartTime = false;
-});
-
-watch([startHour, startMinute], ([hour, minute]) => {
-  if (syncingStartTime) return;
-  syncingStartTime = true;
-  startTimeValue.value = new Time(hour, roundMinutesToStep(minute), 0);
-  syncingStartTime = false;
 });
 
 const MY_PAGE_SIZE = 200;
@@ -543,24 +539,12 @@ const finishForm = ref({
 const finishError = ref<string | null>(null);
 const finishDateValue = shallowRef<ReturnType<typeof toCalendarDate>>(null);
 const finishTimeValue = shallowRef<Time | null>(null);
-const finishHour = ref(0);
-const finishMinute = ref(0);
-let syncingFinishTime = false;
-
-function applyFinishTimeParts(hour: number, minute: number) {
-  const h = Math.min(23, Math.max(0, hour));
-  const m = roundMinutesToStep(minute);
-  finishHour.value = h;
-  finishMinute.value = m;
-  finishTimeValue.value = new Time(h, m, 0);
-}
+const { hour: finishHour, minute: finishMinute } = timePartRefs(finishTimeValue);
 
 function syncFinishPartsFromCombined() {
   const d = parseDateTimeInputValue(finishForm.value.endAt) ?? nowRounded();
   finishDateValue.value = toCalendarDate(d);
-  syncingFinishTime = true;
-  applyFinishTimeParts(d.getHours(), d.getMinutes());
-  syncingFinishTime = false;
+  finishTimeValue.value = toStepTime(d.getHours(), d.getMinutes());
 }
 
 function syncFinishCombinedFromParts() {
@@ -574,24 +558,6 @@ function syncFinishCombinedFromParts() {
 
 watch([finishDateValue, finishTimeValue], () => {
   syncFinishCombinedFromParts();
-});
-
-watch(finishTimeValue, (time) => {
-  if (syncingFinishTime || !time) return;
-  syncingFinishTime = true;
-  finishHour.value = time.hour;
-  finishMinute.value = roundMinutesToStep(time.minute);
-  if (time.minute !== finishMinute.value) {
-    finishTimeValue.value = new Time(time.hour, finishMinute.value, 0);
-  }
-  syncingFinishTime = false;
-});
-
-watch([finishHour, finishMinute], ([hour, minute]) => {
-  if (syncingFinishTime) return;
-  syncingFinishTime = true;
-  finishTimeValue.value = new Time(hour, roundMinutesToStep(minute), 0);
-  syncingFinishTime = false;
 });
 
 const editOpen = ref(false);

@@ -3,6 +3,7 @@ import { useBirthdayColleagues } from './useBirthdayColleagues';
 import { useCoursesStore, type EnrollmentSummary } from './useCoursesStore';
 import { apiSessionFetch, getAuthUser } from './useAuthSession';
 import { useEventRsvp } from './useEventRsvp';
+import { useBirthdayGreetings } from './useBirthdayGreetings';
 
 export type CalendarSource = 'event' | 'meeting' | 'birthday' | 'learning' | 'personal';
 
@@ -21,8 +22,15 @@ export type CalendarItem = {
   role?: string;
   progress?: number;
   href?: string;
+  /** Пусто — кнопки действия нет */
   actionLabel: string;
   isJoined?: boolean;
+  /** День рождения: id учётной записи именинника (null — ФИО не сопоставилось) */
+  userId?: number | null;
+  /** День рождения: можно поздравить прямо сейчас (окно и «ещё не поздравил») */
+  greetable?: boolean;
+  /** Личное событие / встреча: цвет '#rrggbb', выбранный сотрудником (V19); нет — цвет по типу */
+  color?: string;
 };
 
 export type LocalCalendarEntry = {
@@ -34,6 +42,8 @@ export type LocalCalendarEntry = {
   timeStart?: string;
   timeEnd?: string;
   location?: string;
+  /** '#rrggbb' или нет — цвет по типу */
+  color?: string;
 };
 
 // Личные записи и встречи — на сервере (/api/calendar_entries.php, V16). Раньше лежали в
@@ -112,6 +122,25 @@ function formatHm(d: Date): string {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
+/**
+ * Окраска события: цвет, выбранный сотрудником (V19, ADR-051), иначе — цвет по типу.
+ * Одни и те же функции во всех местах, где показываются события календаря
+ * (страница календаря, виджет на рабочем столе), — чтобы цвет совпадал везде.
+ * bar — точка / полоса, soft — рамка и подложка карточки (30 % / 10 %, как у типов).
+ */
+export function calendarItemBarClass(item: CalendarItem): string {
+  return item.color ? '' : CALENDAR_SOURCE_META[item.source].barClass;
+}
+export function calendarItemBarStyle(item: CalendarItem) {
+  return item.color ? { backgroundColor: item.color } : undefined;
+}
+export function calendarItemSoftClass(item: CalendarItem): string {
+  return item.color ? '' : CALENDAR_SOURCE_META[item.source].softClass;
+}
+export function calendarItemSoftStyle(item: CalendarItem) {
+  return item.color ? { borderColor: `${item.color}4d`, backgroundColor: `${item.color}1a` } : undefined;
+}
+
 export function useCalendarFeed() {
   const {
     loading: birthdaysLoading,
@@ -122,6 +151,7 @@ export function useCalendarFeed() {
 
   const courses = useCoursesStore();
   const { ensureLoaded: ensureRsvpLoaded, isJoined: isRsvpJoined } = useEventRsvp();
+  const greetings = useBirthdayGreetings();
 
   const eventsLoading = ref(false);
   const eventsError = ref<string | null>(null);
@@ -179,6 +209,7 @@ export function useCalendarFeed() {
 
   async function ensureLoaded() {
     ensureBirthdays();
+    greetings.ensureLoaded();
     await Promise.all([loadEvents(), loadLearning(), loadLocal(), ensureRsvpLoaded()]);
   }
 
@@ -194,11 +225,34 @@ export function useCalendarFeed() {
         timeStart: entry.timeStart,
         timeEnd: entry.timeEnd,
         location: entry.location,
+        color: entry.color,
       },
     });
     const saved = json?.data?.entry;
     if (!json?.success || !saved) throw new Error(json?.message || 'Не удалось сохранить запись');
     localEntries.value = [...localEntries.value, saved];
+    return saved;
+  }
+
+  /** Изменяет на сервере (название, дата, время, место, цвет); при отказе бросает Error. */
+  async function updateLocalEntry(entry: LocalCalendarEntry): Promise<LocalCalendarEntry> {
+    const json = await apiSessionFetch<{ entry?: LocalCalendarEntry }>('/api/calendar_entries.php', {
+      method: 'POST',
+      json: {
+        action: 'update',
+        id: Number(entry.id),
+        source: entry.source,
+        dateKey: entry.dateKey,
+        title: entry.title.trim(),
+        timeStart: entry.timeStart,
+        timeEnd: entry.timeEnd,
+        location: entry.location,
+        color: entry.color,
+      },
+    });
+    const saved = json?.data?.entry;
+    if (!json?.success || !saved) throw new Error(json?.message || 'Не удалось сохранить запись');
+    localEntries.value = localEntries.value.map((e) => (String(e.id) === String(saved.id) ? saved : e));
     return saved;
   }
 
@@ -252,7 +306,9 @@ export function useCalendarFeed() {
         timeEnd: entry.timeEnd,
         timeLabel: label,
         location: entry.location,
-        actionLabel: 'Открыть',
+        color: entry.color,
+        // Открывать нечего — всё уже на карточке; правка и удаление — в меню «⋮».
+        actionLabel: '',
       });
     }
 
@@ -263,7 +319,9 @@ export function useCalendarFeed() {
       // Birthdays are year-agnostic — emit for current + next calendar year span
       for (const year of [yearHint - 1, yearHint, yearHint + 1]) {
         const dateKey = `${year}-${pad2(mm)}-${pad2(dd)}`;
+        const date = new Date(year, mm - 1, dd);
         for (const person of people) {
+          const state = greetings.greetState(person.userId, date);
           out.push({
             id: `bday-${year}-${person.id}`,
             source: 'birthday',
@@ -272,7 +330,11 @@ export function useCalendarFeed() {
             timeLabel: '',
             avatar: person.avatar,
             role: person.positionTitle || undefined,
-            actionLabel: 'Поздравить',
+            userId: person.userId,
+            greetable: state === 'greet',
+            href: person.userId ? `/profile/${person.userId}` : undefined,
+            actionLabel:
+              state === 'greet' ? 'Поздравить' : state === 'greeted' ? 'Вы поздравили' : person.userId ? 'Профиль' : '',
           });
         }
       }
@@ -320,6 +382,7 @@ export function useCalendarFeed() {
     reloadEvents: loadEvents,
     reloadLearning: loadLearning,
     addLocalEntry,
+    updateLocalEntry,
     removeLocalEntry,
   };
 }

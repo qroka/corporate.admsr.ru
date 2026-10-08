@@ -4,7 +4,8 @@ import { useAppToast } from './useAppToast';
 
 /**
  * Реакции — на сервере, по одной каждого вида на сотрудника. Один набор ключей
- * на новости (news_reactions) и записи стены профиля (wall_post_reactions).
+ * на новости (news_reactions), записи стены профиля (wall_post_reactions) и
+ * комментарии к новостям (news_comment_reactions).
  * Порядок и ключи дублируются в Go:
  * backend/internal/handlers/news_reactions.go (NewsReactionKeys) — менять парами.
  */
@@ -22,8 +23,8 @@ export const NEWS_REACTIONS = [
 export type NewsReactionKey = (typeof NEWS_REACTIONS)[number]['key'];
 export type NewsReactionSummary = { key: NewsReactionKey; count: number; mine: boolean };
 export type NewsReactor = { id: number; name: string; avatar_url: string };
-/** Чему ставим реакции: новости или записи на стене профиля. */
-export type ReactionTarget = 'news' | 'wall';
+/** Чему ставим реакции: новости, записи на стене профиля или комментарии к новостям. */
+export type ReactionTarget = 'news' | 'wall' | 'comment';
 
 const KNOWN = new Set<string>(NEWS_REACTIONS.map((r) => r.key));
 
@@ -180,15 +181,26 @@ const wallStore = createReactionStore({
   reactorsUrl: (id, key) => `/api/profile_wall.php?action=reactors&id=${encodeURIComponent(id)}&reaction=${key}`,
 });
 
+const commentStore = createReactionStore({
+  react: (id, key, active) =>
+    apiSessionFetch<any>('/api/news_comments.php', {
+      method: 'POST',
+      json: { action: 'react', id: Number(id), reaction: key, active },
+    }),
+  reactorsUrl: (id, key) => `/api/news_comments.php?action=reactors&id=${encodeURIComponent(id)}&reaction=${key}`,
+});
+
 /** Принять реакции из любого ответа news.php (лента, список, карточка). */
 export const seedNewsReactions = newsStore.seed;
 /** Принять реакции из ответа profile_wall.php. */
 export const seedWallReactions = wallStore.seed;
+/** Принять реакции из ответа news_comments.php. */
+export const seedCommentReactions = commentStore.seed;
 
 export function useNewsReactions() {
   return newsStore.use();
 }
 
 export function useReactions(target: ReactionTarget) {
-  return (target === 'wall' ? wallStore : newsStore).use();
+  return (target === 'wall' ? wallStore : target === 'comment' ? commentStore : newsStore).use();
 }

@@ -104,7 +104,6 @@
 | Заявки | `/applications` | `src/pages/ApplicationsPage.vue` — только `UEmpty` «Раздел в разработке» |
 | Кадровый резерв | `/personnel-reserve` | `src/pages/PersonnelReservePage.vue` — `SectionInDevelopment` |
 | Отдел развития и мотивации | `/development-motivation` | `src/pages/DevelopmentMotivationDepartmentPage.vue` — `SectionInDevelopment` |
-| Кнопка «Уведомления» в шапке | — | `src/components/AppHeader.vue:315-324` — нет обработчика |
 
 ### Упомянуто в README, но маршрута нет
 

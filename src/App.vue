@@ -48,6 +48,9 @@
             <RouterView />
           </template>
         </UDashboardPanel>
+
+        <!-- Девблог при первом заходе после публикации (ADR-052); не в киоске и не на входе. -->
+        <DevblogWelcomeModal />
       </UDashboardGroup>
     </UApp>
   </div>
@@ -58,6 +61,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ru } from '@nuxt/ui/locale';
 import { useRoute, useRouter } from 'vue-router';
 import AppHeader from './components/AppHeader.vue';
+import DevblogWelcomeModal from './components/DevblogWelcomeModal.vue';
 import AppAside from './components/AppAside.vue';
 import { startSessionActivity } from './composables/useSessionActivity';
 import { resolveMainColorMode, useColorMode } from './composables/useColorMode';

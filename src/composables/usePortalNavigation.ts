@@ -46,6 +46,7 @@ type ParentCrumb = {
  */
 const BREADCRUMB_PARENTS: Record<string, ParentCrumb[]> = {
   'news-details': [{ name: 'news' }],
+  'admin-devblog': [{ name: 'admin' }],
   'event-details': [{ name: 'events' }],
   'gallery-album': [{ name: 'gallery' }],
   'absence-journal': [{ name: 'services' }],
@@ -229,6 +230,7 @@ const BREADCRUMB_ICONS: Record<string, string> = {
   'admin-course-final-test-q-edit': 'i-lucide-clipboard-list',
   profile: 'i-lucide-user',
   admin: 'i-lucide-layout-dashboard',
+  'admin-devblog': 'i-lucide-notebook-pen',
   'personnel-reserve': 'i-lucide-users-round',
   'development-motivation': 'i-lucide-trending-up',
   kiosk: 'i-lucide-monitor',

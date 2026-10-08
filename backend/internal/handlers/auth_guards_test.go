@@ -34,6 +34,9 @@ func TestEndpointsRequireSessionBeforeTouchingDB(t *testing.T) {
 	calendarH := &CalendarEntries{Pool: nil, Auth: authSvc}
 	formsH := &FormsHandler{Pool: nil, Auth: authSvc}
 	ofoH := &OFO{Pool: nil, Auth: authSvc}
+	notificationsH := &Notifications{Pool: nil, Auth: authSvc}
+	commentsH := &NewsComments{Pool: nil, Auth: authSvc}
+	devblogH := &Devblog{Pool: nil, Auth: authSvc}
 
 	cases := []struct {
 		name    string
@@ -50,6 +53,23 @@ func TestEndpointsRequireSessionBeforeTouchingDB(t *testing.T) {
 		{"wall read", http.MethodGet, "/api/profile_wall.php?userId=1", "", nil, wallH.ServeHTTP},
 		{"wall create", http.MethodPost, "/api/profile_wall.php", `{"action":"create","userId":1,"content":"x"}`, nil, wallH.ServeHTTP},
 		{"wall delete", http.MethodPost, "/api/profile_wall.php", `{"action":"delete","id":1}`, nil, wallH.ServeHTTP},
+		{"wall greet", http.MethodPost, "/api/profile_wall.php", `{"action":"greet","userId":1,"content":"x"}`, nil, wallH.ServeHTTP},
+		{"wall my greetings", http.MethodGet, "/api/profile_wall.php?action=my_greetings", "", nil, wallH.ServeHTTP},
+		{"notifications list", http.MethodGet, "/api/notifications.php", "", nil, notificationsH.ServeHTTP},
+		{"notifications read", http.MethodPost, "/api/notifications.php", `{"action":"read","ids":[1]}`, nil, notificationsH.ServeHTTP},
+		{"notifications read all", http.MethodPost, "/api/notifications.php", `{"action":"read_all"}`, nil, notificationsH.ServeHTTP},
+		{"comments list", http.MethodGet, "/api/news_comments.php?newsId=1", "", nil, commentsH.ServeHTTP},
+		{"comments replies", http.MethodGet, "/api/news_comments.php?action=replies&rootId=1", "", nil, commentsH.ServeHTTP},
+		{"comments thread", http.MethodGet, "/api/news_comments.php?action=thread&id=1", "", nil, commentsH.ServeHTTP},
+		{"comment create", http.MethodPost, "/api/news_comments.php", `{"action":"create","newsId":1,"content":"x"}`, nil, commentsH.ServeHTTP},
+		{"comment reply", http.MethodPost, "/api/news_comments.php", `{"action":"create","replyToId":1,"content":"x"}`, nil, commentsH.ServeHTTP},
+		{"comment delete", http.MethodPost, "/api/news_comments.php", `{"action":"delete","id":1}`, nil, commentsH.ServeHTTP},
+		{"comment react", http.MethodPost, "/api/news_comments.php", `{"action":"react","id":1,"reaction":"like","active":true}`, nil, commentsH.ServeHTTP},
+		{"devblog pending", http.MethodGet, "/api/devblog.php", "", nil, devblogH.ServeHTTP},
+		{"devblog draft", http.MethodGet, "/api/devblog.php?action=draft", "", nil, devblogH.ServeHTTP},
+		{"devblog save", http.MethodPost, "/api/devblog.php", `{"action":"save","title":"x","body":"x","version":0}`, nil, devblogH.ServeHTTP},
+		{"devblog publish", http.MethodPost, "/api/devblog.php", `{"action":"publish","title":"x","body":"x","html":"<p>x</p>","version":0}`, nil, devblogH.ServeHTTP},
+		{"devblog dismiss", http.MethodPost, "/api/devblog.php", `{"action":"dismiss","newsId":1}`, nil, devblogH.ServeHTTP},
 		{"avatar upload", http.MethodPost, "/api/profile_avatar.php", `{}`, nil, avatarH.ServeHTTP},
 		{"image upload", http.MethodPost, "/api/Upload/upload.php", `{}`, nil, uploadH.ServeHTTP},
 		{"rsvp list", http.MethodGet, "/api/event_rsvp.php", "", nil, rsvpH.ServeHTTP},
@@ -57,6 +77,7 @@ func TestEndpointsRequireSessionBeforeTouchingDB(t *testing.T) {
 		{"calendar list", http.MethodGet, "/api/calendar_entries.php", "", nil, calendarH.ServeHTTP},
 		{"calendar create", http.MethodPost, "/api/calendar_entries.php", `{"action":"create","source":"personal","dateKey":"2026-10-02","title":"x"}`, nil, calendarH.ServeHTTP},
 		{"calendar delete", http.MethodPost, "/api/calendar_entries.php", `{"action":"delete","id":1}`, nil, calendarH.ServeHTTP},
+		{"calendar update", http.MethodPost, "/api/calendar_entries.php", `{"action":"update","id":1,"source":"personal","dateKey":"2026-10-02","title":"x","color":"#3b82f6"}`, nil, calendarH.ServeHTTP},
 		{"course assignment cancel", http.MethodPost, "/api/course_assignment_cancel.php", `{}`, nil, coursesH.AssignmentCancel},
 		{"course assignments list", http.MethodPost, "/api/course_assignments_list.php", `{}`, nil, coursesH.AssignmentsList},
 		{"course history", http.MethodPost, "/api/course_history.php", `{}`, nil, coursesH.History},

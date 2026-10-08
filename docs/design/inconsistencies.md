@@ -126,8 +126,9 @@
 **Правило.** Интерактивный элемент что-то делает.
 
 **Отклонения:**
-- `src/components/AppHeader.vue:315-324` — кнопка «Уведомления»
-  (`i-lucide-bell`): нет `@click`, `to` и меню;
+- ~~`src/components/AppHeader.vue:315-324` — кнопка «Уведомления»
+  (`i-lucide-bell`): нет `@click`, `to` и меню~~ — исправлено 2026-10-07
+  (`NotificationsBell.vue`, ADR-049);
 - `src/components/AppAside.vue:62-71` — кнопка `i-lucide-chevrons-up-down`
   в шапке сайдбара с `aria-label="Переключить раздел"`: обработчика нет.
 

@@ -5,18 +5,18 @@ import { onBeforeRouteLeave } from 'vue-router';
 import { resolveNewsImageSrc } from '../composables/useNewsData';
 import { useNewsFeed, useFeedSentinel } from '../composables/useNewsFeed';
 import { useBirthdayColleagues } from '../composables/useBirthdayColleagues';
+import { useBirthdayGreetings } from '../composables/useBirthdayGreetings';
+import BirthdayGreetingSlideover from '../components/BirthdayGreetingSlideover.vue';
 import { attachAbsenceStorageSync, hasActiveAbsence } from '../stores/absenceJournal';
 import { useSectionAccess } from '../composables/useSectionAccess';
 import { apiSessionUpload } from '../composables/useAuthSession';
 import { useHeaderUser } from '../composables/useHeaderUser';
-import { useAppToast } from '../composables/useAppToast';
 import LearningHomeWidget from './Courses/components/LearningHomeWidget.vue';
 import HomeNewsCard from '../components/home/HomeNewsCard.vue';
 import HomeCalendarWidget from '../components/home/HomeCalendarWidget.vue';
 import HomeAbsenceWidget from '../components/home/HomeAbsenceWidget.vue';
 import { usePortalServices } from '../composables/usePortalServices';
 
-const { toast, error } = useAppToast();
 
 const { canEditSection, ensureLoaded: ensureSectionAccess } = useSectionAccess();
 ensureSectionAccess();
@@ -278,9 +278,8 @@ const hasAsideContent = computed(
     showBirthdaysWidget.value,
 );
 
-function congratulate(_name: string) {
-  error('Пока нельзя поздравить', 'Функция поздравления временно недоступна.');
-}
+const { ensureLoaded: ensureGreetingsLoaded, greetState, openGreeting } = useBirthdayGreetings();
+ensureGreetingsLoaded();
 
 // ── Админ: загрузка дат рождений из xlsx ──────────────────────────────────────
 const MONTH_NAMES = [
@@ -631,7 +630,7 @@ onUnmounted(() => {
                   size="md"
                   class="min-w-0 flex-1"
                 />
-                <UTooltip text="Поздравить">
+                <UTooltip v-if="greetState(person.userId, group.date) === 'greet'" text="Поздравить">
                   <UButton
                     type="button"
                     color="neutral"
@@ -639,8 +638,19 @@ onUnmounted(() => {
                     size="sm"
                     icon="i-lucide-gift"
                     square
-                    aria-label="Поздравить"
-                    @click="congratulate(person.name)"
+                    :aria-label="`Поздравить: ${person.name}`"
+                    @click="openGreeting({ userId: person.userId!, name: person.name, avatar: person.avatar }, group.date)"
+                  />
+                </UTooltip>
+                <UTooltip v-else-if="greetState(person.userId, group.date) === 'greeted'" text="Вы поздравили — открыть стену">
+                  <UButton
+                    :to="`/profile/${person.userId}`"
+                    color="success"
+                    variant="soft"
+                    size="sm"
+                    icon="i-lucide-check"
+                    square
+                    :aria-label="`Вы поздравили: ${person.name}. Открыть стену`"
                   />
                 </UTooltip>
               </div>
@@ -695,6 +705,8 @@ onUnmounted(() => {
         </div>
       </template>
     </USlideover>
+
+    <BirthdayGreetingSlideover />
 
     <ScrollToTopButton :target="homeScrollEl" />
   </UMain>

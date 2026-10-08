@@ -99,6 +99,12 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/api/users.php
 `--skip-go`; переменная `GO_SYNC_NGINX=1` дополнительно копирует конфиг nginx
 из репозитория.
 
+> **nginx без `GO_SYNC_NGINX=1` не перезагружается.** `nginx-go-api-wave2.conf`
+> подключён `include`'ом из каталога приложения, и `git pull` его обновляет, но
+> новые `location =` начинают действовать только после `sudo nginx -t && sudo
+> systemctl reload nginx`. Иначе новый Go-эндпоинт уходит в PHP и отдаёт 404
+> «File not found.» — см. IMP-63 в [known-issues.md](known-issues.md).
+
 > **Версия Go.** `deploy.sh:22` по умолчанию ставит `GO_VERSION=1.26.5` — в паре
 > с `backend/go.mod`. Меняя одно, меняйте другое. До 2026-09-25 здесь было
 > `1.22.10` (IMP-02). На сервере проверьте `GO_VERSION` в `deploy/deploy.env`:
